@@ -68,8 +68,17 @@ func (p *probe) init() {
 	srcIP, _ := netip.AddrFromSlice([]byte{192, 0, 2, 1})
 	p.srcIP = srcIP
 	p.srcIface = net.Interface{Index: 1, Name: "en0"}
-	p.srcMAC = net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}
-	p.dstMAC = net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}
+
+	// temporary flag based MAC assignment
+	// TODO: remove this once the lookup function is implemented
+	p.srcMAC, err = net.ParseMAC(Args.sourceMAC)
+	if err != nil {
+		log.Fatal(err)
+	}
+	p.dstMAC, err = net.ParseMAC(Args.destinationMAC)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	p.dstPort = uint16(Args.destinationPort)
 	p.srcPort = uint16(Args.sourcePort)

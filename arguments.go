@@ -18,6 +18,8 @@ var Args struct {
 	numProbes       uint
 	maxTTL          uint
 	interProbeDelay uint
+	sourceMAC       string
+	destinationMAC  string
 }
 
 func getArgs() error {
@@ -33,6 +35,10 @@ func getArgs() error {
 	flag.UintVar(&Args.numProbes, "c", 10, "probe count")
 	flag.UintVar(&Args.maxTTL, "m", 30, "maximum TTL")
 	flag.UintVar(&Args.interProbeDelay, "d", 1, "inter-probe delay")
+	// temporary flag based MAC assignment
+	// TODO: remove this once the lookup function is implemented
+	flag.StringVar(&Args.sourceMAC, "M", "", "source MAC")
+	flag.StringVar(&Args.destinationMAC, "D", "", "destination MAC")
 	flag.Parse()
 
 	Args.destination = flag.Arg(0)
