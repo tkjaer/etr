@@ -65,9 +65,16 @@ func (p *probe) init() {
 
 	// lookup source IP, interface, and source + dest MAC with lookupSrc():
 	// temporary values:
-	srcIP, _ := netip.AddrFromSlice([]byte{192, 0, 2, 1})
-	p.srcIP = srcIP
-	p.srcIface = net.Interface{Index: 1, Name: "en0"}
+	if Args.sourceIP != "" {
+		srcIP, err := netip.ParseAddr(Args.sourceIP)
+		if err != nil {
+			log.Fatal(err)
+		}
+		p.srcIP = srcIP
+		p.srcIface = net.Interface{Index: 1, Name: "en0"}
+	} else {
+		// TODO: implement lookupSrc()
+		log.Fatal("source IP not specified, which is required for now")
 
 	// temporary flag based MAC assignment
 	// TODO: remove this once the lookup function is implemented
@@ -80,9 +87,9 @@ func (p *probe) init() {
 		log.Fatal(err)
 	}
 
+	// assign probe parameters
 	p.dstPort = uint16(Args.destinationPort)
 	p.srcPort = uint16(Args.sourcePort)
-
 	p.numProbes = Args.numProbes
 	p.interProbeDelay = Args.interProbeDelay
 	p.maxTTL = uint8(Args.maxTTL)
