@@ -32,7 +32,7 @@ func getArgs() error {
 	flag.UintVar(&Args.sourcePort, "s", 65000, "source port")
 	flag.UintVar(&Args.numProbes, "c", 10, "probe count")
 	flag.UintVar(&Args.maxTTL, "m", 30, "maximum TTL")
-	flag.UintVar(&Args.interProbeDelay, "d", 0, "inter-probe delay")
+	flag.UintVar(&Args.interProbeDelay, "d", 1, "inter-probe delay")
 	flag.Parse()
 
 	Args.destination = flag.Arg(0)
