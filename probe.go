@@ -1,12 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"net/netip"
 	"os"
 
 	"github.com/google/gopacket/layers"
+	"github.com/sirupsen/logrus"
 )
 
 type probe struct {
@@ -24,17 +24,21 @@ type probe struct {
 	maxTTL          uint8
 }
 
+var log = logrus.New()
+
 func (p *probe) init() {
+
+	log.Out = os.Stdout
+	log.SetLevel(logrus.DebugLevel)
+
 	err := getArgs()
 	if err != nil {
-		fmt.Println("Error:", err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
 	dstIP, err := lookupDst(Args.destination, Args.forceIPv4, Args.forceIPv6)
 	if err != nil {
-		fmt.Println("Error:", err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 	p.dstIP = dstIP
 
@@ -72,5 +76,5 @@ func (p *probe) init() {
 }
 
 func (p *probe) start() {
-	fmt.Println("Starting probe")
+	log.Info("Starting probe")
 }
