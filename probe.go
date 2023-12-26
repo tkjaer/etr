@@ -10,7 +10,7 @@ import (
 )
 
 type probe struct {
-	ipProtocol      layers.IPProtocol
+	proto           layers.IPProtocol
 	etherType       layers.EthernetType
 	dstIP           netip.Addr
 	srcIP           netip.Addr
@@ -52,11 +52,11 @@ func (p *probe) init() {
 
 	switch {
 	case Args.TCP:
-		p.ipProtocol = layers.IPProtocolTCP
+		p.proto = layers.IPProtocolTCP
 	case Args.UDP:
-		p.ipProtocol = layers.IPProtocolUDP
+		p.proto = layers.IPProtocolUDP
 	default:
-		p.ipProtocol = layers.IPProtocolTCP
+		p.proto = layers.IPProtocolTCP
 	}
 
 	// lookup source IP, interface, and source + dest MAC with lookupSrc():
