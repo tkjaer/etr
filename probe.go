@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -98,6 +99,19 @@ func (p *probe) init() {
 	p.numProbes = Args.numProbes
 	p.interProbeDelay = Args.interProbeDelay
 	p.maxTTL = uint8(Args.maxTTL)
+}
+
+// Create BPF filter string for pcap to capture returning probes.
+func (p *probe) pcapFilter() string {
+	ttl_exceeded := "icmp and icmp[0] == 11 and icmp[1] == 0"
+	var proto string
+	switch p.proto {
+	case layers.IPProtocolTCP:
+		proto = "tcp"
+	case layers.IPProtocolUDP:
+		proto = "udp"
+	}
+	return fmt.Sprintf("(%v and src host %v and dst host %v and src port %v and dst port %v) or (%v)", proto, p.dstIP, p.srcIP, p.dstPort, p.srcPort, ttl_exceeded)
 }
 
 // Encode the probe number and TTL into a single value.
