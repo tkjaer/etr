@@ -37,22 +37,6 @@ func (p *probe) init() {
 		log.Fatal(err)
 	}
 
-	dstIP, err := lookupDst(Args.destination, Args.forceIPv4, Args.forceIPv6)
-	if err != nil {
-		log.Fatal(err)
-	}
-	p.dstIP = dstIP
-
-	// set EtherType and INET Protocol based on IP version of dstIP
-	switch {
-	case p.dstIP.Is4():
-		p.etherType = layers.EthernetTypeIPv4
-		p.inet = layers.IPProtocolIPv4
-	case p.dstIP.Is6():
-		p.etherType = layers.EthernetTypeIPv6
-		p.inet = layers.IPProtocolIPv6
-	}
-
 	// set probe protocol
 	switch {
 	case Args.TCP:
@@ -61,6 +45,23 @@ func (p *probe) init() {
 		p.proto = layers.IPProtocolUDP
 	default:
 		p.proto = layers.IPProtocolTCP
+	}
+
+	// check destination
+	dstIP, err := lookupDst(Args.destination, Args.forceIPv4, Args.forceIPv6)
+	if err != nil {
+		log.Fatal(err)
+	}
+	p.dstIP = dstIP
+
+	// set EtherType and INET Protocol based on dstIP version
+	switch {
+	case p.dstIP.Is4():
+		p.etherType = layers.EthernetTypeIPv4
+		p.inet = layers.IPProtocolIPv4
+	case p.dstIP.Is6():
+		p.etherType = layers.EthernetTypeIPv6
+		p.inet = layers.IPProtocolIPv6
 	}
 
 	// lookup source IP, interface, and source + dest MAC with lookupSrc():
@@ -75,6 +76,7 @@ func (p *probe) init() {
 	} else {
 		// TODO: implement lookupSrc()
 		log.Fatal("source IP not specified, which is required for now")
+	}
 
 	// temporary flag based MAC assignment
 	// TODO: remove this once the lookup function is implemented
@@ -87,7 +89,6 @@ func (p *probe) init() {
 		log.Fatal(err)
 	}
 
-	// assign probe parameters
 	p.dstPort = uint16(Args.destinationPort)
 	p.srcPort = uint16(Args.sourcePort)
 	p.numProbes = Args.numProbes
@@ -95,6 +96,6 @@ func (p *probe) init() {
 	p.maxTTL = uint8(Args.maxTTL)
 }
 
-func (p *probe) start() {
+func (p *probe) run() {
 	log.Info("Starting probe")
 }
