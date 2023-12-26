@@ -11,6 +11,7 @@ import (
 
 type probe struct {
 	proto           layers.IPProtocol
+	inet            layers.IPProtocol
 	etherType       layers.EthernetType
 	dstIP           netip.Addr
 	srcIP           netip.Addr
@@ -42,14 +43,17 @@ func (p *probe) init() {
 	}
 	p.dstIP = dstIP
 
-	// set etherType based on IP version of dstIP
+	// set EtherType and INET Protocol based on IP version of dstIP
 	switch {
 	case p.dstIP.Is4():
 		p.etherType = layers.EthernetTypeIPv4
+		p.inet = layers.IPProtocolIPv4
 	case p.dstIP.Is6():
 		p.etherType = layers.EthernetTypeIPv6
+		p.inet = layers.IPProtocolIPv6
 	}
 
+	// set probe protocol
 	switch {
 	case Args.TCP:
 		p.proto = layers.IPProtocolTCP
@@ -69,10 +73,10 @@ func (p *probe) init() {
 
 	p.dstPort = uint16(Args.destinationPort)
 	p.srcPort = uint16(Args.sourcePort)
+
 	p.numProbes = Args.numProbes
 	p.interProbeDelay = Args.interProbeDelay
 	p.maxTTL = uint8(Args.maxTTL)
-
 }
 
 func (p *probe) start() {
