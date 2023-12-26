@@ -23,7 +23,7 @@ var Args struct {
 func getArgs() error {
 
 	flag.BoolVar(&Args.TCP, "T", false, "use TCP")
-	flag.BoolVar(&Args.UDP, "U", false, "use UDP")
+	flag.BoolVar(&Args.UDP, "U", false, "use UDP: note UDP probes vary in size as packet length is used to encode the probe details")
 	flag.BoolVar(&Args.forceIPv4, "4", false, "force IPv4")
 	flag.BoolVar(&Args.forceIPv6, "6", false, "force IPv6")
 	flag.UintVar(&Args.destinationPort, "p", 443, "destination port")
