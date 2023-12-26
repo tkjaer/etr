@@ -26,7 +26,7 @@ func getArgs() error {
 	flag.BoolVar(&Args.UDP, "U", false, "use UDP")
 	flag.BoolVar(&Args.forceIPv4, "4", false, "force IPv4")
 	flag.BoolVar(&Args.forceIPv6, "6", false, "force IPv6")
-	flag.UintVar(&Args.destinationPort, "p", 0, "destination port")
+	flag.UintVar(&Args.destinationPort, "p", 443, "destination port")
 	flag.StringVar(&Args.sourceInterface, "i", "", "source interface")
 	flag.StringVar(&Args.sourceIP, "S", "", "source IP")
 	flag.UintVar(&Args.sourcePort, "s", 0, "source port")
