@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket"
@@ -25,9 +26,11 @@ type probe struct {
 	srcIface        net.Interface
 	srcMAC          net.HardwareAddr
 	dstMAC          net.HardwareAddr
-	interProbeDelay uint
+	interProbeDelay time.Duration
+	interTTLDelay   time.Duration
 	numProbes       uint
 	maxTTL          uint8
+	timeout         time.Duration
 }
 
 var log = logrus.New()
@@ -99,7 +102,9 @@ func (p *probe) init() {
 	p.srcPort = uint16(Args.sourcePort)
 	p.numProbes = Args.numProbes
 	p.interProbeDelay = Args.interProbeDelay
+	p.interTTLDelay = Args.interTTLDelay
 	p.maxTTL = uint8(Args.maxTTL)
+	p.timeout = Args.timeout
 }
 
 func decodeTCPLayer(tcpLayer *layers.TCP) (ttl uint8, probeNum uint, flag string) {
@@ -205,26 +210,24 @@ func (p *probe) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8, probeNu
 }
 
 func (p *probe) decodeRecvProbe(packet gopacket.Packet) (ttl uint8, probeNum uint, timestamp time.Time, ip net.IP, flag string) {
-	switch p.proto {
-	case layers.IPProtocolTCP:
-		if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
-			ttl, probeNum, flag = decodeTCPLayer(tcpLayer.(*layers.TCP))
-		} else if icmp4Layer := packet.Layer(layers.LayerTypeICMPv4); icmp4Layer != nil {
-			ttl, probeNum, _ = p.decodeICMPv4Layer(icmp4Layer.(*layers.ICMPv4))
-			flag = "TTL"
-		} else if icmp6Layer := packet.Layer(layers.LayerTypeICMPv6); icmp6Layer != nil {
-			// TODO: implement decodeICMPv6Layer()
-			fmt.Println("ICMPv6 decode not implemented yet")
-		}
-	case layers.IPProtocolUDP:
-		if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
-			ttl, probeNum = decodeUDPLayer(udpLayer.(*layers.UDP))
-		} else if icmp4Layer := packet.Layer(layers.LayerTypeICMPv4); icmp4Layer != nil {
-			ttl, probeNum, _ = p.decodeICMPv4Layer(icmp4Layer.(*layers.ICMPv4))
-			flag = "TTL"
-		} else if icmp6Layer := packet.Layer(layers.LayerTypeICMPv6); icmp6Layer != nil {
-			// TODO: implement decodeICMPv6Layer()
-			fmt.Println("ICMPv6 decode not implemented yet")
+	// Decode any ICMP layers first to ensure we're catching TTL exceeded and
+	// not just parsing the inner layer.
+	if icmp4Layer := packet.Layer(layers.LayerTypeICMPv4); icmp4Layer != nil {
+		ttl, probeNum, _ = p.decodeICMPv4Layer(icmp4Layer.(*layers.ICMPv4))
+		flag = "TTL"
+	} else if icmp6Layer := packet.Layer(layers.LayerTypeICMPv6); icmp6Layer != nil {
+		// TODO: implement decodeICMPv6Layer()
+		fmt.Println("ICMPv6 decode not implemented yet")
+	} else {
+		switch p.proto {
+		case layers.IPProtocolTCP:
+			if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
+				ttl, probeNum, flag = decodeTCPLayer(tcpLayer.(*layers.TCP))
+			}
+		case layers.IPProtocolUDP:
+			if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
+				ttl, probeNum = decodeUDPLayer(udpLayer.(*layers.UDP))
+			}
 		}
 	}
 	ip = packet.NetworkLayer().NetworkFlow().Src().Raw()
@@ -251,25 +254,66 @@ func (p *probe) pcapFilter() string {
 	return fmt.Sprintf("(%v and src host %v and dst host %v and src port %v and dst port %v) or (%v)", proto, p.dstIP, p.srcIP, p.dstPort, p.srcPort, ttl_exceeded)
 }
 
-func (p *probe) recvProbe(handle *pcap.Handle, stop chan struct{}) {
+// Message type for communication between sendProbes() and sendStats().
+type sentMsg struct {
+	probeNum  uint
+	ttl       uint8
+	timestamp time.Time
+}
+
+// Message type for communication between recvProbes() and sendStats().
+type recvMsg struct {
+	probeNum  uint
+	ttl       uint8
+	timestamp time.Time
+	ip        net.IP
+	flag      string
+}
+
+// Message type for communication between sendStats() and outputStats().
+type outputMsg struct {
+	probeNum       uint
+	ttl            uint8
+	ip             net.IP
+	host           string
+	sentTime       time.Time
+	rtt            time.Duration
+	// delayVariation time.Duration
+	avgRTT         time.Duration
+	minRTT         time.Duration
+	maxRTT         time.Duration
+	loss           uint
+	flag           string
+}
+type outputMsgs []outputMsg
+
+func (p *probe) recvProbes(handle *pcap.Handle, recvChan chan recvMsg, responseReceivedChan chan uint, stop chan struct{}, wg *sync.WaitGroup) {
+	wg.Add(1)
 	if err := handle.SetBPFFilter(p.pcapFilter()); err != nil {
 		log.Fatal(err)
 	}
-
-	start := time.Now()
-
 	src := gopacket.NewPacketSource(handle, handle.LinkType())
 	in := src.Packets()
-	// TODO: add timeout
 	for {
 		var packet gopacket.Packet
 		select {
 		case <-stop:
-			log.Debug("stopping recvProbe")
+			log.Debug("stopping recvProbes")
+			wg.Done()
 			return
 		case packet = <-in:
 			ttl, probeNum, timestamp, ip, flag := p.decodeRecvProbe(packet)
-			fmt.Printf("%3v. %-15v %3v - %v (%v)\n", ttl, ip, timestamp.Sub(start), probeNum, flag)
+			// All valid received probes will have a TTL.
+			if ttl > 0 {
+				// Report received probe.
+				recvChan <- recvMsg{probeNum, ttl, timestamp, ip, flag}
+				// Report if we've received a non-"TTL exceeded" response.
+				if flag != "TTL" {
+					go func(responseReceivedChan chan uint, probeNum uint) {
+						responseReceivedChan <- probeNum
+					}(responseReceivedChan, probeNum)
+				}
+			}
 		}
 	}
 }
@@ -304,21 +348,270 @@ func decodeSeq(seq uint32) (ttl uint8, probeNum uint) {
 	return uint8(seq / 20), uint(seq % 20)
 }
 
+// TODO: See if we can come up with a better name for this function.
+// processStats()?
+// processProbeResult()?
+// TODO: Add a function to print a summary of the results.  Maybe catch SIGINT
+// and print summary before exiting?
+func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan chan outputMsgs, ptrLookupChan chan []string, stop chan struct{}, wg *sync.WaitGroup) {
+	wg.Add(1)
+
+	// Keep count of total probes sent.
+	var totalProbesSent uint
+
+	// Store data for in-flight probes.
+	type probeStat struct {
+		sentTime time.Time
+		// TODO: Remove recvTime and just calculate RTT directly instead?
+		// recvTime time.Time
+		origSeq  uint32
+		ttl      time.Duration
+		ip       string
+		flag     string
+	}
+	ps := [20][p.maxTTL]probeStat
+
+	// Store statistics for each IP.
+	type ipStat struct {
+		avg, min, max time.Duration
+		ptr           string
+		received      uint
+		lost          uint
+	}
+	ips := make(map[string]ipStat)
+
+
+
+
+	// type ipStat struct {
+	// avg, min, max time.Duration
+	// ptr           string
+	// received      uint
+	// lost          uint
+	// }
+	// ipStats := make(map[string]ipStat)
+
+	// List of resolved PTR records to include hostnames in output.
+	// Key is string(IP), value is hostname.
+	ptrs := make(map[string]string)
+
+	// TTL history for each probe and hop.
+	var ttls [20][p.maxTTL]time.Time
+
+	// TTL stats on a per IP basis.
+	type ttlStat struct {
+		avg, min, max time.Duration
+	}
+	// Key is string(IP), value is ttlStat struct.
+	ttlStats := make(map[string]ttlStat)
+
+	// List of IPs and received / lost probes to calculate packet loss.
+	type lossStat struct {
+		lost     uint
+		received uint
+	}
+	// Key is string(IP), value is lossStat struct.
+	lossStats := make(map[string]lossStat)
+
+	// Keep map of last hops (string(IP)), so we can guess what hops are
+	// missing/have packet loss.
+	lastHops := make(map[uint8]string)
+
+	// Store sent and received probe timers so we can calculate latency.
+	var (
+		sentTimes [20][p.maxTTL]time.Time
+		recvTimes [20][p.maxTTL]time.Time
+	)
+
+	// Store received flags so we can print them in the output.
+	var recvFlags [20][p.maxTTL]string
+
+	// Store original sequence numbers and what encoded sequence number they
+	// were replaced with.
+	// Value is the original sequence number, index is the encoded sequence number.
+	var originalSeq [20]uint32
+
+	// TODO: Add functionality to keep track of sent probe timestamps and
+	// probe timeout so we know when to print stats.
+	// Include functionality to print stats before timer expires if we have
+	// received a non-ICMP response and responses for all intermediate TTLs.
+	// TODO: Before printing stats, update the lossStats to include a loss for
+	// the hops we're missing a response from.  The missing response can be seen
+	// from empty timestamps in recvTimes.
+	// TODO: Make sure to emtpty the recvTimes for the hops we're sending output
+	// for, so they're ready for the next run.
+
+	for {
+		select {
+		case <-stop:
+			log.Debug("stopping stats")
+			wg.Done()
+			return
+		case sent := <-sentChan:
+			n := sent.probeNum % 20
+			t := sent.ttl
+			// Store total probes sent and then probe timestamp and
+			// original-to-encoded sequence numbers for the last 20 probes.
+			if totalProbesSent < sent.probeNum {
+				totalProbesSent = sent.probeNum
+			}
+			ps[n][t].sentTime = sent.timestamp
+			ps[n][t].origSeq = sent.probeNum
+			// TODO: removeme
+			// sentTimes[sent.probeNum%20][sent.ttl] = sent.timestamp
+			// TODO: removeme
+			// originalSeq[uint8(sent.probeNum%20)] = uint32(sent.probeNum)
+		case recv := <-recvChan:
+			n := recv.probeNum
+			t := recv.ttl
+			// Store received probe timestamp.
+			// TODO: removeme
+			// recvTimes[recv.probeNum][recv.ttl] = recv.timestamp
+			ttl := recv.timestamp.Sub(ps[n][t].sentTime)
+			// TODO: Skip parsing if we're past timeout?
+			ps[n][t].ttl = ttl
+
+			// Store last seen IP for each hop/TTL.
+			lastHops[t] = string(recv.ip)
+
+			if entry, ok := ips[string(recv.ip)]; ok {
+				// Update the IP stats.
+				if ttl < entry.min {
+					entry.min = ttl
+				}
+				if ttl > entry.max {
+					entry.max = ttl
+				}
+				entry.avg = ((entry.avg * entry.received) + ttl) / (entry.received + 1)
+				entry.received++
+				ips[string(recv.ip)] = entry
+			} else {
+				// Add a new entry to the IP stats.
+				ips[string(recv.ip)] = ipStat{ttl, ttl, ttl, "", 1, 0}
+				// Start a goroutine to lookup the PTR record for the IP.
+				go func(ip string, ptrLookupChan chan []string) {
+					ptr, err := net.LookupAddr(ip)
+					if err != nil || len(ptr) == 0 {
+						ptrLookupChan <- []string{ip, ip}
+					} else {
+						ptrLookupChan <- []string{string(recv.ip), ptr[0]}
+					}
+				}(string(recv.ip), ptrLookupChan)
+			}
+
+
+			/*
+			
+			// Add the received probe to the lossStats map.
+			if entry, ok := lossStats[string(recv.ip)]; ok {
+				entry.received++
+				lossStats[string(recv.ip)] = entry
+			} else {
+				lossStats[string(recv.ip)] = lossStat{0, 1}
+			}
+
+			recvFlags[recv.probeNum][recv.ttl] = recv.flag
+
+			// Update the ptrs map with either the first PTR record or the IP
+			// address if no PTR record was found.
+			if _, ok := ptrs[string(recv.ip)]; !ok {
+				go func(ip string, ptrLookupChan chan []string) {
+					ptr, err := net.LookupAddr(ip)
+					if err != nil || len(ptr) == 0 {
+						ptrLookupChan <- []string{ip, ip}
+					} else {
+						ptrLookupChan <- []string{string(recv.ip), ptr[0]}
+					}
+				}(string(recv.ip), ptrLookupChan)
+			}
+
+			if entry, ok := ttlStats[string(recv.ip)]; ok {
+				// TODO: update ttlStats.
+				// Calculate avg. RTT based on current time, existing avg. RTT
+				// and number of received probes.
+				// entry.avg = time.Duration(int64(entry.avg) + (recv.timestamp.Sub(entry.avg) / time.Duration(entry.received)))
+				ttlStats[string(recv.ip)] = entry
+			}
+			*/
+		// Add returning PTR lookup results to the ptrs map.
+		case ptr := <-ptrLookupChan:
+			ptrs[ptr[0]] = ptr[1]
+		// Check if any probes are ready to be printed and print them.
+		default:
+			for n, prs := range ps {
+				for t := p.maxTTL-1; t >= 0; t-- {
+
+
+
+
+
+			for n, p := range recvFlags {
+			probeCheck:
+			for t := len(p)-1 ; t >= 0; t-- {
+				for ttl, flag := range p {
+					// We've received a response for this probe.
+					if len(flag) > 0 && flag != "TTL" {
+						// Check if we've either received a response for all
+						// intermediate TTLs of if they have reached the
+						// timeout.
+						for t := ttl; t >= 0; t-- {
+							if len(ps[n][t]) == 0 {
+								// Return if we've not yet reached our timeout.
+								if time.Since(sentTimes[n][t]) < p.timeout {
+									return probeCheck
+								}
+								// Update lost stats if we don't have a response.
+								if len(ps[n][t].ip) == 0 {
+									if len(lastHops[t]) > 0 {
+										l := lastHops[t]
+										ps[n][t].ip = l
+										ips[l].lost++
+									}
+								}
+							}
+						}
+						// TODO: Update lost count in ipStat.
+						var output outputMsgs
+						for t, flag := range p {
+							append(output, outputMsg{
+								probeNum: 	 ps[n][t].origSeq,
+								ttl: 	   ps[n][t].ttl,
+								ip: 	   ps[n][t].ip,
+								)
+
+							/*
+								// Message type for communication between sendStats() and outputStats().
+								type outputMsg struct {
+									probeNum       uint
+									ttl            uint8
+									ip             net.IP
+									host           string
+									sentTime       time.Time
+									rtt            time.Duration
+									delayVariation time.Duration
+									avgRTT         time.Duration
+									minRTT         time.Duration
+									maxRTT         time.Duration
+									loss           uint
+									flag           string
+								}
+								type outputMsgs []outputMsg
+							*/
+
+						}
+
+						// TODO: This is where we calculate stats and print the
+						// output.
+					}
+					log.Debug(flag)
+				}
+			}
+		}
+	}
+}
+
 func (p *probe) run() {
 	log.Info("Starting probe")
-
-	buf := gopacket.NewSerializeBuffer()
-
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-
-	eth := layers.Ethernet{
-		SrcMAC:       p.srcMAC,
-		DstMAC:       p.dstMAC,
-		EthernetType: p.etherType,
-	}
 
 	handle, err := pcap.OpenLive(p.srcIface.Name, 65536, true, pcap.BlockForever)
 	if err != nil {
@@ -326,89 +619,164 @@ func (p *probe) run() {
 	}
 	defer handle.Close()
 
+	// Channel for reporting sent probes.
+	// The probeNum reported here is the total probe number.
+	sentChan := make(chan sentMsg)
+
+	// Channel for reporting received probes.
+	// The probeNum reported here is the encoded probe number (0-19).
+	recvChan := make(chan recvMsg)
+
+	// Channel for sending results to output.
+	outputChan := make(chan outputMsgs)
+
+	// Channel for sending PTR lookup results.
+	ptrLookupChan := make(chan []string)
+
+	responseReceivedChan := make(chan uint)
+
+	// Channel for sending stop signal to goroutines.
 	stop := make(chan struct{})
-	go p.recvProbe(handle, stop)
 	defer close(stop)
 
-	// TODO: Ensure that interProbeDelay*20 > probe timeout to avoid
-	// duplicate probes (0-19).
-	var probeTimes [20][60]time.Time
+	var wg sync.WaitGroup
 
-	for i := uint(0); i < p.numProbes; i++ {
-		// Probe number is 0-indexed, so we add 1 before logging
-		log.Debugf("Sending probe %d", i+1)
-		for j := uint8(1); j <= p.maxTTL; j++ {
+	go p.output(outputChan, stop, &wg)
+	go p.stats(sentChan, recvChan, outputChan, ptrLookupChan, stop, &wg)
+	go p.recvProbes(handle, recvChan, responseReceivedChan, stop, &wg)
+	go p.sendProbes(handle, sentChan, responseReceivedChan, stop, &wg)
 
-			probeTimes[i][j-1] = time.Now()
-			switch p.inet {
-			case layers.IPProtocolIPv4:
-				ip := layers.IPv4{
-					Version:  4,
-					TTL:      j,
-					Protocol: p.proto,
-					SrcIP:    p.srcIP.AsSlice(),
-					DstIP:    p.dstIP.AsSlice(),
-					Flags:    layers.IPv4DontFragment,
-				}
-				switch p.proto {
-				case layers.IPProtocolTCP:
-					tcp := layers.TCP{
-						Seq:     encodeSeq(j, i),
-						SrcPort: layers.TCPPort(p.srcPort),
-						DstPort: layers.TCPPort(p.dstPort),
-						SYN:     true,
-						Window:  65535,
-					}
-					tcp.SetNetworkLayerForChecksum(&ip)
-					gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
-					handle.WritePacketData(buf.Bytes())
-				case layers.IPProtocolUDP:
-					udp := layers.UDP{
-						SrcPort: layers.UDPPort(p.srcPort),
-						DstPort: layers.UDPPort(p.dstPort),
-						Length:  uint16(8 + encodeSeq(j, i)),
-					}
-					udp.SetNetworkLayerForChecksum(&ip)
-					gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
-					handle.WritePacketData(buf.Bytes())
-				}
-			case layers.IPProtocolIPv6:
-				ip := layers.IPv6{
-					Version:    6,
-					HopLimit:   j,
-					NextHeader: p.proto,
-					SrcIP:      p.srcIP.AsSlice(),
-					DstIP:      p.dstIP.AsSlice(),
-				}
-				switch p.proto {
-				case layers.IPProtocolTCP:
-					tcp := layers.TCP{
-						Seq:     encodeSeq(j, i),
-						SrcPort: layers.TCPPort(p.srcPort),
-						DstPort: layers.TCPPort(p.dstPort),
-						SYN:     true,
-						Window:  65535,
-					}
-					tcp.SetNetworkLayerForChecksum(&ip)
-					gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
-					handle.WritePacketData(buf.Bytes())
-				case layers.IPProtocolUDP:
-					udp := layers.UDP{
-						SrcPort: layers.UDPPort(p.srcPort),
-						DstPort: layers.UDPPort(p.dstPort),
-						Length:  uint16(8 + encodeSeq(j, i)),
-					}
-					udp.SetNetworkLayerForChecksum(&ip)
-					gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
-					handle.WritePacketData(buf.Bytes())
-				}
-			}
+	// TODO: replace with waitgroup.
+	time.Sleep(10 * time.Second)
+
+}
+
+func (p *probe) output(outputChan chan outputMsgs, stop chan struct{}, wg *sync.WaitGroup) {
+	wg.Add(1)
+	select {
+	case <-stop:
+		wg.Done()
+		return
+	case output := <-outputChan:
+		for _, msg := range output {
+			fmt.Printf("%2v. %-15v %3v - %v (%v)\n", msg.ttl, msg.ip, msg.loss, msg.probeNum, msg.flag)
 		}
-		// TODO: should this be a timer "since last probe run was started" instead?
-		time.Sleep(time.Duration(p.interProbeDelay) * time.Second)
 	}
-	// TODO: Remove this once we have timing properly implemented
-	// and possibly a return channel that tells us when the final
-	// SYNACK has been received.
-	time.Sleep(time.Duration(p.interProbeDelay) * time.Second)
+	// fmt.Printf("%3v. %-15v %3v - %v (%v)\n", ttl, ip, timestamp.Sub(start), probeNum, flag)
+}
+
+func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseReceivedChan chan uint, stop chan struct{}, wg *sync.WaitGroup) {
+	wg.Add(1)
+
+	buf := gopacket.NewSerializeBuffer()
+
+	opts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+	eth := layers.Ethernet{
+		SrcMAC:       p.srcMAC,
+		DstMAC:       p.dstMAC,
+		EthernetType: p.etherType,
+	}
+
+	var lastProbeStart time.Time
+	var lastTTLTime time.Time
+
+	for n := uint(0); n < p.numProbes; n++ {
+		// Probe number is 0-indexed, so we add 1 before logging
+		log.Debugf("Sending probe %d", n+1)
+
+		lastProbeStart = time.Now()
+
+		log.Info("Sending probe")
+
+	TTLLoop:
+		for t := uint8(1); t <= p.maxTTL; t++ {
+			lastTTLTime = time.Now()
+
+			select {
+			// Stop sending TTL increments if we've received a response for this
+			// probe.
+			case response := <-responseReceivedChan:
+				if response == n {
+					break TTLLoop
+				}
+			default:
+				switch p.inet {
+				case layers.IPProtocolIPv4:
+					ip := layers.IPv4{
+						Version:  4,
+						TTL:      t,
+						Protocol: p.proto,
+						SrcIP:    p.srcIP.AsSlice(),
+						DstIP:    p.dstIP.AsSlice(),
+						Flags:    layers.IPv4DontFragment,
+					}
+					switch p.proto {
+					case layers.IPProtocolTCP:
+						tcp := layers.TCP{
+							Seq:     encodeSeq(t, n),
+							SrcPort: layers.TCPPort(p.srcPort),
+							DstPort: layers.TCPPort(p.dstPort),
+							SYN:     true,
+							Window:  65535,
+						}
+						tcp.SetNetworkLayerForChecksum(&ip)
+						gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
+						handle.WritePacketData(buf.Bytes())
+					case layers.IPProtocolUDP:
+						udp := layers.UDP{
+							SrcPort: layers.UDPPort(p.srcPort),
+							DstPort: layers.UDPPort(p.dstPort),
+							Length:  uint16(8 + encodeSeq(t, n)),
+						}
+						udp.SetNetworkLayerForChecksum(&ip)
+						gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
+						handle.WritePacketData(buf.Bytes())
+					}
+				case layers.IPProtocolIPv6:
+					ip := layers.IPv6{
+						Version:    6,
+						HopLimit:   t,
+						NextHeader: p.proto,
+						SrcIP:      p.srcIP.AsSlice(),
+						DstIP:      p.dstIP.AsSlice(),
+					}
+					switch p.proto {
+					case layers.IPProtocolTCP:
+						tcp := layers.TCP{
+							Seq:     encodeSeq(t, n),
+							SrcPort: layers.TCPPort(p.srcPort),
+							DstPort: layers.TCPPort(p.dstPort),
+							SYN:     true,
+							Window:  65535,
+						}
+						tcp.SetNetworkLayerForChecksum(&ip)
+						gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
+						handle.WritePacketData(buf.Bytes())
+					case layers.IPProtocolUDP:
+						udp := layers.UDP{
+							SrcPort: layers.UDPPort(p.srcPort),
+							DstPort: layers.UDPPort(p.dstPort),
+							Length:  uint16(8 + encodeSeq(t, n)),
+						}
+						udp.SetNetworkLayerForChecksum(&ip)
+						gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
+						handle.WritePacketData(buf.Bytes())
+					}
+				}
+				sentChan <- sentMsg{n, t, time.Now()}
+				time.Sleep(p.interTTLDelay)
+			}
+
+		}
+		// Sleep for interProbeDelay if we haven't already spent that much time
+		// sending the probe.
+		if time.Since(lastProbeStart) < p.interProbeDelay {
+			time.Sleep(p.interProbeDelay - time.Since(lastProbeStart))
+		}
+	}
+	// TODO: Wait for our final probe to have finished.
+	wg.Done()
 }
