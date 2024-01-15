@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
 	"net/netip"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -270,20 +274,26 @@ type recvMsg struct {
 	flag      string
 }
 
+type expiredMsg struct {
+	origProbeNum uint
+	probeNum     uint8
+	ttl          uint8
+}
+
 // Message type for communication between sendStats() and outputStats().
 type outputMsg struct {
-	probeNum       uint
-	ttl            uint8
-	ip             net.IP
-	host           string
-	sentTime       time.Time
-	rtt            time.Duration
+	probeNum uint
+	ttl      uint8
+	ip       net.IP
+	host     string
+	sentTime time.Time
+	rtt      time.Duration
 	// delayVariation time.Duration
-	avgRTT         time.Duration
-	minRTT         time.Duration
-	maxRTT         time.Duration
-	loss           uint
-	flag           string
+	avgRTT time.Duration
+	minRTT time.Duration
+	maxRTT time.Duration
+	loss   uint
+	flag   string
 }
 type outputMsgs []outputMsg
 
@@ -307,7 +317,8 @@ func (p *probe) recvProbes(handle *pcap.Handle, recvChan chan recvMsg, responseR
 			if ttl > 0 {
 				// Report received probe.
 				recvChan <- recvMsg{probeNum, ttl, timestamp, ip, flag}
-				// Report if we've received a non-"TTL exceeded" response.
+				// Report if we've received a non-"TTL exceeded" response so we
+				// stop sending further packets for this probe number.
 				if flag != "TTL" {
 					go func(responseReceivedChan chan uint, probeNum uint) {
 						responseReceivedChan <- probeNum
@@ -322,30 +333,44 @@ func (p *probe) recvProbes(handle *pcap.Handle, recvChan chan recvMsg, responseR
 //
 // As some operating systems still use the historic RFC 792 format for ICMP
 // error messages, we need to encode the TTL and probe number into a field
-// within the first 8 bytes of the TCP and protocol headers.
+// within the first 64 bit of the TCP and UDP protocol headers.
 //
-// For TCP we use the 32-bit sequence number field, as the first 32 bits are
-// used for source and destination port.
+// For TCP we use the 32-bit sequence number field that follows source and
+// destination port which takes up the first 32 bit.
 //
 // For UDP, we use the 16-bit length field, as the first 32 bits are used for
 // source and destination port and the last 16 bits for checksum.
 //
-// To keep the sequence number small enough to fit into the UDP frame length
-// field, while ensuring that the packet still is valid and fits into a 1500
-// byte Ethernet MTU, TTL is multiplied by 20 and the probe number added.  This
-// also allows manual decoding of the sequence number if needed.
+// To keep the sequence number small enough to fit into the UDP length field,
+// while ensuring that the packet still is valid and fits into a 1500 byte
+// Ethernet MTU, TTL is multiplied by 20 and the probe number added.  This also
+// allows manual decoding of the sequence number if needed.
 //
 // This encoding leaves room for 20 probes (0-19) and the RFC1812 "common" TTL
 // of 64 while keeping the MTU below 1500 bytes including IPv4 or IPv6 header.
 //
 // TTL + probe + UDP header = 64*20 + 19 + 8 == 1307
 func encodeSeq(ttl uint8, probeNum uint) (seq uint32) {
-	return uint32(ttl)*20 + uint32(probeNum)
+	return uint32(ttl)*20 + uint32(probeNum%20)
 }
 
 // Decode the sequence and return TTL and probe number.
 func decodeSeq(seq uint32) (ttl uint8, probeNum uint) {
 	return uint8(seq / 20), uint(seq % 20)
+}
+
+func createKey(probeNum uint, ttl uint8) string {
+	return fmt.Sprintf("%v:%v", probeNum, ttl)
+}
+
+func splitKey(key string) (probeNum uint, ttl uint8) {
+	split := strings.Split(key, ":")
+	if probeNum, err := strconv.Atoi(split[0]); err == nil {
+		if t, err := strconv.Atoi(split[1]); err == nil {
+			return uint(probeNum), uint8(t)
+		}
+	}
+	return
 }
 
 // TODO: See if we can come up with a better name for this function.
@@ -360,76 +385,72 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 	var totalProbesSent uint
 
 	// Store data for in-flight probes.
-	type probeStat struct {
+	type probeStatEntry struct {
 		sentTime time.Time
 		// TODO: Remove recvTime and just calculate RTT directly instead?
 		// recvTime time.Time
-		origSeq  uint32
-		ttl      time.Duration
-		ip       string
-		flag     string
+		origSeq uint
+		rtt     int64 // microseconds
+		ip      string
+		flag    string
 	}
-	ps := [20][p.maxTTL]probeStat
+	// type probeStat [][]probeStatEntry
+	// type probeStat []probeStatEntry
+	/*
+		ps := make(probeStat, 20)
+		for i := range ps {
+			ps[i] = make([]probeStatEntry, p.maxTTL)
+		}
+	*/
+	ps := make(map[string]probeStatEntry)
 
 	// Store statistics for each IP.
 	type ipStat struct {
-		avg, min, max time.Duration
+		avg, min, max int64 // microseconds
 		ptr           string
 		received      uint
 		lost          uint
 	}
 	ips := make(map[string]ipStat)
 
-
-
-
-	// type ipStat struct {
-	// avg, min, max time.Duration
-	// ptr           string
-	// received      uint
-	// lost          uint
-	// }
-	// ipStats := make(map[string]ipStat)
-
-	// List of resolved PTR records to include hostnames in output.
-	// Key is string(IP), value is hostname.
-	ptrs := make(map[string]string)
-
-	// TTL history for each probe and hop.
-	var ttls [20][p.maxTTL]time.Time
-
-	// TTL stats on a per IP basis.
-	type ttlStat struct {
-		avg, min, max time.Duration
-	}
-	// Key is string(IP), value is ttlStat struct.
-	ttlStats := make(map[string]ttlStat)
-
-	// List of IPs and received / lost probes to calculate packet loss.
-	type lossStat struct {
-		lost     uint
-		received uint
-	}
-	// Key is string(IP), value is lossStat struct.
-	lossStats := make(map[string]lossStat)
-
-	// Keep map of last hops (string(IP)), so we can guess what hops are
-	// missing/have packet loss.
+	// Keep map of last IPs seen for a given hop, so we can guess what IPs we're
+	// missing a response from.
 	lastHops := make(map[uint8]string)
 
-	// Store sent and received probe timers so we can calculate latency.
-	var (
-		sentTimes [20][p.maxTTL]time.Time
-		recvTimes [20][p.maxTTL]time.Time
-	)
+	// Create a new TTL cache with automatic expiration of timed out probes.
+	cache := ttlcache.New[string, uint8](ttlcache.WithTTL[string, uint8](p.timeout))
+	go cache.Start()
 
-	// Store received flags so we can print them in the output.
-	var recvFlags [20][p.maxTTL]string
+	// Channel to send expired probes to.
+	expiredChan := make(chan expiredMsg)
 
-	// Store original sequence numbers and what encoded sequence number they
-	// were replaced with.
-	// Value is the original sequence number, index is the encoded sequence number.
-	var originalSeq [20]uint32
+	// Send notifications when probes expire.
+	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, uint8]) {
+		if reason == ttlcache.EvictionReasonExpired {
+			// Split the key into the original probe number and TTL.
+			origProbeNum, t := splitKey(item.Key())
+			/*
+				func(string) (uint, uint8) {
+					if probeNum, err := strconv.Atoi(strings.Split(item.Key(), ".")[0]); err == nil {
+						if t, err := strconv.Atoi(strings.Split(item.Key(), ".")[1]); err == nil {
+							return uint(probeNum), uint8(t)
+						} else {
+							log.Fatal(err)
+						}
+					} else {
+						log.Fatal(err)
+					}
+					return 0, 0
+				}(item.Key())
+			*/
+
+			n := item.Value()
+			expiredChan <- expiredMsg{origProbeNum, n, t}
+		}
+	})
+
+	// TODO: Exit program when cache is completely empty and we have no more
+	// probes to send.
 
 	// TODO: Add functionality to keep track of sent probe timestamps and
 	// probe timeout so we know when to print stats.
@@ -447,165 +468,95 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 			log.Debug("stopping stats")
 			wg.Done()
 			return
+
 		case sent := <-sentChan:
 			n := sent.probeNum % 20
 			t := sent.ttl
+			k := createKey(n, t)
 			// Store total probes sent and then probe timestamp and
 			// original-to-encoded sequence numbers for the last 20 probes.
 			if totalProbesSent < sent.probeNum {
 				totalProbesSent = sent.probeNum
 			}
-			ps[n][t].sentTime = sent.timestamp
-			ps[n][t].origSeq = sent.probeNum
-			// TODO: removeme
-			// sentTimes[sent.probeNum%20][sent.ttl] = sent.timestamp
-			// TODO: removeme
-			// originalSeq[uint8(sent.probeNum%20)] = uint32(sent.probeNum)
+			entry := probeStatEntry{sent.timestamp, sent.probeNum, 0, "", ""}
+			ps[k] = entry
+			/*
+				ps[n][t].sentTime = sent.timestamp
+				ps[n][t].origSeq = sent.probeNum
+			*/
+			// cacheKey := fmt.Sprintf("%d.%d", n, t)
+			// Add sent probe to cache.
+			log.Debug("Cache set:", k)
+			cache.Set(k, uint8(n), ttlcache.DefaultTTL)
+			// fmt.Printf("Cache set: %+v\n", cache.Get(cacheKey))
+
 		case recv := <-recvChan:
 			n := recv.probeNum
 			t := recv.ttl
-			// Store received probe timestamp.
-			// TODO: removeme
-			// recvTimes[recv.probeNum][recv.ttl] = recv.timestamp
-			ttl := recv.timestamp.Sub(ps[n][t].sentTime)
-			// TODO: Skip parsing if we're past timeout?
-			ps[n][t].ttl = ttl
+			k := createKey(n, t)
+			// origSeq := ps[k].origSeq
+			// cacheKey := fmt.Sprintf("%d.%d", n, t)
+			// cacheKey := fmt.Sprintf("%d.%d", origSeq, t)
 
-			// Store last seen IP for each hop/TTL.
-			lastHops[t] = string(recv.ip)
+			// Check if the probe has already expired.
+			log.Debugf("Cache contents: %+v", cache.Keys())
+			if _, present := cache.GetAndDelete(k); present {
+				log.Debugf("received probe %d for TTL %d. (key: %v)", n, t, k)
+				// Update RTT for this probe.
+				rtt := int64(recv.timestamp.Sub(ps[k].sentTime) / time.Microsecond) // Convert time.Duration to microseconds.
+				if entry, ok := ps[k]; ok {
+					entry.rtt = rtt
+					ps[k] = entry
+				}
 
-			if entry, ok := ips[string(recv.ip)]; ok {
-				// Update the IP stats.
-				if ttl < entry.min {
-					entry.min = ttl
-				}
-				if ttl > entry.max {
-					entry.max = ttl
-				}
-				entry.avg = ((entry.avg * entry.received) + ttl) / (entry.received + 1)
-				entry.received++
-				ips[string(recv.ip)] = entry
-			} else {
-				// Add a new entry to the IP stats.
-				ips[string(recv.ip)] = ipStat{ttl, ttl, ttl, "", 1, 0}
-				// Start a goroutine to lookup the PTR record for the IP.
-				go func(ip string, ptrLookupChan chan []string) {
-					ptr, err := net.LookupAddr(ip)
-					if err != nil || len(ptr) == 0 {
-						ptrLookupChan <- []string{ip, ip}
-					} else {
-						ptrLookupChan <- []string{string(recv.ip), ptr[0]}
+				// Update last seen IP for this hop/TTL.
+				ip := string(recv.ip)
+				lastHops[t] = ip
+
+				// Update IP stats.
+				if entry, ok := ips[ip]; ok {
+					if rtt < entry.min {
+						entry.min = rtt
 					}
-				}(string(recv.ip), ptrLookupChan)
+					if rtt > entry.max {
+						entry.max = rtt
+					}
+					entry.avg = ((entry.avg * int64(entry.received)) + rtt) / int64(entry.received+1)
+					entry.received++
+					ips[ip] = entry
+				} else {
+					// Add new IP stats entry.
+					ips[ip] = ipStat{rtt, rtt, rtt, "", 1, 0}
+					// Start goroutine to look up PTR in the background.
+					go func(ip string, ptrLookupChan chan []string) {
+						ptr, err := net.LookupAddr(ip)
+						if err == nil && len(ptr) > 0 {
+							ptrLookupChan <- []string{ip, ptr[0]}
+						}
+					}(ip, ptrLookupChan)
+				}
+			} else {
+				log.Debugf("received probe %d for TTL %d, but probe already expired. (key: %v)", n, t, k)
+				// log.Debugf("Cache contents: %+v", cache.Keys())
+				// TODO: Do we need to do anything else with this returning expired probe?
 			}
 
+		// Add returning PTR result.
+		case ptrResult := <-ptrLookupChan:
+			ip, ptr := ptrResult[0], ptrResult[1]
+			if entry := ips[ip]; entry.ptr == "" {
+				entry.ptr = ptr
+				ips[ip] = entry
+			}
+
+		case expired := <-expiredChan:
+			fmt.Printf("Expired: %+v\n", expired)
+			// TODO: Add functionality for expired probe.
 
 			/*
-			
-			// Add the received probe to the lossStats map.
-			if entry, ok := lossStats[string(recv.ip)]; ok {
-				entry.received++
-				lossStats[string(recv.ip)] = entry
-			} else {
-				lossStats[string(recv.ip)] = lossStat{0, 1}
-			}
-
-			recvFlags[recv.probeNum][recv.ttl] = recv.flag
-
-			// Update the ptrs map with either the first PTR record or the IP
-			// address if no PTR record was found.
-			if _, ok := ptrs[string(recv.ip)]; !ok {
-				go func(ip string, ptrLookupChan chan []string) {
-					ptr, err := net.LookupAddr(ip)
-					if err != nil || len(ptr) == 0 {
-						ptrLookupChan <- []string{ip, ip}
-					} else {
-						ptrLookupChan <- []string{string(recv.ip), ptr[0]}
-					}
-				}(string(recv.ip), ptrLookupChan)
-			}
-
-			if entry, ok := ttlStats[string(recv.ip)]; ok {
-				// TODO: update ttlStats.
-				// Calculate avg. RTT based on current time, existing avg. RTT
-				// and number of received probes.
-				// entry.avg = time.Duration(int64(entry.avg) + (recv.timestamp.Sub(entry.avg) / time.Duration(entry.received)))
-				ttlStats[string(recv.ip)] = entry
-			}
+				default:
+				// TODO: Do we need a default function?
 			*/
-		// Add returning PTR lookup results to the ptrs map.
-		case ptr := <-ptrLookupChan:
-			ptrs[ptr[0]] = ptr[1]
-		// Check if any probes are ready to be printed and print them.
-		default:
-			for n, prs := range ps {
-				for t := p.maxTTL-1; t >= 0; t-- {
-
-
-
-
-
-			for n, p := range recvFlags {
-			probeCheck:
-			for t := len(p)-1 ; t >= 0; t-- {
-				for ttl, flag := range p {
-					// We've received a response for this probe.
-					if len(flag) > 0 && flag != "TTL" {
-						// Check if we've either received a response for all
-						// intermediate TTLs of if they have reached the
-						// timeout.
-						for t := ttl; t >= 0; t-- {
-							if len(ps[n][t]) == 0 {
-								// Return if we've not yet reached our timeout.
-								if time.Since(sentTimes[n][t]) < p.timeout {
-									return probeCheck
-								}
-								// Update lost stats if we don't have a response.
-								if len(ps[n][t].ip) == 0 {
-									if len(lastHops[t]) > 0 {
-										l := lastHops[t]
-										ps[n][t].ip = l
-										ips[l].lost++
-									}
-								}
-							}
-						}
-						// TODO: Update lost count in ipStat.
-						var output outputMsgs
-						for t, flag := range p {
-							append(output, outputMsg{
-								probeNum: 	 ps[n][t].origSeq,
-								ttl: 	   ps[n][t].ttl,
-								ip: 	   ps[n][t].ip,
-								)
-
-							/*
-								// Message type for communication between sendStats() and outputStats().
-								type outputMsg struct {
-									probeNum       uint
-									ttl            uint8
-									ip             net.IP
-									host           string
-									sentTime       time.Time
-									rtt            time.Duration
-									delayVariation time.Duration
-									avgRTT         time.Duration
-									minRTT         time.Duration
-									maxRTT         time.Duration
-									loss           uint
-									flag           string
-								}
-								type outputMsgs []outputMsg
-							*/
-
-						}
-
-						// TODO: This is where we calculate stats and print the
-						// output.
-					}
-					log.Debug(flag)
-				}
-			}
 		}
 	}
 }
@@ -647,7 +598,7 @@ func (p *probe) run() {
 	go p.sendProbes(handle, sentChan, responseReceivedChan, stop, &wg)
 
 	// TODO: replace with waitgroup.
-	time.Sleep(10 * time.Second)
+	time.Sleep(35 * time.Second)
 
 }
 
@@ -680,20 +631,21 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 		EthernetType: p.etherType,
 	}
 
+	// TODO: Maybe keep a single start time and use the offset from that for all probes?
 	var lastProbeStart time.Time
-	var lastTTLTime time.Time
 
 	for n := uint(0); n < p.numProbes; n++ {
 		// Probe number is 0-indexed, so we add 1 before logging
-		log.Debugf("Sending probe %d", n+1)
+		log.Debugf("Sending probe %d", n)
 
 		lastProbeStart = time.Now()
 
 		log.Info("Sending probe")
 
+		t := uint8(0)
+
 	TTLLoop:
-		for t := uint8(1); t <= p.maxTTL; t++ {
-			lastTTLTime = time.Now()
+		for t < p.maxTTL {
 
 			select {
 			// Stop sending TTL increments if we've received a response for this
@@ -701,8 +653,11 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 			case response := <-responseReceivedChan:
 				if response == n {
 					break TTLLoop
+				} else {
+					log.Debugf("Received response for probe %d, but expected %d", response, n)
 				}
 			default:
+				t++
 				switch p.inet {
 				case layers.IPProtocolIPv4:
 					ip := layers.IPv4{
@@ -724,6 +679,7 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 						}
 						tcp.SetNetworkLayerForChecksum(&ip)
 						gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
+						log.Debugf("| Sending t, n: %d, %d (seq: %d)", t, n, encodeSeq(t, n))
 						handle.WritePacketData(buf.Bytes())
 					case layers.IPProtocolUDP:
 						udp := layers.UDP{
@@ -776,6 +732,7 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 		if time.Since(lastProbeStart) < p.interProbeDelay {
 			time.Sleep(p.interProbeDelay - time.Since(lastProbeStart))
 		}
+		fmt.Println("")
 	}
 	// TODO: Wait for our final probe to have finished.
 	wg.Done()
