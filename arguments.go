@@ -37,7 +37,7 @@ func getArgs() error {
 	flag.UintVar(&Args.sourcePort, "s", 65000, "source port")
 	flag.UintVar(&Args.numProbes, "c", 10, "probe count")
 	flag.UintVar(&Args.maxTTL, "m", 30, "maximum TTL")
-	flag.DurationVar(&Args.interTTLDelay, "D", 15*time.Millisecond, "inter-TTL delay (delay between each TTL or hop for a probe)")
+	flag.DurationVar(&Args.interTTLDelay, "h", 20*time.Millisecond, "inter-TTL delay (delay between each TTL or hop for a probe)")
 	flag.DurationVar(&Args.interProbeDelay, "d", 1*time.Second, "inter-probe delay (delay between each probe)")
 	flag.DurationVar(&Args.timeout, "t", 1*time.Second, "timeout")
 	// temporary flag based MAC assignment
