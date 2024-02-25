@@ -59,6 +59,16 @@ func (p *probe) init() {
 		p.proto = layers.IPProtocolTCP
 	}
 
+	route, err := GetRouteInformation()
+	if err != nil {
+		log.Fatal(err)
+	}
+	p.dstIP = route.destIP
+	p.dstMAC = route.destMAC
+	p.srcIP = route.srcIP
+	p.srcMAC = route.srcMAC
+	p.srcIface = *route.iface
+
 	// check destination
 	dstIP, err := lookupDst(Args.destination, Args.forceIPv4, Args.forceIPv6)
 	if err != nil {
@@ -74,32 +84,6 @@ func (p *probe) init() {
 	case p.dstIP.Is6():
 		p.etherType = layers.EthernetTypeIPv6
 		p.inet = layers.IPProtocolIPv6
-	}
-
-	// lookup source IP, interface, and source + dest MAC with lookupSrc():
-	// temporary values:
-	if Args.sourceIP != "" {
-		srcIP, err := netip.ParseAddr(Args.sourceIP)
-		if err != nil {
-			log.Fatal(err)
-		}
-		p.srcIP = srcIP
-		// TODO: implement interface lookup
-		p.srcIface = net.Interface{Index: 1, Name: Args.sourceInterface}
-	} else {
-		// TODO: implement lookupSrc()
-		log.Fatal("source IP not specified, which is required for now")
-	}
-
-	// temporary flag based MAC assignment
-	// TODO: remove this once the lookup function is implemented
-	p.srcMAC, err = net.ParseMAC(Args.sourceMAC)
-	if err != nil {
-		log.Fatal(err)
-	}
-	p.dstMAC, err = net.ParseMAC(Args.destinationMAC)
-	if err != nil {
-		log.Fatal(err)
 	}
 
 	p.dstPort = uint16(Args.destinationPort)
@@ -285,15 +269,15 @@ type outputMsg struct {
 	probeNum uint
 	ttl      uint8
 	ip       net.IP
-	host     string
-	sentTime time.Time
-	rtt      time.Duration
+	// host     string
+	// sentTime time.Time
+	// rtt      time.Duration
 	// delayVariation time.Duration
-	avgRTT time.Duration
-	minRTT time.Duration
-	maxRTT time.Duration
-	loss   uint
-	flag   string
+	// avgRTT time.Duration
+	// minRTT time.Duration
+	// maxRTT time.Duration
+	loss uint
+	flag string
 }
 type outputMsgs []outputMsg
 
@@ -486,7 +470,6 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 			*/
 			// cacheKey := fmt.Sprintf("%d.%d", n, t)
 			// Add sent probe to cache.
-			log.Debug("Cache set:", k)
 			cache.Set(k, uint8(n), ttlcache.DefaultTTL)
 			// fmt.Printf("Cache set: %+v\n", cache.Get(cacheKey))
 
@@ -499,9 +482,7 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 			// cacheKey := fmt.Sprintf("%d.%d", origSeq, t)
 
 			// Check if the probe has already expired.
-			log.Debugf("Cache contents: %+v", cache.Keys())
 			if _, present := cache.GetAndDelete(k); present {
-				log.Debugf("received probe %d for TTL %d. (key: %v)", n, t, k)
 				// Update RTT for this probe.
 				rtt := int64(recv.timestamp.Sub(ps[k].sentTime) / time.Microsecond) // Convert time.Duration to microseconds.
 				if entry, ok := ps[k]; ok {
@@ -510,7 +491,7 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 				}
 
 				// Update last seen IP for this hop/TTL.
-				ip := string(recv.ip)
+				ip := recv.ip.String()
 				lastHops[t] = ip
 
 				// Update IP stats.
@@ -526,25 +507,26 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 					ips[ip] = entry
 				} else {
 					// Add new IP stats entry.
-					ips[ip] = ipStat{rtt, rtt, rtt, "", 1, 0}
+					ips[ip] = ipStat{rtt, rtt, rtt, ip, 1, 0}
 					// Start goroutine to look up PTR in the background.
 					go func(ip string, ptrLookupChan chan []string) {
 						ptr, err := net.LookupAddr(ip)
 						if err == nil && len(ptr) > 0 {
-							ptrLookupChan <- []string{ip, ptr[0]}
+							// Return first PTR record with trailing period removed.
+							ptrLookupChan <- []string{ip, ptr[0][:len(ptr[0])-1]}
 						}
 					}(ip, ptrLookupChan)
 				}
+				fmt.Printf("%2d. %s (%s)  %d.%d ms\n", t, ips[ip].ptr, ip, rtt/1000, rtt%1000)
 			} else {
 				log.Debugf("received probe %d for TTL %d, but probe already expired. (key: %v)", n, t, k)
-				// log.Debugf("Cache contents: %+v", cache.Keys())
 				// TODO: Do we need to do anything else with this returning expired probe?
 			}
 
 		// Add returning PTR result.
 		case ptrResult := <-ptrLookupChan:
 			ip, ptr := ptrResult[0], ptrResult[1]
-			if entry := ips[ip]; entry.ptr == "" {
+			if entry := ips[ip]; entry.ptr == ip {
 				entry.ptr = ptr
 				ips[ip] = entry
 			}
@@ -640,8 +622,6 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 
 		lastProbeStart = time.Now()
 
-		log.Info("Sending probe")
-
 		t := uint8(0)
 
 	TTLLoop:
@@ -679,7 +659,6 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 						}
 						tcp.SetNetworkLayerForChecksum(&ip)
 						gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
-						log.Debugf("| Sending t, n: %d, %d (seq: %d)", t, n, encodeSeq(t, n))
 						handle.WritePacketData(buf.Bytes())
 					case layers.IPProtocolUDP:
 						udp := layers.UDP{

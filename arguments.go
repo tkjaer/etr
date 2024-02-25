@@ -32,18 +32,12 @@ func getArgs() error {
 	flag.BoolVar(&Args.forceIPv4, "4", false, "force IPv4")
 	flag.BoolVar(&Args.forceIPv6, "6", false, "force IPv6")
 	flag.UintVar(&Args.destinationPort, "p", 443, "destination port")
-	flag.StringVar(&Args.sourceInterface, "i", "", "source interface")
-	flag.StringVar(&Args.sourceIP, "S", "", "source IP")
 	flag.UintVar(&Args.sourcePort, "s", 65000, "source port")
 	flag.UintVar(&Args.numProbes, "c", 10, "probe count")
 	flag.UintVar(&Args.maxTTL, "m", 30, "maximum TTL")
 	flag.DurationVar(&Args.interTTLDelay, "h", 50*time.Millisecond, "inter-TTL delay (delay between each TTL or hop for a probe)")
 	flag.DurationVar(&Args.interProbeDelay, "d", 2*time.Second, "inter-probe delay (delay between each probe)")
 	flag.DurationVar(&Args.timeout, "t", 1*time.Second, "timeout")
-	// temporary flag based MAC assignment
-	// TODO: remove this once the lookup function is implemented
-	flag.StringVar(&Args.sourceMAC, "M", "", "source MAC")
-	flag.StringVar(&Args.destinationMAC, "D", "", "destination MAC")
 	flag.Parse()
 
 	Args.destination = flag.Arg(0)
