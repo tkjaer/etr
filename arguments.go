@@ -41,6 +41,9 @@ func getArgs() error {
 	flag.Parse()
 
 	Args.destination = flag.Arg(0)
+	if Args.destination == "" {
+		return errors.New("destination is required")
+	}
 
 	switch {
 	case Args.TCP && Args.UDP:
