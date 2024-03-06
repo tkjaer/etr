@@ -16,8 +16,8 @@ require (
 )
 
 require (
-	github.com/jellydator/ttlcache/v3 v3.1.1 // indirect
+	github.com/jellydator/ttlcache/v3 v3.1.1
 	github.com/jsimonetti/rtnetlink v1.4.1
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/sys v0.17.0 // indirect
 )
