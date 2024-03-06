@@ -46,7 +46,9 @@ func (p *probe) init() {
 
 	err := getArgs()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		os.Exit(1)
+		// 	log.Fatal(err)
 	}
 
 	// set probe protocol
@@ -68,13 +70,6 @@ func (p *probe) init() {
 	p.srcIP = route.srcIP
 	p.srcMAC = route.srcMAC
 	p.srcIface = *route.iface
-
-	// check destination
-	dstIP, err := lookupDst(Args.destination, Args.forceIPv4, Args.forceIPv6)
-	if err != nil {
-		log.Fatal(err)
-	}
-	p.dstIP = dstIP
 
 	// set EtherType and INET Protocol based on dstIP version
 	switch {
@@ -268,7 +263,7 @@ type expiredMsg struct {
 type outputMsg struct {
 	probeNum uint
 	ttl      uint8
-	ip       net.IP
+	ip       string
 	// host     string
 	// sentTime time.Time
 	// rtt      time.Duration
@@ -279,10 +274,9 @@ type outputMsg struct {
 	loss uint
 	flag string
 }
-type outputMsgs []outputMsg
 
 func (p *probe) recvProbes(handle *pcap.Handle, recvChan chan recvMsg, responseReceivedChan chan uint, stop chan struct{}, wg *sync.WaitGroup) {
-	wg.Add(1)
+	defer wg.Done()
 	if err := handle.SetBPFFilter(p.pcapFilter()); err != nil {
 		log.Fatal(err)
 	}
@@ -293,7 +287,6 @@ func (p *probe) recvProbes(handle *pcap.Handle, recvChan chan recvMsg, responseR
 		select {
 		case <-stop:
 			log.Debug("stopping recvProbes")
-			wg.Done()
 			return
 		case packet = <-in:
 			ttl, probeNum, timestamp, ip, flag := p.decodeRecvProbe(packet)
@@ -362,8 +355,8 @@ func splitKey(key string) (probeNum uint, ttl uint8) {
 // processProbeResult()?
 // TODO: Add a function to print a summary of the results.  Maybe catch SIGINT
 // and print summary before exiting?
-func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan chan outputMsgs, ptrLookupChan chan []string, stop chan struct{}, wg *sync.WaitGroup) {
-	wg.Add(1)
+func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan chan outputMsg, ptrLookupChan chan []string, stop chan struct{}, wg *sync.WaitGroup) {
+	defer wg.Done()
 
 	// Keep count of total probes sent.
 	var totalProbesSent uint
@@ -450,7 +443,6 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 		select {
 		case <-stop:
 			log.Debug("stopping stats")
-			wg.Done()
 			return
 
 		case sent := <-sentChan:
@@ -518,6 +510,13 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 					}(ip, ptrLookupChan)
 				}
 				fmt.Printf("%2d. %s (%s)  %d.%d ms\n", t, ips[ip].ptr, ip, rtt/1000, rtt%1000)
+				// outputChan <- outputMsg{
+				// 	probeNum: n,
+				// 	ttl: 	t,
+				// 	ip: 	ip,
+				// 	loss: ips[ip].lost,
+				// 	flag: recv.flag,
+				// }
 			} else {
 				log.Debugf("received probe %d for TTL %d, but probe already expired. (key: %v)", n, t, k)
 				// TODO: Do we need to do anything else with this returning expired probe?
@@ -532,6 +531,13 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 			}
 
 		case expired := <-expiredChan:
+			// outputChan <- outputMsg{
+			// 	probeNum: expired.probeNum,
+			// 	ttl: 	expired.ttl,
+			// 	ip: ps[expired.probeNum].ip,
+			// 	loss: ips[ps[expired.probeNum].ip].lost,
+			// 	flag: "E",
+			// }
 			fmt.Printf("Expired: %+v\n", expired)
 			// TODO: Add functionality for expired probe.
 
@@ -561,7 +567,7 @@ func (p *probe) run() {
 	recvChan := make(chan recvMsg)
 
 	// Channel for sending results to output.
-	outputChan := make(chan outputMsgs)
+	outputChan := make(chan outputMsg)
 
 	// Channel for sending PTR lookup results.
 	ptrLookupChan := make(chan []string)
@@ -570,9 +576,11 @@ func (p *probe) run() {
 
 	// Channel for sending stop signal to goroutines.
 	stop := make(chan struct{})
-	defer close(stop)
+	// defer close(stop)
 
 	var wg sync.WaitGroup
+
+	wg.Add(4)
 
 	go p.output(outputChan, stop, &wg)
 	go p.stats(sentChan, recvChan, outputChan, ptrLookupChan, stop, &wg)
@@ -580,26 +588,31 @@ func (p *probe) run() {
 	go p.sendProbes(handle, sentChan, responseReceivedChan, stop, &wg)
 
 	// TODO: replace with waitgroup.
-	time.Sleep(35 * time.Second)
+	// time.Sleep(35 * time.Second)
+
+	wg.Wait()
 
 }
 
-func (p *probe) output(outputChan chan outputMsgs, stop chan struct{}, wg *sync.WaitGroup) {
-	wg.Add(1)
+func (p *probe) output(outputChan chan outputMsg, stop chan struct{}, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	tm.Clear()
+
+	// var out []string
+
 	select {
 	case <-stop:
-		wg.Done()
+		log.Debug("stopping output")
 		return
-	case output := <-outputChan:
-		for _, msg := range output {
-			fmt.Printf("%2v. %-15v %3v - %v (%v)\n", msg.ttl, msg.ip, msg.loss, msg.probeNum, msg.flag)
-		}
+	case msg := <-outputChan:
+		fmt.Printf("%2v. %-15v %3v - %v (%v)\n", msg.ttl, msg.ip, msg.loss, msg.probeNum, msg.flag)
 	}
 	// fmt.Printf("%3v. %-15v %3v - %v (%v)\n", ttl, ip, timestamp.Sub(start), probeNum, flag)
 }
 
 func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseReceivedChan chan uint, stop chan struct{}, wg *sync.WaitGroup) {
-	wg.Add(1)
+	defer wg.Done()
 
 	buf := gopacket.NewSerializeBuffer()
 
@@ -713,6 +726,8 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 		}
 		fmt.Println("")
 	}
-	// TODO: Wait for our final probe to have finished.
-	wg.Done()
+	// Sleep for probe timeout to ensure we don't miss any late responses.
+	time.Sleep(p.timeout)
+	log.Debug("Finished sending probes")
+	close(stop)
 }
