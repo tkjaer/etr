@@ -30,8 +30,19 @@ func GetInterfaceIP(ifc *net.Interface, gatewayIP net.IP) (net.IP, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Check if we have an IP in the same subnet as the gateway
 	for _, addr := range addrs {
 		if addr.Contains(gatewayIP) {
+			return addr.IP, nil
+		}
+	}
+	// If not, check if we have an IP of the same address family
+	for _, addr := range addrs {
+		if addr.IP.To4() != nil && gatewayIP.To4() != nil {
+			return addr.IP, nil
+		}
+		if addr.IP.To16() != nil && gatewayIP.To16() != nil {
 			return addr.IP, nil
 		}
 	}
