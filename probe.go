@@ -597,7 +597,7 @@ func (p *probe) run() {
 func (p *probe) output(outputChan chan outputMsg, stop chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	tm.Clear()
+	// TODO: Clear terminal
 
 	// var out []string
 
