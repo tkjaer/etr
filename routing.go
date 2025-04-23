@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"runtime"
 
 	"github.com/jsimonetti/rtnetlink/rtnl"
+
+	"github.com/jackpal/gateway"
 )
 
 type RouteInformation struct {
@@ -95,26 +98,31 @@ func GetRouteInformation() (*RouteInformation, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Debugf("Destination IP: %s", destIP)
 
-	// Get the route for the destination IP
+	// Get the route for the destination IP including source interface
 	route, err := GetRouteForIP(net.IP(destIP.AsSlice()))
 	if err != nil {
 		return nil, err
 	}
+	log.Debugf("Route for %s: \n\tinterface: %v\n\tnext-hop: %v\n\tsource MAC: %v", destIP, route.Interface.Name, route.Gateway, route.Interface.HardwareAddr)
 
 	// Get the source IP address for the route
 	_srcIP, err := GetInterfaceIP(route.Interface, route.Gateway)
 	if err != nil {
 		return nil, err
 	}
+	log.Debugf("Source IP for %s: %v", route.Interface.Name, _srcIP)
+
 	// Convert the IP to a netip.Addr
 	srcIP, ok := netip.AddrFromSlice(_srcIP)
 	if !ok {
 		return nil, errors.New("could not parse source IP")
 	}
 
-	// Get the source MAC address for the route
+	// Get the destination MAC address for the route
 	destMAC, err := GetMACForIP(route.Gateway, route.Interface)
+	log.Debugf("Destination MAC for %s: %v", route.Interface.Name, destMAC)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +137,7 @@ func GetRouteInformation() (*RouteInformation, error) {
 }
 
 // GetRouteForIP returns the route for the given IP address
-func GetRouteForIP(ip net.IP) (*rtnl.Route, error) {
+func GetRouteForIPLinux(ip net.IP) (*rtnl.Route, error) {
 	conn, err := rtnl.Dial(nil)
 	if err != nil {
 		return nil, fmt.Errorf("can't establish netlink connection: %s", err)
@@ -139,4 +147,37 @@ func GetRouteForIP(ip net.IP) (*rtnl.Route, error) {
 	r, err := conn.RouteGet(ip)
 
 	return r, err
+}
+
+func GetRouteForIPMac(ip net.IP) (*rtnl.Route, error) {
+	// Just return the default route for now
+	gateway, err := gateway.DiscoverGateway()
+	if err != nil {
+		return nil, fmt.Errorf("can't discover gateway: %s", err)
+	}
+	log.Debugf("Gateway: %s", gateway)
+	iface, err := net.InterfaceByName(Args.sourceInterface)
+	if err != nil {
+		return nil, fmt.Errorf("can't find interface %s: %s", Args.sourceInterface, err)
+	}
+	r := &rtnl.Route{
+		Gateway:   gateway,
+		Interface: iface,
+	}
+	r.Gateway = net.IPv4(0, 0, 0, 0)
+	r.Destination = &net.IPNet{}
+	return r, nil
+}
+
+func GetRouteForIP(ip net.IP) (*rtnl.Route, error) {
+	// If we are running on Linux, use the netlink route
+	if runtime.GOOS == "linux" {
+		return GetRouteForIPLinux(ip)
+	}
+	// If we are running on MacOS, use the MacOS route
+	if runtime.GOOS == "darwin" {
+		return GetRouteForIPMac(ip)
+	}
+
+	return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 }
