@@ -17,6 +17,7 @@ import (
 	"github.com/google/gopacket/pcap"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/term"
 )
 
 type probe struct {
@@ -35,6 +36,7 @@ type probe struct {
 	numProbes       uint
 	maxTTL          uint8
 	timeout         time.Duration
+	outputType      string
 }
 
 var log = logrus.New()
@@ -49,6 +51,16 @@ func (p *probe) init() {
 		fmt.Println(err)
 		os.Exit(1)
 		// 	log.Fatal(err)
+	}
+
+	if Args.json {
+		p.outputType = "json"
+	} else {
+		if term.IsTerminal(int(os.Stdout.Fd())) {
+			p.outputType = "terminal"
+		} else {
+			p.outputType = "ascii"
+		}
 	}
 
 	// set probe protocol

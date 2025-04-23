@@ -23,6 +23,7 @@ var Args struct {
 	timeout         time.Duration
 	sourceMAC       string
 	destinationMAC  string
+	json            bool
 }
 
 func getArgs() error {
@@ -38,6 +39,7 @@ func getArgs() error {
 	flag.DurationVar(&Args.interTTLDelay, "h", 50*time.Millisecond, "inter-TTL delay (delay between each TTL or hop for a probe)")
 	flag.DurationVar(&Args.interProbeDelay, "d", 2*time.Second, "inter-probe delay (delay between each probe)")
 	flag.DurationVar(&Args.timeout, "t", 1*time.Second, "timeout")
+	flag.BoolVar(&Args.json, "json", false, "output as json")
 	flag.Parse()
 
 	Args.destination = flag.Arg(0)
