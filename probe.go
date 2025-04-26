@@ -24,17 +24,13 @@ import (
 
 type probe struct {
 	destination string
-	route       *route.Route
+	route       route.Route
 	/* clean stuff up below */
 	proto           layers.IPProtocol
 	inet            layers.IPProtocol
 	etherType       layers.EthernetType
-	dstIP           netip.Addr
-	srcIP           netip.Addr
 	dstPort         uint16
 	srcPort         uint16
-	srcIface        net.Interface
-	srcMAC          net.HardwareAddr
 	dstMAC          net.HardwareAddr
 	interProbeDelay time.Duration
 	interTTLDelay   time.Duration
@@ -66,34 +62,29 @@ func (p *probe) init() {
 		p.proto = layers.IPProtocolTCP
 	}
 
-	err := p.GetDestinationIP()
+	ip, err := p.GetDestinationIP()
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Debug("Destination IP: ", p.dstIP)
+	log.Debug("Destination IP: ", p.route.Destination)
 
-	route, err := route.Get(p.dstIP)
+	p.route, err = route.Get(ip)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Debugf("Route: %+v\n", route)
+	log.Debugf("Route: %+v\n", p.route)
 
-	p.dstMAC, err = arp.Get(route.Gateway.AsSlice(), route.Interface, route.Source.AsSlice())
+	p.dstMAC, err = arp.Get(p.route.Gateway.AsSlice(), p.route.Interface, p.route.Source.AsSlice())
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	p.dstIP = route.Destination
-	p.srcIP = route.Source
-	p.srcMAC = route.Interface.HardwareAddr
-	p.srcIface = *route.Interface
 
 	// set EtherType and INET Protocol based on dstIP version
 	switch {
-	case p.dstIP.Is4():
+	case p.route.Destination.Is4():
 		p.etherType = layers.EthernetTypeIPv4
 		p.inet = layers.IPProtocolIPv4
-	case p.dstIP.Is6():
+	case p.route.Destination.Is6():
 		p.etherType = layers.EthernetTypeIPv6
 		p.inet = layers.IPProtocolIPv6
 	}
@@ -108,17 +99,16 @@ func (p *probe) init() {
 }
 
 // GetDestinationIP resolves the destination IP address if necessary, validates it and returns it
-func (p *probe) GetDestinationIP() error {
+func (p *probe) GetDestinationIP() (netip.Addr, error) {
 	// Check if destination is an IP address
 	d, err := netip.ParseAddr(Args.destination)
 	if err == nil {
-		p.dstIP = d
-		return nil
+		return d, nil
 	} else {
 		// If not, resolve it
 		lookup, err := net.LookupHost(Args.destination)
 		if err != nil {
-			return errors.New("could not resolve destination")
+			return netip.Addr{}, err
 		}
 
 		// Find the first valid IP that meets our criteria
@@ -129,20 +119,20 @@ func (p *probe) GetDestinationIP() error {
 			}
 			switch {
 			case Args.forceIPv4 && ip.Is4():
-				p.dstIP = ip
+				d = ip
 			case Args.forceIPv6 && ip.Is6():
-				p.dstIP = ip
+				d = ip
 			case !Args.forceIPv4 && !Args.forceIPv6:
-				p.dstIP = ip
+				d = ip
 			}
 			// Return once we succeed
-			if p.dstIP.IsValid() {
-				return nil
+			if d.IsValid() {
+				return d, nil
 			}
 		}
 	}
 
-	return errors.New("could not resolve destination")
+	return netip.Addr{}, errors.New("could not resolve destination")
 }
 
 func decodeTCPLayer(tcpLayer *layers.TCP) (ttl uint8, probeNum uint, flag string) {
@@ -197,15 +187,15 @@ func (p *probe) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8, probeNu
 			// Verify source and destination IP addresses
 			switch p.inet {
 			case layers.IPProtocolIPv4:
-				if src := inetLayer.(*layers.IPv4).SrcIP; !src.Equal(net.IP(p.srcIP.AsSlice())) {
+				if src := inetLayer.(*layers.IPv4).SrcIP; !src.Equal(net.IP(p.route.Source.AsSlice())) {
 					return
-				} else if dst := inetLayer.(*layers.IPv4).DstIP; !dst.Equal(net.IP(p.dstIP.AsSlice())) {
+				} else if dst := inetLayer.(*layers.IPv4).DstIP; !dst.Equal(net.IP(p.route.Destination.AsSlice())) {
 					return
 				}
 			case layers.IPProtocolIPv6:
-				if src := inetLayer.(*layers.IPv6).SrcIP; !src.Equal(net.IP(p.srcIP.AsSlice())) {
+				if src := inetLayer.(*layers.IPv6).SrcIP; !src.Equal(net.IP(p.route.Source.AsSlice())) {
 					return
-				} else if dst := inetLayer.(*layers.IPv6).DstIP; !dst.Equal(net.IP(p.dstIP.AsSlice())) {
+				} else if dst := inetLayer.(*layers.IPv6).DstIP; !dst.Equal(net.IP(p.route.Destination.AsSlice())) {
 					return
 				}
 			}
@@ -289,7 +279,7 @@ func (p *probe) pcapFilter() string {
 	case layers.IPProtocolIPv6:
 		ttl_exceeded = "icmp6 and icmp6.type == 3 and icmp6.code == 0"
 	}
-	return fmt.Sprintf("(%v and src host %v and dst host %v and src port %v and dst port %v) or (%v)", proto, p.dstIP, p.srcIP, p.dstPort, p.srcPort, ttl_exceeded)
+	return fmt.Sprintf("(%v and src host %v and dst host %v and src port %v and dst port %v) or (%v)", proto, p.route.Destination, p.route.Source, p.dstPort, p.srcPort, ttl_exceeded)
 }
 
 // Message type for communication between sendProbes() and sendStats().
@@ -607,7 +597,7 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 func (p *probe) run() {
 	log.Info("Starting probe")
 
-	handle, err := pcap.OpenLive(p.srcIface.Name, 65536, true, pcap.BlockForever)
+	handle, err := pcap.OpenLive(p.route.Interface.Name, 65536, true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -676,7 +666,7 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 		ComputeChecksums: true,
 	}
 	eth := layers.Ethernet{
-		SrcMAC:       p.srcMAC,
+		SrcMAC:       p.route.Interface.HardwareAddr,
 		DstMAC:       p.dstMAC,
 		EthernetType: p.etherType,
 	}
@@ -712,8 +702,8 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 						Version:  4,
 						TTL:      t,
 						Protocol: p.proto,
-						SrcIP:    p.srcIP.AsSlice(),
-						DstIP:    p.dstIP.AsSlice(),
+						SrcIP:    p.route.Source.AsSlice(),
+						DstIP:    p.route.Destination.AsSlice(),
 						Flags:    layers.IPv4DontFragment,
 					}
 					switch p.proto {
@@ -743,8 +733,8 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 						Version:    6,
 						HopLimit:   t,
 						NextHeader: p.proto,
-						SrcIP:      p.srcIP.AsSlice(),
-						DstIP:      p.dstIP.AsSlice(),
+						SrcIP:      p.route.Source.AsSlice(),
+						DstIP:      p.route.Destination.AsSlice(),
 					}
 					switch p.proto {
 					case layers.IPProtocolTCP:
