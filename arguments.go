@@ -22,7 +22,6 @@ var Args struct {
 	interTTLDelay   time.Duration
 	timeout         time.Duration
 	sourceMAC       string
-	destinationMAC  string
 	json            bool
 }
 

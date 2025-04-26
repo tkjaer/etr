@@ -17,6 +17,8 @@ import (
 	"github.com/google/gopacket/pcap"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/sirupsen/logrus"
+	"github.com/tkjaer/etr/pkg/arp"
+	"github.com/tkjaer/etr/pkg/route"
 	"golang.org/x/term"
 )
 
@@ -44,7 +46,7 @@ var log = logrus.New()
 func (p *probe) init() {
 
 	log.Out = os.Stdout
-	log.SetLevel(logrus.DebugLevel)
+	log.SetLevel(logrus.InfoLevel)
 
 	err := getArgs()
 	if err != nil {
@@ -73,15 +75,28 @@ func (p *probe) init() {
 		p.proto = layers.IPProtocolTCP
 	}
 
-	route, err := GetRouteInformation()
+	d, err := GetDestinationIP()
 	if err != nil {
 		log.Fatal(err)
 	}
-	p.dstIP = route.destIP
-	p.dstMAC = route.destMAC
-	p.srcIP = route.srcIP
-	p.srcMAC = route.srcMAC
-	p.srcIface = *route.iface
+	log.Debug("Destination IP: ", d)
+
+	// route, err := GetRouteInformation()
+	route, err := route.Get(d)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Debugf("Route: %+v\n", route)
+
+	p.dstMAC, err = arp.Get(route.Gateway.AsSlice(), route.Interface, route.Source.AsSlice())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	p.dstIP = route.Destination
+	p.srcIP = route.Source
+	p.srcMAC = route.Interface.HardwareAddr
+	p.srcIface = *route.Interface
 
 	// set EtherType and INET Protocol based on dstIP version
 	switch {
