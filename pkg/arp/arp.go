@@ -1,0 +1,133 @@
+//go:build linux || darwin
+// +build linux darwin
+
+// This should work on freebsd, netbsd and openbsd as well (but not tested).
+
+package arp
+
+import (
+	"bytes"
+	"fmt"
+	"net"
+	"runtime"
+	"time"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
+)
+
+// Get retrieves the MAC address for a given IP address.
+// It first checks the kernel ARP table and if not found, sends an ARP request.
+func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) {
+	// Check if the IP is in the kernel ARP table
+	mac, err := CheckARPTable(ip, iface)
+
+	// If the IP is not in the ARP table, send an ARP request and wait for a response
+	if err != nil {
+		handle, err := pcap.OpenLive(iface.Name, 65536, false, pcap.BlockForever)
+		if err != nil {
+			return nil, err
+		}
+		defer handle.Close()
+
+		stop := make(chan struct{})
+		arpChan := make(chan net.HardwareAddr)
+
+		// Listen for ARP response in a goroutine
+		go RecvARPRequest(handle, arpChan, ip, stop)
+
+		// Wait for a short time to allow the receiver to start
+		time.Sleep(1 * time.Millisecond)
+
+		// Send ARP request in a separate goroutine
+		go func(handle *pcap.Handle, srcMAC net.HardwareAddr, src, dstIP net.IP, stop chan struct{}) {
+			select {
+			case <-stop:
+				return
+			default:
+				SendARPRequest(handle, srcMAC, src, dstIP)
+				// Use a short 0.1s retry interval
+				time.Sleep(100 * time.Millisecond)
+			}
+		}(handle, iface.HardwareAddr, src, ip, stop)
+
+		// Wait for the ARP response or timeout
+		for {
+			select {
+			case mac = <-arpChan:
+				// Stop the receiver goroutine and return the MAC address
+				close(stop)
+				return mac, nil
+			case <-time.After(2 * time.Second):
+				return nil, fmt.Errorf("timeout waiting for ARP response for %s", ip)
+			}
+		}
+	}
+
+	return mac, nil
+}
+
+func CheckARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+		return checkARPTable(ip, iface)
+	}
+	return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+}
+
+// RecvARPRequest listens for ARP requests on the provided handle and sends the MAC address to the channel
+// if the sender IP matches the provided ip
+func RecvARPRequest(handle *pcap.Handle, arpChan chan net.HardwareAddr, ip net.IP, stop chan struct{}) error {
+	if err := handle.SetBPFFilter("arp"); err != nil {
+		return err
+	}
+	in := gopacket.NewPacketSource(handle, handle.LinkType()).Packets()
+	for {
+		select {
+		case packet := <-in:
+			if arpLayer := packet.Layer(layers.LayerTypeARP); arpLayer != nil {
+				arp := arpLayer.(*layers.ARP)
+				if arp.Operation == layers.ARPReply && bytes.Equal(arp.SourceProtAddress, ip) {
+					arpChan <- arp.SourceHwAddress
+					return nil
+				}
+			}
+		case <-stop:
+			return nil
+		}
+	}
+}
+
+// SendARPRequest sends an ARP request to the network using the provided handle
+func SendARPRequest(handle *pcap.Handle, srcMAC net.HardwareAddr, srcIP, dstIP net.IP) error {
+
+	eth := layers.Ethernet{
+		SrcMAC:       srcMAC,
+		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		EthernetType: layers.EthernetTypeARP,
+	}
+
+	arp := layers.ARP{
+		AddrType:          layers.LinkTypeEthernet,
+		Protocol:          layers.EthernetTypeIPv4,
+		HwAddressSize:     6,
+		ProtAddressSize:   4,
+		Operation:         layers.ARPRequest,
+		SourceHwAddress:   []byte(srcMAC),
+		SourceProtAddress: []byte(srcIP),
+		DstHwAddress:      []byte{0, 0, 0, 0, 0, 0},
+		DstProtAddress:    []byte(dstIP),
+	}
+
+	buffer := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+
+	if err := gopacket.SerializeLayers(buffer, opts, &eth, &arp); err != nil {
+		return err
+	}
+	if err := handle.WritePacketData(buffer.Bytes()); err != nil {
+		return err
+	}
+
+	return nil
+}
