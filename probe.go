@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -16,13 +17,15 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/jellydator/ttlcache/v3"
-	"github.com/sirupsen/logrus"
 	"github.com/tkjaer/etr/pkg/arp"
 	"github.com/tkjaer/etr/pkg/route"
 	"golang.org/x/term"
 )
 
 type probe struct {
+	destination string
+	route       *route.Route
+	/* clean stuff up below */
 	proto           layers.IPProtocol
 	inet            layers.IPProtocol
 	etherType       layers.EthernetType
@@ -41,19 +44,7 @@ type probe struct {
 	outputType      string
 }
 
-var log = logrus.New()
-
 func (p *probe) init() {
-
-	log.Out = os.Stdout
-	log.SetLevel(logrus.InfoLevel)
-
-	err := getArgs()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-		// 	log.Fatal(err)
-	}
 
 	if Args.json {
 		p.outputType = "json"
@@ -75,13 +66,13 @@ func (p *probe) init() {
 		p.proto = layers.IPProtocolTCP
 	}
 
-	d, err := GetDestinationIP()
+	err := p.GetDestinationIP()
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Debug("Destination IP: ", d)
+	log.Debug("Destination IP: ", p.dstIP)
 
-	route, err := route.Get(d)
+	route, err := route.Get(p.dstIP)
 	if err != nil {
 		log.Fatal(err)
 	}
