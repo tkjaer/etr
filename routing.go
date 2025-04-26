@@ -6,14 +6,6 @@ import (
 	"net/netip"
 )
 
-type RouteInformation struct {
-	destIP  netip.Addr
-	destMAC net.HardwareAddr
-	srcIP   netip.Addr
-	srcMAC  net.HardwareAddr
-	iface   *net.Interface
-}
-
 // GetDestinationIP resolves the destination IP address if necessary, validates it and returns it
 func GetDestinationIP() (netip.Addr, error) {
 	// Check if destination is an IP address

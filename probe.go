@@ -81,7 +81,6 @@ func (p *probe) init() {
 	}
 	log.Debug("Destination IP: ", d)
 
-	// route, err := GetRouteInformation()
 	route, err := route.Get(d)
 	if err != nil {
 		log.Fatal(err)
