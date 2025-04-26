@@ -116,6 +116,44 @@ func (p *probe) init() {
 	p.timeout = Args.timeout
 }
 
+// GetDestinationIP resolves the destination IP address if necessary, validates it and returns it
+func (p *probe) GetDestinationIP() error {
+	// Check if destination is an IP address
+	d, err := netip.ParseAddr(Args.destination)
+	if err == nil {
+		p.dstIP = d
+		return nil
+	} else {
+		// If not, resolve it
+		lookup, err := net.LookupHost(Args.destination)
+		if err != nil {
+			return errors.New("could not resolve destination")
+		}
+
+		// Find the first valid IP that meets our criteria
+		for _, record := range lookup {
+			ip, err := netip.ParseAddr(record)
+			if err != nil {
+				continue
+			}
+			switch {
+			case Args.forceIPv4 && ip.Is4():
+				p.dstIP = ip
+			case Args.forceIPv6 && ip.Is6():
+				p.dstIP = ip
+			case !Args.forceIPv4 && !Args.forceIPv6:
+				p.dstIP = ip
+			}
+			// Return once we succeed
+			if p.dstIP.IsValid() {
+				return nil
+			}
+		}
+	}
+
+	return errors.New("could not resolve destination")
+}
+
 func decodeTCPLayer(tcpLayer *layers.TCP) (ttl uint8, probeNum uint, flag string) {
 	if tcpLayer.SYN && tcpLayer.ACK || tcpLayer.RST {
 		// The returned ACK number is the *sent* sequence number + 1
