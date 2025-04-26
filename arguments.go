@@ -11,23 +11,21 @@ var Args struct {
 	UDP             bool
 	forceIPv4       bool
 	forceIPv6       bool
-	destination     string
 	destinationPort uint
-	sourceInterface string
-	sourceIP        string
 	sourcePort      uint
 	numProbes       uint
 	maxTTL          uint
+	// FIXME: Clean this up
 	interProbeDelay time.Duration
 	interTTLDelay   time.Duration
 	timeout         time.Duration
-	sourceMAC       string
 	json            bool
+	destination     string
 }
 
 func getArgs() error {
 
-	flag.BoolVar(&Args.TCP, "T", false, "use TCP")
+	flag.BoolVar(&Args.TCP, "T", false, "use TCP (default)")
 	flag.BoolVar(&Args.UDP, "U", false, "use UDP: note UDP probes vary in size as packet length is used to encode the probe details")
 	flag.BoolVar(&Args.forceIPv4, "4", false, "force IPv4")
 	flag.BoolVar(&Args.forceIPv6, "6", false, "force IPv6")
