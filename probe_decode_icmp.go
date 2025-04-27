@@ -43,7 +43,7 @@ func (p *probe) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8, probeNu
 				} else if dstPort := binary.BigEndian.Uint16(inetLayer.LayerPayload()[2:4]); dstPort != p.dstPort {
 					return
 				} else {
-					ttl, probeNum = decodeSeq(binary.BigEndian.Uint32(inetLayer.LayerPayload()[4:8]))
+					ttl, probeNum = decodeTTLAndProbe(binary.BigEndian.Uint32(inetLayer.LayerPayload()[4:8]))
 					return
 				}
 			}

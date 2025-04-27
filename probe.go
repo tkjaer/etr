@@ -128,12 +128,12 @@ type outputMsg struct {
 // of 64 while keeping the MTU below 1500 bytes including IPv4 or IPv6 header.
 //
 // TTL + probe + UDP header = 64*20 + 19 + 8 == 1307
-func encodeSeq(ttl uint8, probeNum uint) (seq uint32) {
+func encodeTTLAndProbe(ttl uint8, probeNum uint) (seq uint32) {
 	return uint32(ttl)*20 + uint32(probeNum%20)
 }
 
 // Decode the sequence and return TTL and probe number.
-func decodeSeq(seq uint32) (ttl uint8, probeNum uint) {
+func decodeTTLAndProbe(seq uint32) (ttl uint8, probeNum uint) {
 	return uint8(seq / 20), uint(seq % 20)
 }
 

@@ -63,7 +63,7 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 					switch p.proto {
 					case layers.IPProtocolTCP:
 						tcp := layers.TCP{
-							Seq:     encodeSeq(t, n),
+							Seq:     encodeTTLAndProbe(t, n),
 							SrcPort: layers.TCPPort(p.srcPort),
 							DstPort: layers.TCPPort(p.dstPort),
 							SYN:     true,
@@ -76,7 +76,7 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 						udp := layers.UDP{
 							SrcPort: layers.UDPPort(p.srcPort),
 							DstPort: layers.UDPPort(p.dstPort),
-							Length:  uint16(8 + encodeSeq(t, n)),
+							Length:  uint16(8 + encodeTTLAndProbe(t, n)),
 						}
 						udp.SetNetworkLayerForChecksum(&ip)
 						gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
@@ -93,7 +93,7 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 					switch p.proto {
 					case layers.IPProtocolTCP:
 						tcp := layers.TCP{
-							Seq:     encodeSeq(t, n),
+							Seq:     encodeTTLAndProbe(t, n),
 							SrcPort: layers.TCPPort(p.srcPort),
 							DstPort: layers.TCPPort(p.dstPort),
 							SYN:     true,
@@ -106,7 +106,7 @@ func (p *probe) sendProbes(handle *pcap.Handle, sentChan chan sentMsg, responseR
 						udp := layers.UDP{
 							SrcPort: layers.UDPPort(p.srcPort),
 							DstPort: layers.UDPPort(p.dstPort),
-							Length:  uint16(8 + encodeSeq(t, n)),
+							Length:  uint16(8 + encodeTTLAndProbe(t, n)),
 						}
 						udp.SetNetworkLayerForChecksum(&ip)
 						gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
