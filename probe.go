@@ -115,37 +115,6 @@ type outputMsg struct {
 	flag string
 }
 
-func (p *probe) recvProbes(handle *pcap.Handle, recvChan chan recvMsg, responseReceivedChan chan uint, stop chan struct{}, wg *sync.WaitGroup) {
-	defer wg.Done()
-	if err := handle.SetBPFFilter(p.pcapFilter()); err != nil {
-		log.Fatal(err)
-	}
-	src := gopacket.NewPacketSource(handle, handle.LinkType())
-	in := src.Packets()
-	for {
-		var packet gopacket.Packet
-		select {
-		case <-stop:
-			log.Debug("stopping recvProbes")
-			return
-		case packet = <-in:
-			ttl, probeNum, timestamp, ip, flag := p.decodeRecvProbe(packet)
-			// All valid received probes will have a TTL.
-			if ttl > 0 {
-				// Report received probe.
-				recvChan <- recvMsg{probeNum, ttl, timestamp, ip, flag}
-				// Report if we've received a non-"TTL exceeded" response so we
-				// stop sending further packets for this probe number.
-				if flag != "TTL" {
-					go func(responseReceivedChan chan uint, probeNum uint) {
-						responseReceivedChan <- probeNum
-					}(responseReceivedChan, probeNum)
-				}
-			}
-		}
-	}
-}
-
 // Encode the probe number and TTL into a single value.
 //
 // As some operating systems still use the historic RFC 792 format for ICMP
