@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -135,20 +133,6 @@ func encodeTTLAndProbe(ttl uint8, probeNum uint) (seq uint32) {
 // Decode the sequence and return TTL and probe number.
 func decodeTTLAndProbe(seq uint32) (ttl uint8, probeNum uint) {
 	return uint8(seq / 20), uint(seq % 20)
-}
-
-func createKey(probeNum uint, ttl uint8) string {
-	return fmt.Sprintf("%v:%v", probeNum, ttl)
-}
-
-func splitKey(key string) (probeNum uint, ttl uint8) {
-	split := strings.Split(key, ":")
-	if probeNum, err := strconv.Atoi(split[0]); err == nil {
-		if t, err := strconv.Atoi(split[1]); err == nil {
-			return uint(probeNum), uint8(t)
-		}
-	}
-	return
 }
 
 func (p *probe) run() {
