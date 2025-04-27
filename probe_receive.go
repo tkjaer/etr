@@ -54,7 +54,7 @@ func (p *probe) pcapFilter() string {
 	case layers.IPProtocolIPv4:
 		ttl_exceeded = "icmp and icmp[0] == 11 and icmp[1] == 0"
 	case layers.IPProtocolIPv6:
-		ttl_exceeded = "icmp6 and icmp6.type == 3 and icmp6.code == 0"
+		ttl_exceeded = "icmp6 and icmp6[0] == 3 and icmp6[1] == 0"
 	}
 	return fmt.Sprintf("(%v and src host %v and dst host %v and src port %v and dst port %v) or (%v)", proto, p.route.Destination, p.route.Source, p.dstPort, p.srcPort, ttl_exceeded)
 }
