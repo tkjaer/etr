@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -214,18 +212,4 @@ func (p *probe) stats(sentChan chan sentMsg, recvChan chan recvMsg, outputChan c
 			*/
 		}
 	}
-}
-
-func createKey(probeNum uint, ttl uint8) string {
-	return fmt.Sprintf("%v:%v", probeNum, ttl)
-}
-
-func splitKey(key string) (probeNum uint, ttl uint8) {
-	split := strings.Split(key, ":")
-	if probeNum, err := strconv.Atoi(split[0]); err == nil {
-		if t, err := strconv.Atoi(split[1]); err == nil {
-			return uint(probeNum), uint8(t)
-		}
-	}
-	return
 }

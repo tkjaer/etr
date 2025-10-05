@@ -2,8 +2,11 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
+	"strconv"
+	"strings"
 )
 
 // Encode the probe number and TTL into a single value.
@@ -71,4 +74,18 @@ func getDestinationIP(a Args) (netip.Addr, error) {
 	}
 
 	return netip.Addr{}, errors.New("could not resolve destination")
+}
+
+func createKey(probeNum uint, ttl uint8) string {
+	return fmt.Sprintf("%v:%v", probeNum, ttl)
+}
+
+func splitKey(key string) (probeNum uint, ttl uint8) {
+	split := strings.Split(key, ":")
+	if probeNum, err := strconv.Atoi(split[0]); err == nil {
+		if t, err := strconv.Atoi(split[1]); err == nil {
+			return uint(probeNum), uint8(t)
+		}
+	}
+	return
 }

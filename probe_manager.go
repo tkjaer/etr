@@ -36,6 +36,11 @@ type ProbeEventDataReceived struct {
 	Flag      string
 }
 
+type ProbeEventDataTimeout struct {
+	ProbeNum uint
+	TTL      uint8
+}
+
 // ProbeManager coordinates multiple parallel probes to the same destination
 type ProbeManager struct {
 	// Coordination
