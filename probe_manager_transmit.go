@@ -18,9 +18,9 @@ func (pm *ProbeManager) transmitRoutine() error {
 				pm.statsChan <- ProbeEvent{
 					ProbeID:   event.ProbeID,
 					EventType: "sent",
-					Data: map[string]interface{}{
-						"ttl":       event.TTL,
-						"timestamp": time.Now(),
+					Data: &ProbeEventDataSent{
+						TTL:       event.TTL,
+						Timestamp: time.Now(),
 					},
 				}
 			}

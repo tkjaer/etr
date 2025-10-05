@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -20,6 +21,19 @@ type ProbeEvent struct {
 	ProbeID   uint16
 	EventType string // "sent", "received", "timeout", etc.
 	Data      interface{}
+}
+
+type ProbeEventDataSent struct {
+	TTL       uint8
+	Timestamp time.Time
+}
+
+type ProbeEventDataReceived struct {
+	ProbeNum  uint
+	TTL       uint8
+	Timestamp time.Time
+	IP        string
+	Flag      string
 }
 
 // ProbeManager coordinates multiple parallel probes to the same destination
@@ -142,7 +156,7 @@ func (pm *ProbeManager) init(a Args) error {
 
 	// Add all probes
 	for i := range pm.parallelProbes {
-		err := pm.AddProbe(i)
+		err := pm.addProbe(i)
 		if err != nil {
 			return err
 		}
@@ -152,7 +166,7 @@ func (pm *ProbeManager) init(a Args) error {
 }
 
 // AddProbe initializes and adds a probe to the manager
-func (pm *ProbeManager) AddProbe(probeIndex uint16) error {
+func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	p := new(newProbe)
 	p.probeID = probeIndex
 	p.config = &pm.probeConfig

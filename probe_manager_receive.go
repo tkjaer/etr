@@ -4,20 +4,17 @@ import (
 	"sync"
 
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/pcap"
 )
 
 // recvProbes listens for incoming probe responses on the provided pcap handle.
 // It decodes the packets to extract TTL, probe number, timestamp, IP address, and flag.
 // It sends the decoded information to the recvChan channel and notifies
 // the responseReceivedChan channel when a non-"TTL exceeded" response is received.
-func (pm *ProbeManager) recvProbes(handle *pcap.Handle, recvChan chan recvMsg, responseReceivedChan chan uint, stop chan struct{}, wg *sync.WaitGroup) {
+func (pm *ProbeManager) recvProbes(stop chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
-	if err := pm.setBPFFilter(); err != nil {
-		log.Fatal("Failed to set BPF filter: ", err)
-	}
-	src := gopacket.NewPacketSource(handle, handle.LinkType())
+	src := gopacket.NewPacketSource(pm.handle, pm.handle.LinkType())
 	in := src.Packets()
+
 	for {
 		var packet gopacket.Packet
 		select {
@@ -25,18 +22,30 @@ func (pm *ProbeManager) recvProbes(handle *pcap.Handle, recvChan chan recvMsg, r
 			log.Debug("stopping recvProbes")
 			return
 		case packet = <-in:
-			// FIXME: Add port number so we can steer the packet to the right probe
 			ttl, probeNum, timestamp, ip, port, flag := pm.decodeRecvProbe(packet)
+			probeID := uint16(port) - pm.probeConfig.srcPort
 			// All valid received probes will have a TTL.
 			if ttl > 0 {
-				// Report received probe.
-				recvChan <- recvMsg{probeNum, ttl, timestamp, ip, flag}
+				pm.statsChan <- ProbeEvent{
+					ProbeID:   probeID,
+					EventType: "received",
+					Data: &ProbeEventDataReceived{
+						ProbeNum:  probeNum,
+						TTL:       ttl,
+						Timestamp: timestamp,
+						IP:        ip.String(),
+						Flag:      flag,
+					},
+				}
+
 				// Report if we've received a non-"TTL exceeded" response so we
 				// stop sending further packets for this probe number.
 				if flag != "TTL" {
-					go func(responseReceivedChan chan uint, probeNum uint) {
-						responseReceivedChan <- probeNum
-					}(responseReceivedChan, probeNum)
+					// Report received probe.
+					pm.probeTracker.mutex.Lock()
+					if _, exists := pm.probeTracker.probes[probeID]; !exists {
+						pm.probeTracker.probes[probeID].responseChan <- probeNum
+					}
 				}
 			}
 		}

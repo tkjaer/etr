@@ -69,7 +69,7 @@ func (np *newProbe) Run() {
 				if response == uint(n) {
 					break TTLLoop
 				} else {
-					log.Debugf("Received response for probe %d, but expected %d", response, n)
+					log.Debugf("Received response for probe %d, but currently sending %d", response, n)
 				}
 			default:
 				ttl++

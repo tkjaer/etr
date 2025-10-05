@@ -11,25 +11,25 @@ import (
 // decodeICMPv4Layer decodes an ICMPv4 layer and returns the TTL, probe number, and flag.
 func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8, probeNum uint, port uint, flag string) {
 	if icmp4Layer.TypeCode.Type() == layers.ICMPv4TypeTimeExceeded && icmp4Layer.TypeCode.Code() == layers.ICMPv4CodeTTLExceeded {
-		if packet := gopacket.NewPacket(icmp4Layer.Payload, protoToLayerType(pm.inet), gopacket.Default); packet != nil {
+		if packet := gopacket.NewPacket(icmp4Layer.Payload, protoToLayerType(pm.probeConfig.protocolConfig.inet), gopacket.Default); packet != nil {
 
-			inetLayer := packet.Layer(protoToLayerType(pm.inet))
+			inetLayer := packet.Layer(protoToLayerType(pm.probeConfig.protocolConfig.inet))
 			if inetLayer == nil {
 				return
 			}
 
 			// Verify source and destination IP addresses
-			switch pm.inet {
+			switch pm.probeConfig.protocolConfig.inet {
 			case layers.IPProtocolIPv4:
-				if src := inetLayer.(*layers.IPv4).SrcIP; !src.Equal(net.IP(pm.route.Source.AsSlice())) {
+				if src := inetLayer.(*layers.IPv4).SrcIP; !src.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) {
 					return
-				} else if dst := inetLayer.(*layers.IPv4).DstIP; !dst.Equal(net.IP(pm.route.Destination.AsSlice())) {
+				} else if dst := inetLayer.(*layers.IPv4).DstIP; !dst.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice())) {
 					return
 				}
 			case layers.IPProtocolIPv6:
-				if src := inetLayer.(*layers.IPv6).SrcIP; !src.Equal(net.IP(pm.route.Source.AsSlice())) {
+				if src := inetLayer.(*layers.IPv6).SrcIP; !src.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) {
 					return
-				} else if dst := inetLayer.(*layers.IPv6).DstIP; !dst.Equal(net.IP(pm.route.Destination.AsSlice())) {
+				} else if dst := inetLayer.(*layers.IPv6).DstIP; !dst.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice())) {
 					return
 				}
 			}
@@ -41,7 +41,7 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 			if errorLayer := packet.Layer(gopacket.LayerTypeDecodeFailure); errorLayer != nil {
 				if srcPort := binary.BigEndian.Uint16(inetLayer.LayerPayload()[:2]); !pm.sourcePortWithinRange(srcPort) {
 					return
-				} else if dstPort := binary.BigEndian.Uint16(inetLayer.LayerPayload()[2:4]); dstPort != pm.destinationPort {
+				} else if dstPort := binary.BigEndian.Uint16(inetLayer.LayerPayload()[2:4]); dstPort != pm.probeConfig.dstPort {
 					return
 				} else {
 					ttl, probeNum = decodeTTLAndProbe(binary.BigEndian.Uint32(inetLayer.LayerPayload()[4:8]))
@@ -52,7 +52,7 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 			if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
 				if srcPort := tcpLayer.(*layers.TCP).SrcPort; !pm.sourcePortWithinRange(uint16(srcPort)) {
 					return
-				} else if dstPort := tcpLayer.(*layers.TCP).DstPort; dstPort != layers.TCPPort(pm.destinationPort) {
+				} else if dstPort := tcpLayer.(*layers.TCP).DstPort; dstPort != layers.TCPPort(pm.probeConfig.dstPort) {
 					return
 				}
 				ttl, probeNum, port, flag = decodeTCPLayer(tcpLayer.(*layers.TCP))
@@ -61,7 +61,7 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 			if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
 				if srcPort := udpLayer.(*layers.UDP).SrcPort; !pm.sourcePortWithinRange(uint16(srcPort)) {
 					return
-				} else if dstPort := udpLayer.(*layers.UDP).DstPort; dstPort != layers.UDPPort(pm.destinationPort) {
+				} else if dstPort := udpLayer.(*layers.UDP).DstPort; dstPort != layers.UDPPort(pm.probeConfig.dstPort) {
 					return
 				}
 				ttl, probeNum, port = decodeUDPLayer(udpLayer.(*layers.UDP))
@@ -73,7 +73,7 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 }
 
 func (pm *ProbeManager) sourcePortWithinRange(srcPort uint16) bool {
-	return srcPort >= uint16(pm.baseSourcePort) && srcPort < uint16(pm.baseSourcePort+pm.parallelProbes)
+	return srcPort >= uint16(pm.probeConfig.srcPort) && srcPort < uint16(pm.probeConfig.srcPort+pm.parallelProbes)
 }
 
 func protoToLayerType(proto layers.IPProtocol) gopacket.LayerType {
