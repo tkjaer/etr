@@ -12,13 +12,21 @@ func main() {
 	log.Out = os.Stdout
 	log.SetLevel(logrus.InfoLevel)
 
-	err := getArgs()
+	args, err := ParseArgs()
 	if err != nil {
 		log.Error(err)
 		os.Exit(1)
 	}
 
-	p := new(probe)
-	p.init()
-	p.run()
+	pm, err := NewProbeManager(args)
+	if err != nil {
+		log.Error(err)
+		os.Exit(1)
+	}
+
+	err = pm.Run()
+	if err != nil {
+		log.Error(err)
+		os.Exit(1)
+	}
 }

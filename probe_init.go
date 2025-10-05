@@ -9,9 +9,9 @@ import (
 	"golang.org/x/term"
 )
 
-func (p *probe) init() {
+func (p *probe) init() error {
 
-	if Args.json {
+	if args.json {
 		p.outputType = "json"
 	} else {
 		if term.IsTerminal(int(os.Stdout.Fd())) {
@@ -33,19 +33,19 @@ func (p *probe) init() {
 
 	ip, err := p.GetDestinationIP()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	log.Debug("Destination IP: ", p.route.Destination)
 
 	p.route, err = route.Get(ip)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	log.Debugf("Route: %+v\n", p.route)
 
 	p.dstMAC, err = arp.Get(p.route.Gateway.AsSlice(), p.route.Interface, p.route.Source.AsSlice())
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// set EtherType and INET Protocol based on dstIP version
@@ -65,4 +65,6 @@ func (p *probe) init() {
 	p.interTTLDelay = Args.interTTLDelay
 	p.maxTTL = uint8(Args.maxTTL)
 	p.timeout = Args.timeout
+
+	return nil
 }
