@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/netip"
 	"strconv"
@@ -88,4 +89,13 @@ func splitKey(key string) (probeNum uint, ttl uint8) {
 		}
 	}
 	return
+}
+
+func calculateStdev(sum int64, sumSquares int64, n uint) float64 {
+	mean := float64(sum) / float64(n)
+	variance := float64(sumSquares)/float64(n) - mean*mean
+	if variance < 0 {
+		variance = 0 // Prevent negative due to floating point errors
+	}
+	return math.Sqrt(variance)
 }
