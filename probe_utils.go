@@ -99,3 +99,19 @@ func calculateStdev(sum int64, sumSquares int64, n uint) float64 {
 	}
 	return math.Sqrt(variance)
 }
+
+func calculateLossPct(lost uint, received uint) float64 {
+	total := lost + received
+	if total == 0 {
+		return 0
+	}
+	return (100 * float64(lost)) / float64(total)
+}
+
+func getProbePath(stats Probe) string {
+	var path []string
+	for ttl := range stats.Hops {
+		path = append(path, stats.Hops[ttl].CurrentIP)
+	}
+	return fmt.Sprintf("%s", strings.Join(path, " "))
+}
