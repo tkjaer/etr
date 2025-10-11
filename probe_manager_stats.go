@@ -184,3 +184,26 @@ func (pm *ProbeManager) updateReceivedStats(stats *ProbeStats, probeID uint16, d
 
 	probeStats.Received++
 }
+
+func (pm *ProbeManager) updateTimeoutStats(stats *ProbeStats, probeID uint16, data *ProbeEventDataTimeout) {
+	stats.Mutex.Lock()
+	defer stats.Mutex.Unlock()
+
+	p, exists := stats.Probes[probeID]
+	if !exists {
+		log.Debugf("Timeout for unknown probeID %d", probeID)
+		return
+	}
+
+	h, exists := p.Hops[data.TTL]
+	if !exists {
+		log.Debugf("Timeout for unknown TTL %d on probeID %d", data.TTL, probeID)
+		return
+	}
+
+	if h.CurrentIP != "" {
+		if ipStats, exists := h.IPs[h.CurrentIP]; exists {
+			ipStats.Loss++
+		}
+	}
+}
