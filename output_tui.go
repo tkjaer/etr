@@ -19,8 +19,8 @@ func (t *TUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats HopStats) {
 		return
 	}
 	// FIXME: Handle multiple IPs per TTL
-	fmt.Printf("Probe %d TTL %d: IP=%s RTT(avg)=%.2fms HopLost=%d HopPCTLoss=%d IPLost=%d IPPCTLoss=%d\n",
-		probeID, ttl, hopStats.CurrentIP, float64(s.Avg)/1000, hopStats.Lost, hopStats.LossPct, hopStats.Lost, hopStats.LossPct)
+	fmt.Printf("Probe %d TTL %d: IP=%s RTT(avg)=%.2fms HopLost=%d HopPCTLoss=%.2f IPLost=%d IPPCTLoss=%.2f\n",
+		probeID, ttl, hopStats.CurrentIP, float64(s.Avg)/1000, hopStats.Lost, hopStats.LossPct, s.Lost, s.LossPct)
 }
 
 func (t *TUIOutput) CompleteProbe(probeID uint16, stats Probe) {
