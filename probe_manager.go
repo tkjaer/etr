@@ -41,6 +41,11 @@ type ProbeEventDataTimeout struct {
 	TTL      uint8
 }
 
+type outputConfig struct {
+	jsonOutput bool
+	logFile    string
+}
+
 // ProbeManager coordinates multiple parallel probes to the same destination
 type ProbeManager struct {
 	// Coordination
@@ -63,6 +68,9 @@ type ProbeManager struct {
 	parallelProbes uint16
 	probeConfig    ProbeConfig
 	probeTracker   ProbeTracker
+
+	stats        ProbeStats
+	outputConfig outputConfig
 }
 
 type ProtocolConfig struct {
@@ -101,6 +109,10 @@ func NewProbeManager(a Args) (*ProbeManager, error) {
 			interProbeDelay: a.interProbeDelay,
 			interTTLDelay:   a.interTTLDelay,
 			timeout:         a.timeout,
+		},
+		outputConfig: outputConfig{
+			jsonOutput: a.json,
+			logFile:    a.log,
 		},
 	}
 

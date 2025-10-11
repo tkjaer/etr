@@ -19,7 +19,8 @@ type Args struct {
 	interProbeDelay time.Duration
 	interTTLDelay   time.Duration
 	timeout         time.Duration
-	json            bool
+	json            bool   // output json to stdout
+	log             string // log file path, empty means no logging
 	destination     string
 	parallelProbes  uint
 }
@@ -39,7 +40,8 @@ func ParseArgs() (Args, error) {
 	flag.DurationVar(&args.interTTLDelay, "h", 50*time.Millisecond, "inter-TTL delay (delay between each TTL or hop for a probe)")
 	flag.DurationVar(&args.interProbeDelay, "d", 2*time.Second, "inter-probe delay (delay between each probe)")
 	flag.DurationVar(&args.timeout, "t", 1*time.Second, "timeout")
-	flag.BoolVar(&args.json, "json", false, "output as json")
+	flag.BoolVar(&args.json, "json", false, "output json to stdout")
+	flag.StringVar(&args.log, "json", "", "log file path, empty means no logging")
 	flag.Parse()
 
 	args.destination = flag.Arg(0)
