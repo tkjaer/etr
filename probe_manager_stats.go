@@ -173,29 +173,57 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	ipStats.SumSquares += rtt * rtt
 	ipStats.Avg = ipStats.Sum / int64(ipStats.Responses)
 	ipStats.Stdev = calculateStdev(ipStats.Sum, ipStats.SumSquares, ipStats.Responses)
-
-	probeStats.Received++
 }
 
-func (pm *ProbeManager) updateTimeoutStats(stats *ProbeStats, probeID uint16, data *ProbeEventDataTimeout) {
-	stats.Mutex.Lock()
-	defer stats.Mutex.Unlock()
+func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataTimeout) {
+	pm.stats.Mutex.Lock()
+	defer pm.stats.Mutex.Unlock()
 
-	p, exists := stats.Probes[probeID]
+	probeStats, exists := pm.stats.Probes[probeID]
 	if !exists {
 		log.Debugf("Timeout for unknown probeID %d", probeID)
 		return
 	}
 
-	h, exists := p.Hops[data.TTL]
+	hopStats, exists := probeStats.Hops[data.TTL]
 	if !exists {
 		log.Debugf("Timeout for unknown TTL %d on probeID %d", data.TTL, probeID)
 		return
 	}
 
-	if h.CurrentIP != "" {
-		if ipStats, exists := h.IPs[h.CurrentIP]; exists {
-			ipStats.Loss++
+	hopStats.Lost++
+	hopStats.LossPct = calculateLossPct(hopStats.Lost, hopStats.Received)
+
+	if hopStats.CurrentIP != "" {
+		if ipStats, exists := hopStats.IPs[hopStats.CurrentIP]; exists {
+			ipStats.Lost++
+			ipStats.LossPct = calculateLossPct(ipStats.Lost, ipStats.Responses)
 		}
 	}
+}
+
+func (pm *ProbeManager) getProbeHopStats(probeID uint16, ttl uint8) (HopStats, bool) {
+	stats := HopStats{}
+	exists := false
+	pm.stats.Mutex.RLock()
+	defer pm.stats.Mutex.RUnlock()
+	if probe, ok := pm.stats.Probes[probeID]; ok {
+		if hop, ok := probe.Hops[ttl]; ok {
+			stats = *hop
+			exists = true
+		}
+	}
+	return stats, exists
+}
+
+func (pm *ProbeManager) getProbeStats(probeID uint16) (Probe, bool) {
+	stats := Probe{}
+	exists := false
+	pm.stats.Mutex.RLock()
+	defer pm.stats.Mutex.RUnlock()
+	if probe, ok := pm.stats.Probes[probeID]; ok {
+		stats = *probe
+		exists = true
+	}
+	return stats, exists
 }
