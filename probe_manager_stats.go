@@ -94,40 +94,24 @@ func (pm *ProbeManager) statsProcessor() {
 	}
 }
 
-func (pm *ProbeManager) updateSentStats(stats *TracerouteStats, probeID uint16, data *ProbeEventDataSent) {
+func (pm *ProbeManager) updateSentStats(stats *ProbeStats, probeID uint16, data *ProbeEventDataSent) {
 	stats.Mutex.Lock()
 	defer stats.Mutex.Unlock()
 
-	// Get or create ProbeStats
+	// Get or create ProbeStats entry
 	probeStats, exists := stats.Probes[probeID]
 	if !exists {
-		probeStats = &ProbeStats{
-			ProbeID:  probeID,
-			Sent:     0,
+		probeStats = &Probe{
+			ProbeID: probeID,
+			Sent:    0,
+			// FIXME: Do we actually want a received counter here?
 			Received: 0,
-			Cache:    ttlcache.New[string, uint8](ttlcache.WithTTL[string, uint8](pm.probeConfig.timeout)),
 			Hops:     make(map[uint8]*HopStats),
 		}
-		go probeStats.Cache.Start()
-
-		probeStats.Cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[string, uint8]) {
-			if reason == ttlcache.EvictionReasonExpired {
-				probeID, ttl := splitKey(item.Key())
-				pm.statsChan <- ProbeEvent{
-					ProbeID:   uint16(probeID),
-					EventType: "timeout",
-					Data: &ProbeEventDataTimeout{
-						ProbeNum: uint(probeID),
-						TTL:      ttl,
-					},
-				}
-			}
-		})
-
 		stats.Probes[probeID] = probeStats
 	}
 
-	// Update sent count
+	stats.TTLCache.Set(TTLCacheKey{ProbeID: probeID, TTL: data.TTL}, TTLCacheValue{SentTime: data.Timestamp}, pm.probeConfig.timeout)
 	probeStats.Sent++
 }
 
