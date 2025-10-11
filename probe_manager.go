@@ -211,7 +211,7 @@ func (pm *ProbeManager) Run() error {
 	}()
 
 	// Start output formatter
-	go pm.outputRoutine()
+	go pm.outputRoutine(pm.outputConfig.jsonOutput, pm.outputConfig.logFile)
 
 	// Start all probes
 	for _, p := range pm.probeTracker.probes {
@@ -234,11 +234,6 @@ func (pm *ProbeManager) Run() error {
 	return nil
 }
 
-// outputRoutine formats and displays probe results
-func (pm *ProbeManager) outputRoutine() {
-	// Implementation to display results
-}
-
 // generateSummary creates a final summary of all probe results
 func (pm *ProbeManager) generateSummary() {
 	// Implement summary generation
@@ -249,4 +244,30 @@ func (pm *ProbeManager) Stop() {
 	close(pm.stop)
 	pm.wg.Wait()
 	pm.handle.Close()
+}
+
+// outputRoutine formats and displays probe results
+func (pm *ProbeManager) outputRoutine(JSONOutput bool, jsonFile string) {
+	om := &OutputManager{}
+	if !JSONOutput {
+		om.Register(&TUIOutput{})
+	}
+	jsonOut, err := NewJSONOutput(jsonFile)
+	if err == nil {
+		om.Register(jsonOut)
+	}
+
+	for msg := range pm.outputChan {
+		switch msg.msgType {
+		case "hop":
+			if probeHopStats, exists := pm.getProbeHopStats(uint16(msg.probeNum), msg.ttl); exists {
+				om.UpdateHop(uint16(msg.probeNum), msg.ttl, probeHopStats)
+			}
+		case "complete":
+			if probeStats, exists := pm.getProbeStats(uint16(msg.probeNum)); exists {
+				om.CompleteProbe(uint16(msg.probeNum), probeStats)
+			}
+		}
+	}
+	om.Close()
 }
