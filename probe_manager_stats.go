@@ -52,11 +52,25 @@ type HopIPStats struct {
 }
 
 func (pm *ProbeManager) statsProcessor() {
-
-	stats := TracerouteStats{
-		Probes: make(map[uint16]*ProbeStats),
-		Mutex:  sync.RWMutex{},
+	stats := ProbeStats{
+		Probes:   make(map[uint16]*Probe),
+		Mutex:    sync.RWMutex{},
+		TTLCache: ttlcache.New[TTLCacheKey, TTLCacheValue](ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.timeout)),
 	}
+	stats.TTLCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[TTLCacheKey, TTLCacheValue]) {
+		if reason == ttlcache.EvictionReasonExpired {
+			pm.statsChan <- ProbeEvent{
+				ProbeID:   item.Key().ProbeID,
+				EventType: "timeout",
+				Data: &ProbeEventDataTimeout{
+					SentTime: item.Value().SentTime,
+					TTL:      item.Key().TTL,
+				},
+			}
+		}
+	})
+	go stats.TTLCache.Start()
+	defer stats.TTLCache.Stop()
 
 	for event := range pm.statsChan {
 		// Update internal stats (maps, counters, etc.)
@@ -71,6 +85,8 @@ func (pm *ProbeManager) statsProcessor() {
 				pm.updateReceivedStats(&stats, event.ProbeID, data)
 			}
 		case "timeout":
+			// if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
+			// }
 			// Update loss, output to TUI
 			pm.outputChan <- outputMsg{ /* ... */ }
 		}
