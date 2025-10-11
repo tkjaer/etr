@@ -37,7 +37,7 @@ type ProbeEventDataReceived struct {
 }
 
 type ProbeEventDataTimeout struct {
-	ProbeNum uint
+	SentTime time.Time
 	TTL      uint8
 }
 

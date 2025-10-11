@@ -3,45 +3,52 @@ package main
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 )
 
+// Top-level stats structure for all probes
+type ProbeStats struct {
+	Probes   map[uint16]*Probe
+	Mutex    sync.RWMutex
+	TTLCache *ttlcache.Cache[TTLCacheKey, TTLCacheValue]
+}
+
+// Key for the TTL cache
+type TTLCacheKey struct {
+	ProbeID uint16
+	TTL     uint8
+}
+
+// Value stored in the TTL cache
+type TTLCacheValue struct {
+	SentTime time.Time
+}
+
+// Holds stats for a single probe instance
+type Probe struct {
+	ProbeID  uint16
+	Hops     map[uint8]*HopStats // TTL -> hop stats
+	Sent     uint
+	Received uint
+}
+
+// Holds stats for a single hop (TTL)
+type HopStats struct {
+	IPs       map[string]*HopIPStats // IP string -> stats
+	CurrentIP string                 // Most recent IP seen at this hop
+}
+
 // Holds stats for a single IP at a given hop
 type HopIPStats struct {
-	IP         string
 	Min, Max   int64   // RTT in microseconds
 	Avg        int64   // RTT in microseconds
 	Stdev      float64 // RTT standard deviation in microseconds
 	Loss       uint    // Number of timeouts/losses
 	Responses  uint    // Number of responses
+	Sum        int64   // Sum of RTTs for calculating average
 	SumSquares int64   // Sum of squares for stddev calculation
-}
-
-// Holds stats for a single hop (TTL)
-type HopStats struct {
-	TTL       uint8
-	IPs       map[string]*HopIPStats // IP string -> stats
-	CurrentIP string                 // Most recent IP seen at this hop
-}
-
-// Holds stats for a single probe instance
-type ProbeStats struct {
-	ProbeID uint16
-	Hops    map[uint8]*HopStats // TTL -> hop stats
-	Sent    uint                // Total probes sent
-	// ------------------------------------
-	// FIXME:
-	// The Cache here is not enough. We only need to store the timestamp of the sent probes.
-	Cache *ttlcache.Cache[string, uint8] // Cache of sent probes for tracking timeouts
-	// ------------------------------------
-	Received uint // Total responses received
-}
-
-// Top-level stats structure for all probes
-type TracerouteStats struct {
-	Probes map[uint16]*ProbeStats // probeID -> stats
-	Mutex  sync.RWMutex           // for concurrent access
 }
 
 func (pm *ProbeManager) statsProcessor() {
