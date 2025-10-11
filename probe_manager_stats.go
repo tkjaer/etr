@@ -115,55 +115,72 @@ func (pm *ProbeManager) updateSentStats(stats *ProbeStats, probeID uint16, data 
 	probeStats.Sent++
 }
 
-func (pm *ProbeManager) updateReceivedStats(stats *TracerouteStats, probeID uint16, data *ProbeEventDataReceived) {
+func (pm *ProbeManager) updateReceivedStats(stats *ProbeStats, probeID uint16, data *ProbeEventDataReceived) {
 	stats.Mutex.Lock()
 	defer stats.Mutex.Unlock()
 
-	// Get or create ProbeStats
+	// Check if we have stats for this probeID
 	probeStats, exists := stats.Probes[probeID]
 	if !exists {
-		probeStats = &ProbeStats{
-			ProbeID: probeID,
-			Hops:    make(map[uint8]*HopStats),
-		}
-		stats.Probes[probeID] = probeStats
+		// This should not happen; received a probe for unknown probeID
+		log.Debugf("Received probe for unknown probeID %d", probeID)
+		return
 	}
 
-	// Get or create HopStats
+	// Check if we have HopStats for this TTL
 	hopStats, exists := probeStats.Hops[data.TTL]
 	if !exists {
-		hopStats = &HopStats{
-			TTL: data.TTL,
-			IPs: make(map[string]*HopIPStats),
-		}
-		probeStats.Hops[data.TTL] = hopStats
+		log.Debugf("Received probe for unknown TTL %d on probeID %d", data.TTL, probeID)
+		return
 	}
-	hopStats.CurrentIP = data.IP
 
 	// Get or create HopIPStats
 	ipStats, exists := hopStats.IPs[data.IP]
 	if !exists {
 		ipStats = &HopIPStats{
-			IP: data.IP,
+			Min:        0,
+			Max:        0,
+			Avg:        0,
+			Stdev:      0,
+			Loss:       0,
+			Responses:  0,
+			Sum:        0,
+			SumSquares: 0,
 		}
 		hopStats.IPs[data.IP] = ipStats
 	}
 
-	// Update RTT stats (assuming we have sentTime stored somewhere)
-	rtt := data.Timestamp.Sub( /* sentTime */ ).Microseconds()
-	ipStats.Responses++
-	ipStats.SumSquares += rtt * rtt
-	ipStats.Avg = ((ipStats.Avg * int64(ipStats.Responses-1)) + rtt) / int64(ipStats.Responses)
+	// Update current IP for this hop
+	hopStats.CurrentIP = data.IP
+
+	// Check and remove from TTL cache
+	cacheKey := TTLCacheKey{ProbeID: probeID, TTL: data.TTL}
+	sentTime := time.Time{}
+	if cacheEntry, present := stats.TTLCache.GetAndDelete(cacheKey); !present {
+		sentTime = cacheEntry.Value().SentTime
+	} else {
+		log.Debugf("Received probe for TTL %d on probeID %d that has already expired", data.TTL, probeID)
+		return
+	}
+
+	// Update and calculate stats
+
+	rtt := data.Timestamp.Sub(sentTime).Microseconds()
+
 	if ipStats.Min == 0 || rtt < ipStats.Min {
 		ipStats.Min = rtt
 	}
+
 	if rtt > ipStats.Max {
 		ipStats.Max = rtt
 	}
-	if ipStats.Responses > 1 {
-		meanSquare := float64(ipStats.SumSquares) / float64(ipStats.Responses)
-		ipStats.Stdev = sqrt(meanSquare - float64(ipStats.Avg*ipStats.Avg))
-	}
+
+	ipStats.Responses++
+
+	ipStats.Sum += rtt
+	ipStats.SumSquares += rtt * rtt
+	ipStats.Avg = ipStats.Sum / int64(ipStats.Responses)
+	ipStats.Stdev = calculateStdev(ipStats.Sum, ipStats.SumSquares, ipStats.Responses)
 
 	probeStats.Received++
 }
