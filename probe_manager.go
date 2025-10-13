@@ -46,6 +46,25 @@ type outputConfig struct {
 	logFile    string
 }
 
+// FIXME: Rewrite this to only have the needed elements
+// Message type for communication between sendStats() and outputStats().
+type outputMsg struct {
+	probeNum uint
+	ttl      uint8
+	ip       string
+	// host     string
+	// sentTime time.Time
+	// rtt      time.Duration
+	// delayVariation time.Duration
+	// avgRTT time.Duration
+	// minRTT time.Duration
+	// maxRTT time.Duration
+	loss    uint
+	flag    string
+	msgType string // Added to differentiate message types: "probe_result", "ptr_result", etc.
+	ptrName string // Added for PTR results
+}
+
 // ProbeManager coordinates multiple parallel probes to the same destination
 type ProbeManager struct {
 	// Coordination
