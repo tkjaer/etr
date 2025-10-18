@@ -41,7 +41,7 @@ func ParseArgs() (Args, error) {
 	flag.DurationVar(&args.interProbeDelay, "d", 2*time.Second, "inter-probe delay (delay between each probe)")
 	flag.DurationVar(&args.timeout, "t", 1*time.Second, "timeout")
 	flag.BoolVar(&args.json, "json", false, "output json to stdout")
-	flag.StringVar(&args.log, "json", "", "log file path, empty means no logging")
+	flag.StringVar(&args.log, "log", "", "log file path, empty means no logging")
 	flag.Parse()
 
 	args.destination = flag.Arg(0)

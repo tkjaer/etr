@@ -57,7 +57,7 @@ func (pm *ProbeManager) statsProcessor() {
 	pm.stats = ProbeManagerStats{
 		Probes:   make(map[uint16]*ProbeStats),
 		Mutex:    sync.RWMutex{},
-		TTLCache: ttlcache.New[TTLCacheKey, TTLCacheValue](ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.timeout)),
+		TTLCache: ttlcache.New(ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.timeout)),
 	}
 	pm.stats.TTLCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[TTLCacheKey, TTLCacheValue]) {
 		if reason == ttlcache.EvictionReasonExpired {
@@ -87,12 +87,13 @@ func (pm *ProbeManager) statsProcessor() {
 				pm.updateReceivedStats(event.ProbeID, data)
 			}
 		case "timeout":
-			// if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
-			// }
-			// Update loss, output to TUI
-			pm.outputChan <- outputMsg{ /* ... */ }
+			if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
+				pm.updateTimeoutStats(event.ProbeID, data)
+			}
+		default:
+			// Unknown event type
+			log.Debugf("Unknown ProbeEvent type: %s", event.EventType)
 		}
-		// When a probe run completes, output summary to JSON
 	}
 }
 

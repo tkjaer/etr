@@ -198,6 +198,9 @@ func (pm *ProbeManager) init(a Args) error {
 		}
 	}
 
+	// Start stats processor
+	go pm.statsProcessor()
+
 	return nil
 }
 
