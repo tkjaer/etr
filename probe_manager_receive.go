@@ -41,7 +41,7 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}, wg *sync.WaitGroup) {
 				// Report if we've received a non-"TTL exceeded" response so we
 				// stop sending further packets for this probe number.
 				if flag != "TTL" {
-					if _, exists := pm.probeTracker.probes[probeID]; !exists {
+					if _, exists := pm.probeTracker.probes[probeID]; exists {
 						pm.probeTracker.probes[probeID].responseChan <- probeNum
 					}
 				}
