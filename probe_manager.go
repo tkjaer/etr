@@ -12,7 +12,7 @@ import (
 )
 
 type ProbeTracker struct {
-	probes map[uint16]*newProbe
+	probes map[uint16]*Probe
 	mutex  sync.Mutex
 }
 
@@ -111,7 +111,7 @@ func NewProbeManager(a Args) (*ProbeManager, error) {
 		ptrManager:   ptr.NewPtrManager(),
 
 		probeTracker: ProbeTracker{
-			probes: make(map[uint16]*newProbe),
+			probes: make(map[uint16]*Probe),
 			mutex:  sync.Mutex{},
 		},
 
@@ -203,7 +203,7 @@ func (pm *ProbeManager) init(a Args) error {
 
 // AddProbe initializes and adds a probe to the manager
 func (pm *ProbeManager) addProbe(probeIndex uint16) error {
-	p := new(newProbe)
+	p := new(Probe)
 	p.probeID = probeIndex
 	p.config = &pm.probeConfig
 	p.transmitChan = pm.transmitChan
@@ -235,7 +235,7 @@ func (pm *ProbeManager) Run() error {
 	// Start all probes
 	for _, p := range pm.probeTracker.probes {
 		pm.wg.Add(1)
-		go func(p *newProbe) {
+		go func(p *Probe) {
 			defer pm.wg.Done()
 			p.Run()
 		}(p)

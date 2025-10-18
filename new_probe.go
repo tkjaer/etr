@@ -31,15 +31,15 @@ type TransmitEvent struct {
 }
 
 // newProbe holds configuration for a single probe instance
-type newProbe struct {
+type Probe struct {
 	probeID      uint16
 	config       *ProbeConfig
 	transmitChan chan TransmitEvent
 	responseChan chan uint
 }
 
-func (np *newProbe) Run() {
-	probeConfig := np.config
+func (p *Probe) Run() {
+	probeConfig := p.config
 	protocolConfig := probeConfig.protocolConfig
 
 	buf := gopacket.NewSerializeBuffer()
@@ -55,15 +55,15 @@ func (np *newProbe) Run() {
 
 	var lastProbeStart time.Time
 
-	for n := range np.config.numProbes {
+	for n := range p.config.numProbes {
 		log.Debugf("Starting probe %d", n)
 		lastProbeStart = time.Now()
 		ttl := uint8(0)
 
 	TTLLoop:
-		for ttl < np.config.maxTTL {
+		for ttl < p.config.maxTTL {
 			select {
-			case response := <-np.responseChan:
+			case response := <-p.responseChan:
 				// Stop sending TTL increments if we've received a response from the
 				// final destination for this probe.
 				if response == uint(n) {
@@ -87,7 +87,7 @@ func (np *newProbe) Run() {
 					case layers.IPProtocolTCP:
 						tcp := layers.TCP{
 							Seq:     encodeTTLAndProbe(ttl, uint(n)),
-							SrcPort: layers.TCPPort(probeConfig.srcPort + np.probeID),
+							SrcPort: layers.TCPPort(probeConfig.srcPort + p.probeID),
 							DstPort: layers.TCPPort(probeConfig.dstPort),
 							SYN:     true,
 							Window:  65535,
@@ -97,14 +97,14 @@ func (np *newProbe) Run() {
 						if err != nil {
 							log.Errorf("Failed to serialize layers: %v", err)
 						}
-						np.transmitChan <- TransmitEvent{
+						p.transmitChan <- TransmitEvent{
 							Buffer:  buf,
-							ProbeID: np.probeID,
+							ProbeID: p.probeID,
 							TTL:     ttl,
 						}
 					case layers.IPProtocolUDP:
 						udp := layers.UDP{
-							SrcPort: layers.UDPPort(probeConfig.srcPort + np.probeID),
+							SrcPort: layers.UDPPort(probeConfig.srcPort + p.probeID),
 							DstPort: layers.UDPPort(probeConfig.dstPort),
 							Length:  uint16(8 + encodeTTLAndProbe(ttl, uint(n))),
 						}
@@ -113,9 +113,9 @@ func (np *newProbe) Run() {
 						if err != nil {
 							log.Errorf("Failed to serialize layers: %v", err)
 						}
-						np.transmitChan <- TransmitEvent{
+						p.transmitChan <- TransmitEvent{
 							Buffer:  buf,
-							ProbeID: np.probeID,
+							ProbeID: p.probeID,
 							TTL:     ttl,
 						}
 					}
@@ -131,7 +131,7 @@ func (np *newProbe) Run() {
 					case layers.IPProtocolTCP:
 						tcp := layers.TCP{
 							Seq:     encodeTTLAndProbe(ttl, uint(n)),
-							SrcPort: layers.TCPPort(probeConfig.srcPort + np.probeID),
+							SrcPort: layers.TCPPort(probeConfig.srcPort + p.probeID),
 							DstPort: layers.TCPPort(probeConfig.dstPort),
 							SYN:     true,
 							Window:  65535,
@@ -141,14 +141,14 @@ func (np *newProbe) Run() {
 						if err != nil {
 							log.Errorf("Failed to serialize layers: %v", err)
 						}
-						np.transmitChan <- TransmitEvent{
+						p.transmitChan <- TransmitEvent{
 							Buffer:  buf,
-							ProbeID: np.probeID,
+							ProbeID: p.probeID,
 							TTL:     ttl,
 						}
 					case layers.IPProtocolUDP:
 						udp := layers.UDP{
-							SrcPort: layers.UDPPort(probeConfig.srcPort + np.probeID),
+							SrcPort: layers.UDPPort(probeConfig.srcPort + p.probeID),
 							DstPort: layers.UDPPort(probeConfig.dstPort),
 							Length:  uint16(8 + encodeTTLAndProbe(ttl, uint(n))),
 						}
@@ -157,9 +157,9 @@ func (np *newProbe) Run() {
 						if err != nil {
 							log.Errorf("Failed to serialize layers: %v", err)
 						}
-						np.transmitChan <- TransmitEvent{
+						p.transmitChan <- TransmitEvent{
 							Buffer:  buf,
-							ProbeID: np.probeID,
+							ProbeID: p.probeID,
 							TTL:     ttl,
 						}
 					}
@@ -179,5 +179,5 @@ func (np *newProbe) Run() {
 	}
 	// Wait for any remaining responses before exiting
 	time.Sleep(probeConfig.timeout)
-	log.Debugf("Probe %d finished sending all probes", np.probeID)
+	log.Debugf("Probe %d finished sending all probes", p.probeID)
 }
