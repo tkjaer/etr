@@ -88,7 +88,7 @@ type ProbeManager struct {
 	probeConfig    ProbeConfig
 	probeTracker   ProbeTracker
 
-	stats        ProbeStats
+	stats        ProbeManagerStats
 	outputConfig outputConfig
 }
 

@@ -23,7 +23,7 @@ func (t *TUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats HopStats) {
 		probeID, ttl, hopStats.CurrentIP, float64(s.Avg)/1000, hopStats.Lost, hopStats.LossPct, s.Lost, s.LossPct)
 }
 
-func (t *TUIOutput) CompleteProbe(probeID uint16, stats Probe) {
+func (t *TUIOutput) CompleteProbe(probeID uint16, stats ProbeStats) {
 	// No-op for TUI, as it updates per-hop
 }
 

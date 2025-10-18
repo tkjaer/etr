@@ -108,7 +108,7 @@ func calculateLossPct(lost uint, received uint) float64 {
 	return (100 * float64(lost)) / float64(total)
 }
 
-func getProbePath(stats Probe) string {
+func getProbePath(stats ProbeStats) string {
 	var path []string
 	for ttl := range stats.Hops {
 		path = append(path, stats.Hops[ttl].CurrentIP)

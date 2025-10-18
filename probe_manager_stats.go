@@ -9,8 +9,8 @@ import (
 )
 
 // Top-level stats structure for all probes
-type ProbeStats struct {
-	Probes   map[uint16]*Probe
+type ProbeManagerStats struct {
+	Probes   map[uint16]*ProbeStats
 	Mutex    sync.RWMutex
 	TTLCache *ttlcache.Cache[TTLCacheKey, TTLCacheValue]
 }
@@ -27,7 +27,7 @@ type TTLCacheValue struct {
 }
 
 // Holds stats for a single probe instance
-type Probe struct {
+type ProbeStats struct {
 	ProbeID uint16
 	Hops    map[uint8]*HopStats // TTL -> hop stats
 }
@@ -54,8 +54,8 @@ type HopIPStats struct {
 }
 
 func (pm *ProbeManager) statsProcessor() {
-	pm.stats = ProbeStats{
-		Probes:   make(map[uint16]*Probe),
+	pm.stats = ProbeManagerStats{
+		Probes:   make(map[uint16]*ProbeStats),
 		Mutex:    sync.RWMutex{},
 		TTLCache: ttlcache.New[TTLCacheKey, TTLCacheValue](ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.timeout)),
 	}
@@ -103,7 +103,7 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 	// Get or create ProbeStats entry
 	probeStats, exists := pm.stats.Probes[probeID]
 	if !exists {
-		probeStats = &Probe{
+		probeStats = &ProbeStats{
 			ProbeID: probeID,
 			Hops:    make(map[uint8]*HopStats),
 		}
@@ -216,8 +216,8 @@ func (pm *ProbeManager) getProbeHopStats(probeID uint16, ttl uint8) (HopStats, b
 	return stats, exists
 }
 
-func (pm *ProbeManager) getProbeStats(probeID uint16) (Probe, bool) {
-	stats := Probe{}
+func (pm *ProbeManager) getProbeStats(probeID uint16) (ProbeStats, bool) {
+	stats := ProbeStats{}
 	exists := false
 	pm.stats.Mutex.RLock()
 	defer pm.stats.Mutex.RUnlock()

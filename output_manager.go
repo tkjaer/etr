@@ -3,7 +3,7 @@ package main
 // Output interface for different output types
 type Output interface {
 	UpdateHop(probeID uint16, ttl uint8, hopStats HopStats)
-	CompleteProbe(probeID uint16, stats Probe)
+	CompleteProbe(probeID uint16, stats ProbeStats)
 	Close() error
 }
 
@@ -22,7 +22,7 @@ func (om *OutputManager) UpdateHop(probeID uint16, ttl uint8, hopStats HopStats)
 	}
 }
 
-func (om *OutputManager) CompleteProbe(probeID uint16, stats Probe) {
+func (om *OutputManager) CompleteProbe(probeID uint16, stats ProbeStats) {
 	for _, o := range om.outputs {
 		o.CompleteProbe(probeID, stats)
 	}
