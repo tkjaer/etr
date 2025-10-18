@@ -201,6 +201,13 @@ func (pm *ProbeManager) init(a Args) error {
 	// Start stats processor
 	go pm.statsProcessor()
 
+	// Start receiving routine
+	pm.wg.Add(1)
+	go func() {
+		defer pm.wg.Done()
+		pm.recvProbes(pm.stop, &pm.wg)
+	}()
+
 	return nil
 }
 
