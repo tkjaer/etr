@@ -112,6 +112,15 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 	}
 
 	pm.stats.TTLCache.Set(TTLCacheKey{ProbeID: probeID, TTL: data.TTL}, TTLCacheValue{SentTime: data.Timestamp}, pm.probeConfig.timeout)
+
+	// Get or create HopStats entry
+	hopStats, exists := probeStats.Hops[data.TTL]
+	if !exists {
+		hopStats = &HopStats{
+			IPs: make(map[string]*HopIPStats),
+		}
+		probeStats.Hops[data.TTL] = hopStats
+	}
 }
 
 func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventDataReceived) {
@@ -149,7 +158,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	// Check and remove from TTL cache
 	cacheKey := TTLCacheKey{ProbeID: probeID, TTL: data.TTL}
 	sentTime := time.Time{}
-	if cacheEntry, present := pm.stats.TTLCache.GetAndDelete(cacheKey); !present {
+	if cacheEntry, present := pm.stats.TTLCache.GetAndDelete(cacheKey); present {
 		sentTime = cacheEntry.Value().SentTime
 	} else {
 		log.Debugf("Received probe for TTL %d on probeID %d that has already expired", data.TTL, probeID)
