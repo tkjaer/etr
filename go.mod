@@ -7,7 +7,6 @@ require (
 	github.com/juruen/goarp v0.0.0-20180716135452-3ab95825448f
 	github.com/sirupsen/logrus v1.9.3
 	golang.org/x/net v0.38.0
-	golang.org/x/term v0.30.0
 )
 
 require (
