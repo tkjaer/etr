@@ -43,6 +43,8 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}, wg *sync.WaitGroup) {
 				if flag != "TTL" {
 					if _, exists := pm.probeTracker.probes[probeID]; exists {
 						pm.probeTracker.probes[probeID].responseChan <- probeNum
+					} else {
+						log.Debugf("No probe found for probeID %d when notifying response received", probeID)
 					}
 				}
 			}

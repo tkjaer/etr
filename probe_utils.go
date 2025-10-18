@@ -6,7 +6,6 @@ import (
 	"math"
 	"net"
 	"net/netip"
-	"strconv"
 	"strings"
 )
 
@@ -77,21 +76,7 @@ func getDestinationIP(a Args) (netip.Addr, error) {
 	return netip.Addr{}, errors.New("could not resolve destination")
 }
 
-func createKey(probeNum uint, ttl uint8) string {
-	return fmt.Sprintf("%v:%v", probeNum, ttl)
-}
-
-func splitKey(key string) (probeNum uint, ttl uint8) {
-	split := strings.Split(key, ":")
-	if probeNum, err := strconv.Atoi(split[0]); err == nil {
-		if t, err := strconv.Atoi(split[1]); err == nil {
-			return uint(probeNum), uint8(t)
-		}
-	}
-	return
-}
-
-func calculateStdev(sum int64, sumSquares int64, n uint) float64 {
+func calculateStdDev(sum int64, sumSquares int64, n uint) float64 {
 	mean := float64(sum) / float64(n)
 	variance := float64(sumSquares)/float64(n) - mean*mean
 	if variance < 0 {

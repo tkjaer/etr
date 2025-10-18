@@ -45,7 +45,8 @@ type HopStats struct {
 type HopIPStats struct {
 	Min, Max   int64   // RTT in microseconds
 	Avg        int64   // RTT in microseconds
-	Stdev      float64 // RTT standard deviation in microseconds
+	Last       int64   // Last RTT in microseconds
+	StdDev     float64 // RTT standard deviation in microseconds
 	Lost       uint    // Number of timeouts/losses
 	LossPct    float64 // Percentage loss
 	Responses  uint    // Number of responses
@@ -85,14 +86,37 @@ func (pm *ProbeManager) statsProcessor() {
 		case "received":
 			if data, ok := event.Data.(*ProbeEventDataReceived); ok {
 				pm.updateReceivedStats(event.ProbeID, data)
+				pm.notifyOutput(event.ProbeID, data.TTL)
 			}
 		case "timeout":
 			if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
 				pm.updateTimeoutStats(event.ProbeID, data)
+				pm.notifyOutput(event.ProbeID, data.TTL)
 			}
 		default:
 			// Unknown event type
 			log.Debugf("Unknown ProbeEvent type: %s", event.EventType)
+		}
+	}
+}
+
+func (pm *ProbeManager) notifyOutput(probeID uint16, ttl uint8) {
+	// Check if this is the last remaining hop for this probe
+	pm.stats.Mutex.RLock()
+	defer pm.stats.Mutex.RUnlock()
+	_, exists := pm.stats.Probes[probeID]
+	if !exists {
+		pm.outputChan <- outputMsg{
+			probeNum: uint(probeID),
+			ttl:      ttl,
+			msgType:  "complete",
+		}
+		return
+	} else {
+		pm.outputChan <- outputMsg{
+			probeNum: uint(probeID),
+			ttl:      ttl,
+			msgType:  "hop",
 		}
 	}
 }
@@ -169,6 +193,8 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 
 	rtt := data.Timestamp.Sub(sentTime).Microseconds()
 
+	ipStats.Last = rtt
+
 	if ipStats.Min == 0 || rtt < ipStats.Min {
 		ipStats.Min = rtt
 	}
@@ -182,7 +208,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	ipStats.Sum += rtt
 	ipStats.SumSquares += rtt * rtt
 	ipStats.Avg = ipStats.Sum / int64(ipStats.Responses)
-	ipStats.Stdev = calculateStdev(ipStats.Sum, ipStats.SumSquares, ipStats.Responses)
+	ipStats.StdDev = calculateStdDev(ipStats.Sum, ipStats.SumSquares, ipStats.Responses)
 }
 
 func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataTimeout) {
@@ -204,11 +230,14 @@ func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataT
 	hopStats.Lost++
 	hopStats.LossPct = calculateLossPct(hopStats.Lost, hopStats.Received)
 
-	if hopStats.CurrentIP != "" {
-		if ipStats, exists := hopStats.IPs[hopStats.CurrentIP]; exists {
-			ipStats.Lost++
-			ipStats.LossPct = calculateLossPct(ipStats.Lost, ipStats.Responses)
+	if ipStats, exists := hopStats.IPs[hopStats.CurrentIP]; !exists {
+		hopStats.IPs[hopStats.CurrentIP] = &HopIPStats{
+			Lost:    1,
+			LossPct: 100.0,
 		}
+	} else {
+		ipStats.Lost++
+		ipStats.LossPct = calculateLossPct(ipStats.Lost, ipStats.Responses)
 	}
 }
 

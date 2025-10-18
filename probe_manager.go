@@ -106,6 +106,7 @@ func NewProbeManager(a Args) (*ProbeManager, error) {
 		stop: make(chan struct{}),
 
 		statsChan:    make(chan ProbeEvent, 100),
+		outputChan:   make(chan outputMsg, 100),
 		transmitChan: make(chan TransmitEvent, 100),
 		responseChan: make(chan uint, 100),
 		ptrManager:   ptr.NewPtrManager(),
@@ -265,6 +266,7 @@ func (pm *ProbeManager) Run() error {
 
 // generateSummary creates a final summary of all probe results
 func (pm *ProbeManager) generateSummary() {
+	// FIXME:
 	// Implement summary generation
 }
 
@@ -281,9 +283,11 @@ func (pm *ProbeManager) outputRoutine(JSONOutput bool, jsonFile string) {
 	if !JSONOutput {
 		om.Register(&TUIOutput{})
 	}
-	jsonOut, err := NewJSONOutput(jsonFile)
-	if err == nil {
-		om.Register(jsonOut)
+	if jsonFile != "" {
+		jsonOut, err := NewJSONOutput(jsonFile)
+		if err == nil {
+			om.Register(jsonOut)
+		}
 	}
 
 	for msg := range pm.outputChan {
