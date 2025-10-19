@@ -1,8 +1,6 @@
 package main
 
 import (
-	"sync"
-
 	"github.com/google/gopacket"
 )
 
@@ -10,8 +8,7 @@ import (
 // It decodes the packets to extract TTL, probe number, timestamp, IP address, and flag.
 // It sends the decoded information to the recvChan channel and notifies
 // the responseReceivedChan channel when a non-"TTL exceeded" response is received.
-func (pm *ProbeManager) recvProbes(stop chan struct{}, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 	src := gopacket.NewPacketSource(pm.handle, pm.handle.LinkType())
 	in := src.Packets()
 

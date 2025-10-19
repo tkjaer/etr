@@ -75,27 +75,67 @@ func (pm *ProbeManager) statsProcessor() {
 	go pm.stats.TTLCache.Start()
 	defer pm.stats.TTLCache.Stop()
 
-	for event := range pm.statsChan {
-		// Update internal stats (maps, counters, etc.)
-		// Decide if/when to output to TUI/JSON
-		switch event.EventType {
-		case "sent":
-			if data, ok := event.Data.(*ProbeEventDataSent); ok {
-				pm.updateSentStats(event.ProbeID, data)
+	for {
+		select {
+		case event, ok := <-pm.statsChan:
+			if !ok {
+				// Channel closed, exit
+				log.Debug("statsChan closed, exiting statsProcessor")
+				return
 			}
-		case "received":
-			if data, ok := event.Data.(*ProbeEventDataReceived); ok {
-				pm.updateReceivedStats(event.ProbeID, data)
-				pm.notifyOutput(event.ProbeID, data.TTL)
+			// Update internal stats (maps, counters, etc.)
+			// Decide if/when to output to TUI/JSON
+			switch event.EventType {
+			case "sent":
+				if data, ok := event.Data.(*ProbeEventDataSent); ok {
+					pm.updateSentStats(event.ProbeID, data)
+				}
+			case "received":
+				if data, ok := event.Data.(*ProbeEventDataReceived); ok {
+					pm.updateReceivedStats(event.ProbeID, data)
+					pm.notifyOutput(event.ProbeID, data.TTL)
+				}
+			case "timeout":
+				if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
+					pm.updateTimeoutStats(event.ProbeID, data)
+					pm.notifyOutput(event.ProbeID, data.TTL)
+				}
+			default:
+				// Unknown event type
+				log.Debugf("Unknown ProbeEvent type: %s", event.EventType)
 			}
-		case "timeout":
-			if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
-				pm.updateTimeoutStats(event.ProbeID, data)
-				pm.notifyOutput(event.ProbeID, data.TTL)
+		case <-pm.stop:
+			// Stop signal received, drain any remaining events and exit
+			log.Debug("Stop signal received in statsProcessor, draining remaining events...")
+			for {
+				select {
+				case event, ok := <-pm.statsChan:
+					if !ok {
+						return
+					}
+					// Process remaining events
+					switch event.EventType {
+					case "sent":
+						if data, ok := event.Data.(*ProbeEventDataSent); ok {
+							pm.updateSentStats(event.ProbeID, data)
+						}
+					case "received":
+						if data, ok := event.Data.(*ProbeEventDataReceived); ok {
+							pm.updateReceivedStats(event.ProbeID, data)
+							pm.notifyOutput(event.ProbeID, data.TTL)
+						}
+					case "timeout":
+						if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
+							pm.updateTimeoutStats(event.ProbeID, data)
+							pm.notifyOutput(event.ProbeID, data.TTL)
+						}
+					}
+				default:
+					// No more events, exit
+					log.Debug("No more events to drain, exiting statsProcessor")
+					return
+				}
 			}
-		default:
-			// Unknown event type
-			log.Debugf("Unknown ProbeEvent type: %s", event.EventType)
 		}
 	}
 }

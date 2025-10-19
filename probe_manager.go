@@ -68,8 +68,9 @@ type outputMsg struct {
 // ProbeManager coordinates multiple parallel probes to the same destination
 type ProbeManager struct {
 	// Coordination
-	wg   sync.WaitGroup
-	stop chan struct{}
+	wg       sync.WaitGroup
+	stop     chan struct{}
+	stopOnce sync.Once
 
 	// Statistics aggregation
 	// aggregatedStats map[string]probeStats
@@ -200,13 +201,17 @@ func (pm *ProbeManager) init(a Args) error {
 	}
 
 	// Start stats processor
-	go pm.statsProcessor()
+	pm.wg.Add(1)
+	go func() {
+		defer pm.wg.Done()
+		pm.statsProcessor()
+	}()
 
 	// Start receiving routine
 	pm.wg.Add(1)
 	go func() {
 		defer pm.wg.Done()
-		pm.recvProbes(pm.stop, &pm.wg)
+		pm.recvProbes(pm.stop)
 	}()
 
 	return nil
@@ -219,6 +224,8 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	p.config = &pm.probeConfig
 	p.transmitChan = pm.transmitChan
 	p.responseChan = pm.responseChan
+	p.stop = pm.stop
+	p.wg = &pm.wg
 
 	pm.probeTracker.mutex.Lock()
 	defer pm.probeTracker.mutex.Unlock()
@@ -243,11 +250,16 @@ func (pm *ProbeManager) Run() error {
 	// Start output formatter
 	go pm.outputRoutine(pm.outputConfig.jsonOutput, pm.outputConfig.logFile)
 
+	// Track just the probe goroutines separately
+	var probesWg sync.WaitGroup
+	
 	// Start all probes
 	for _, p := range pm.probeTracker.probes {
 		pm.wg.Add(1)
+		probesWg.Add(1)
 		go func(p *Probe) {
 			defer pm.wg.Done()
+			defer probesWg.Done()
 			p.Run()
 		}(p)
 	}
@@ -257,9 +269,6 @@ func (pm *ProbeManager) Run() error {
 
 	// Generate summary
 	pm.generateSummary()
-
-	// Signal stats processor to exit
-	close(pm.statsChan)
 
 	return nil
 }
@@ -272,7 +281,10 @@ func (pm *ProbeManager) generateSummary() {
 
 // Stop terminates all probes and cleans up resources
 func (pm *ProbeManager) Stop() {
-	close(pm.stop)
+	pm.stopOnce.Do(func() {
+		log.Debug("Stopping ProbeManager...")
+		close(pm.stop)
+	})
 	pm.wg.Wait()
 	pm.handle.Close()
 }

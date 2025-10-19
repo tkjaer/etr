@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket"
@@ -36,6 +37,8 @@ type Probe struct {
 	config       *ProbeConfig
 	transmitChan chan TransmitEvent
 	responseChan chan uint
+	stop         chan struct{}
+	wg           *sync.WaitGroup
 }
 
 func (p *Probe) Run() {
@@ -56,6 +59,13 @@ func (p *Probe) Run() {
 	var lastProbeStart time.Time
 
 	for n := range p.config.numProbes {
+		select {
+		case <-p.stop:
+			log.Debugf("Probe %d received stop signal", p.probeID)
+			return
+		default:
+		}
+		
 		log.Debugf("Starting probe %d", n)
 		lastProbeStart = time.Now()
 		ttl := uint8(0)
@@ -63,6 +73,9 @@ func (p *Probe) Run() {
 	TTLLoop:
 		for ttl < p.config.maxTTL {
 			select {
+			case <-p.stop:
+				log.Debugf("Probe %d received stop signal during TTL loop", p.probeID)
+				return
 			case response := <-p.responseChan:
 				// Stop sending TTL increments if we've received a response from the
 				// final destination for this probe.
