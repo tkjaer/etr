@@ -1,5 +1,13 @@
 package main
 
+type OutputInfo struct {
+	destination    string
+	protocol       string
+	srcPort        uint16
+	dstPort        uint16
+	parallelProbes uint16
+}
+
 // Output interface for different output types
 type Output interface {
 	UpdateHop(probeID uint16, ttl uint8, hopStats HopStats)
