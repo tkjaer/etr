@@ -52,6 +52,7 @@ type HopIPStats struct {
 	Responses  uint    // Number of responses
 	Sum        int64   // Sum of RTTs for calculating average
 	SumSquares int64   // Sum of squares for stddev calculation
+	PTR        string  // PTR record for this IP
 }
 
 func (pm *ProbeManager) statsProcessor() {
@@ -214,6 +215,13 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	if !exists {
 		ipStats = &HopIPStats{}
 		hopStats.IPs[data.IP] = ipStats
+		// Request PTR lookup for new IP
+		go pm.ptrManager.RequestPTR(data.IP)
+	}
+
+	// Update PTR if available
+	if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
+		ipStats.PTR = ptr
 	}
 
 	// Update current IP for this hop
