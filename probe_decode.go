@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"time"
 
@@ -19,8 +18,8 @@ func (pm *ProbeManager) decodeRecvProbe(packet gopacket.Packet) (ttl uint8, prob
 		ttl, probeNum, port, _ = pm.decodeICMPv4Layer(icmp4Layer.(*layers.ICMPv4))
 		flag = "TTL"
 	} else if icmp6Layer := packet.Layer(layers.LayerTypeICMPv6); icmp6Layer != nil {
-		// TODO: implement decodeICMPv6Layer()
-		fmt.Println("ICMPv6 decode not implemented yet")
+		ttl, probeNum, port, _ = pm.decodeICMPv6Layer(icmp6Layer.(*layers.ICMPv6))
+		flag = "TTL"
 	} else {
 		switch pm.probeConfig.protocolConfig.transport {
 		case layers.IPProtocolTCP:
