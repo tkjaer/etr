@@ -247,8 +247,14 @@ func (pm *ProbeManager) Run() error {
 		}
 	}()
 
-	// Start output formatter
-	go pm.outputRoutine(pm.outputConfig.jsonOutput, pm.outputConfig.logFile)
+	// Create and start output formatter (separate wait group to avoid circular dependency)
+	var outputWg sync.WaitGroup
+	bubbleTUI, om := pm.createOutputs()
+	outputWg.Add(1)
+	go func() {
+		defer outputWg.Done()
+		pm.outputRoutine(om)
+	}()
 
 	// Track just the probe goroutines separately
 	var probesWg sync.WaitGroup
@@ -264,8 +270,54 @@ func (pm *ProbeManager) Run() error {
 		}(p)
 	}
 
-	// Wait for all probes to complete
-	pm.wg.Wait()
+	// Create a channel that signals when probes are done (not all goroutines)
+	probesDone := make(chan struct{})
+	go func() {
+		probesWg.Wait()
+		close(probesDone)
+	}()
+
+	// Wait for either all probes to complete or user to quit TUI
+	if bubbleTUI != nil {
+		select {
+		case <-probesDone:
+			// All probes completed normally, signal stop for cleanup
+			log.Debug("All probes completed normally, signaling stop for cleanup...")
+			pm.stopOnce.Do(func() {
+				close(pm.stop)
+			})
+			// Wait for other goroutines (transmit, recv, stats) to exit
+			pm.wg.Wait()
+		case <-bubbleTUI.QuitChan():
+			// User quit the TUI, stop all probes
+			log.Debug("User quit TUI, stopping probes...")
+			pm.stopOnce.Do(func() {
+				close(pm.stop)
+			})
+			// Wait for all goroutines to exit (they listen to pm.stop)
+			pm.wg.Wait()
+		}
+	} else {
+		// No TUI, just wait for probes then signal stop
+		<-probesDone
+		log.Debug("All probes completed normally, signaling stop for cleanup...")
+		pm.stopOnce.Do(func() {
+			close(pm.stop)
+		})
+		// Wait for other goroutines to finish
+		pm.wg.Wait()
+	}
+
+	// All goroutines done (they listen to pm.stop and exit gracefully)
+	log.Debug("All goroutines finished")
+
+	// Close output channel to signal outputRoutine to exit
+	log.Debug("Closing outputChan...")
+	close(pm.outputChan)
+
+	// Wait for output routine to finish processing remaining messages
+	log.Debug("Waiting for output routine...")
+	outputWg.Wait()
 
 	// Generate summary
 	pm.generateSummary()
@@ -289,19 +341,41 @@ func (pm *ProbeManager) Stop() {
 	pm.handle.Close()
 }
 
-// outputRoutine formats and displays probe results
-func (pm *ProbeManager) outputRoutine(JSONOutput bool, jsonFile string) {
+// createOutputs creates and initializes output handlers
+// Returns the BubbleTUIOutput instance (may be nil) and the OutputManager
+func (pm *ProbeManager) createOutputs() (*BubbleTUIOutput, *OutputManager) {
 	om := &OutputManager{}
-	if !JSONOutput {
-		om.Register(&TUIOutput{})
+
+	info := OutputInfo{
+		destination:    pm.probeConfig.destination,
+		protocol:       "TCP",
+		srcPort:        pm.probeConfig.srcPort,
+		dstPort:        pm.probeConfig.dstPort,
+		parallelProbes: pm.parallelProbes,
 	}
-	if jsonFile != "" {
-		jsonOut, err := NewJSONOutput(jsonFile)
+	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {
+		info.protocol = "UDP"
+	}
+
+	var bubbleTUI *BubbleTUIOutput
+	if !pm.outputConfig.jsonOutput {
+		bubbleTUI = NewBubbleTUIOutput(info)
+		bubbleTUI.Start()
+		om.Register(bubbleTUI)
+	}
+
+	if pm.outputConfig.logFile != "" {
+		jsonOut, err := NewJSONOutput(pm.outputConfig.logFile)
 		if err == nil {
 			om.Register(jsonOut)
 		}
 	}
 
+	return bubbleTUI, om
+}
+
+// outputRoutine processes output messages and updates displays
+func (pm *ProbeManager) outputRoutine(om *OutputManager) {
 	for msg := range pm.outputChan {
 		switch msg.msgType {
 		case "hop":
