@@ -222,8 +222,8 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 			}
 		} else {
 			ipStats = &HopIPStats{}
-			hopStats.IPs[data.IP] = ipStats
 		}
+		hopStats.IPs[data.IP] = ipStats
 		// Request PTR lookup for new IP
 		go pm.ptrManager.RequestPTR(data.IP)
 	}
