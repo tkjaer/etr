@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"fmt"
 	"sync"
 )
@@ -15,7 +16,7 @@ func (t *TUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats HopStats) {
 	defer t.mu.Unlock()
 	s := hopStats.IPs[hopStats.CurrentIP]
 	if s == nil {
-		log.Debugf("No stats for IP %s on probe %d TTL %d", hopStats.CurrentIP, probeID, ttl)
+		slog.Debug("No stats for IP", "ip", hopStats.CurrentIP, "probe_id", probeID, "ttl", ttl)
 		return
 	}
 	// FIXME: Handle multiple IPs per TTL

@@ -1,6 +1,9 @@
 package main
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 // transmitRoutine handles sending packets via the pcap handle.
 // It listens for TransmitEvent messages on the transmitChan channel,
@@ -11,7 +14,7 @@ func (pm *ProbeManager) transmitRoutine() error {
 		case event := <-pm.transmitChan:
 			err := pm.handle.WritePacketData(event.Buffer.Bytes())
 			if err != nil {
-				log.Debugf("Error sending packet: %v", err)
+				slog.Error("Error sending packet", "error", err)
 				return err
 			} else {
 				// Notify stats processor of sent packet
@@ -25,7 +28,7 @@ func (pm *ProbeManager) transmitRoutine() error {
 				}
 			}
 		case <-pm.stop:
-			log.Debug("Stopping transmit routine")
+			slog.Debug("Stopping transmit routine")
 			return nil
 		}
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"context"
 	"sync"
 	"time"
@@ -81,7 +82,7 @@ func (pm *ProbeManager) statsProcessor() {
 		case event, ok := <-pm.statsChan:
 			if !ok {
 				// Channel closed, exit
-				log.Debug("statsChan closed, exiting statsProcessor")
+				slog.Debug("Stats channel closed, exiting stats processor")
 				return
 			}
 			// Update internal stats (maps, counters, etc.)
@@ -103,11 +104,11 @@ func (pm *ProbeManager) statsProcessor() {
 				}
 			default:
 				// Unknown event type
-				log.Debugf("Unknown ProbeEvent type: %s", event.EventType)
+				slog.Debug("Unknown probe event type", "type", event.EventType)
 			}
 		case <-pm.stop:
 			// Stop signal received, drain any remaining events and exit
-			log.Debug("Stop signal received in statsProcessor, draining remaining events...")
+			slog.Debug("Stop signal received in stats processor, draining remaining events")
 			for {
 				select {
 				case event, ok := <-pm.statsChan:
@@ -133,7 +134,7 @@ func (pm *ProbeManager) statsProcessor() {
 					}
 				default:
 					// No more events, exit
-					log.Debug("No more events to drain, exiting statsProcessor")
+					slog.Debug("No more events to drain, exiting stats processor")
 					return
 				}
 			}
@@ -196,14 +197,14 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	probeStats, exists := pm.stats.Probes[probeID]
 	if !exists {
 		// This should not happen; received a probe for unknown probeID
-		log.Debugf("Received probe for unknown probeID %d", probeID)
+		slog.Debug("Received probe for unknown probe ID", "probe_id", probeID)
 		return
 	}
 
 	// Check if we have HopStats for this TTL
 	hopStats, exists := probeStats.Hops[data.TTL]
 	if !exists {
-		log.Debugf("Received probe for unknown TTL %d on probeID %d", data.TTL, probeID)
+		slog.Debug("Received probe for unknown TTL", "ttl", data.TTL, "probe_id", probeID)
 		return
 	}
 
@@ -242,7 +243,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	if cacheEntry, present := pm.stats.TTLCache.GetAndDelete(cacheKey); present {
 		sentTime = cacheEntry.Value().SentTime
 	} else {
-		log.Debugf("Received probe for TTL %d on probeID %d that has already expired", data.TTL, probeID)
+		slog.Debug("Received probe for TTL that has already expired", "ttl", data.TTL, "probe_id", probeID)
 		return
 	}
 
@@ -274,13 +275,13 @@ func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataT
 
 	probeStats, exists := pm.stats.Probes[probeID]
 	if !exists {
-		log.Debugf("Timeout for unknown probeID %d", probeID)
+		slog.Debug("Timeout for unknown probe ID", "probe_id", probeID)
 		return
 	}
 
 	hopStats, exists := probeStats.Hops[data.TTL]
 	if !exists {
-		log.Debugf("Timeout for unknown TTL %d on probeID %d", data.TTL, probeID)
+		slog.Debug("Timeout for unknown TTL", "ttl", data.TTL, "probe_id", probeID)
 		return
 	}
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -155,12 +156,12 @@ func (p *Probe) Run() {
 	for n := range p.config.numProbes {
 		select {
 		case <-p.stop:
-			log.Debugf("Probe %d received stop signal", p.probeID)
+			slog.Debug("Probe received stop signal", "probe_id", p.probeID)
 			return
 		default:
 		}
 
-		log.Debugf("Starting probe %d", n)
+		slog.Debug("Starting probe", "probe_num", n)
 		lastProbeStart = time.Now()
 		ttl := uint8(0)
 
@@ -168,7 +169,7 @@ func (p *Probe) Run() {
 		for ttl < p.config.maxTTL {
 			select {
 			case <-p.stop:
-				log.Debugf("Probe %d received stop signal during TTL loop", p.probeID)
+				slog.Debug("Probe received stop signal during TTL loop", "probe_id", p.probeID)
 				return
 			case response := <-p.responseChan:
 				// Stop sending TTL increments if we've received a response from the
@@ -176,7 +177,7 @@ func (p *Probe) Run() {
 				if response == uint(n) {
 					break TTLLoop
 				} else {
-					log.Debugf("Received response for probe %d, but currently sending %d", response, n)
+					slog.Debug("Received response for wrong probe", "expected", n, "received", response)
 				}
 			default:
 				ttl++
@@ -203,7 +204,7 @@ func (p *Probe) Run() {
 						tcp.SetNetworkLayerForChecksum(&ip)
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
 						if err != nil {
-							log.Errorf("Failed to serialize layers: %v", err)
+							slog.Error("Failed to serialize layers", "error", err)
 						}
 						p.transmitChan <- TransmitEvent{
 							Buffer:  buf,
@@ -219,7 +220,7 @@ func (p *Probe) Run() {
 						udp.SetNetworkLayerForChecksum(&ip)
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
 						if err != nil {
-							log.Errorf("Failed to serialize layers: %v", err)
+							slog.Error("Failed to serialize layers", "error", err)
 						}
 						p.transmitChan <- TransmitEvent{
 							Buffer:  buf,
@@ -248,7 +249,7 @@ func (p *Probe) Run() {
 						tcp.SetNetworkLayerForChecksum(&ip)
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
 						if err != nil {
-							log.Errorf("Failed to serialize layers: %v", err)
+							slog.Error("Failed to serialize layers", "error", err)
 						}
 						p.transmitChan <- TransmitEvent{
 							Buffer:  buf,
@@ -264,7 +265,7 @@ func (p *Probe) Run() {
 						udp.SetNetworkLayerForChecksum(&ip)
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
 						if err != nil {
-							log.Errorf("Failed to serialize layers: %v", err)
+							slog.Error("Failed to serialize layers", "error", err)
 						}
 						p.transmitChan <- TransmitEvent{
 							Buffer:  buf,
@@ -288,5 +289,5 @@ func (p *Probe) Run() {
 	}
 	// Wait for any remaining responses before exiting
 	time.Sleep(probeConfig.timeout)
-	log.Debugf("Probe %d finished sending all probes", p.probeID)
+	slog.Debug("Probe finished sending all probes", "probe_id", p.probeID)
 }

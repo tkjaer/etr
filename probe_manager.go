@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"sync"
 	"time"
 
@@ -243,7 +244,7 @@ func (pm *ProbeManager) Run() error {
 		defer pm.wg.Done()
 		err := pm.transmitRoutine()
 		if err != nil {
-			log.Errorf("Transmit routine error: %v", err)
+			slog.Error("Transmit routine error", "error", err)
 		}
 	}()
 
@@ -282,7 +283,7 @@ func (pm *ProbeManager) Run() error {
 		select {
 		case <-probesDone:
 			// All probes completed normally, signal stop for cleanup
-			log.Debug("All probes completed normally, signaling stop for cleanup...")
+			slog.Debug("All probes completed normally, signaling stop for cleanup")
 			pm.stopOnce.Do(func() {
 				close(pm.stop)
 			})
@@ -290,7 +291,7 @@ func (pm *ProbeManager) Run() error {
 			pm.wg.Wait()
 		case <-bubbleTUI.QuitChan():
 			// User quit the TUI, stop all probes
-			log.Debug("User quit TUI, stopping probes...")
+			slog.Debug("User quit TUI, stopping probes")
 			pm.stopOnce.Do(func() {
 				close(pm.stop)
 			})
@@ -300,7 +301,7 @@ func (pm *ProbeManager) Run() error {
 	} else {
 		// No TUI, just wait for probes then signal stop
 		<-probesDone
-		log.Debug("All probes completed normally, signaling stop for cleanup...")
+		slog.Debug("All probes completed normally, signaling stop for cleanup")
 		pm.stopOnce.Do(func() {
 			close(pm.stop)
 		})
@@ -309,14 +310,14 @@ func (pm *ProbeManager) Run() error {
 	}
 
 	// All goroutines done (they listen to pm.stop and exit gracefully)
-	log.Debug("All goroutines finished")
+	slog.Debug("All goroutines finished")
 
 	// Close output channel to signal outputRoutine to exit
-	log.Debug("Closing outputChan...")
+	slog.Debug("Closing outputChan")
 	close(pm.outputChan)
 
 	// Wait for output routine to finish processing remaining messages
-	log.Debug("Waiting for output routine...")
+	slog.Debug("Waiting for output routine")
 	outputWg.Wait()
 
 	// Generate summary
@@ -334,7 +335,7 @@ func (pm *ProbeManager) generateSummary() {
 // Stop terminates all probes and cleans up resources
 func (pm *ProbeManager) Stop() {
 	pm.stopOnce.Do(func() {
-		log.Debug("Stopping ProbeManager...")
+		slog.Debug("Stopping ProbeManager")
 		close(pm.stop)
 	})
 	pm.wg.Wait()

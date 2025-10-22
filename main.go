@@ -1,28 +1,39 @@
 package main
 
 import (
+	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/sirupsen/logrus"
 )
 
-var log = logrus.New()
-
 func main() {
-	log.Out = os.Stdout
-	log.SetLevel(logrus.InfoLevel)
-
 	args, err := ParseArgs()
 	if err != nil {
-		log.Error(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
+	// Setup logging
+	logFile, err := SetupLogging(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to setup logging: %v\n", err)
+		os.Exit(1)
+	}
+	if logFile != nil {
+		defer logFile.Close()
+	}
+
+	slog.Debug("Starting ECMP traceroute",
+		"destination", args.destination,
+		"protocol", args.ProtocolName(),
+		"parallel_probes", args.parallelProbes,
+	)
+
 	pm, err := NewProbeManager(args)
 	if err != nil {
-		log.Error(err)
+		slog.Error("Failed to create probe manager", "error", err)
 		os.Exit(1)
 	}
 
@@ -41,17 +52,19 @@ func main() {
 	case err = <-done:
 		// Probes completed naturally
 		if err != nil {
-			log.Error(err)
+			slog.Error("Probe manager error", "error", err)
 			os.Exit(1)
 		}
 	case <-sigChan:
 		// User pressed Ctrl+C
-		log.Info("Received interrupt signal, stopping...")
+		slog.Debug("Received interrupt signal, stopping...")
 		pm.Stop()
 		// Wait for Run() to finish cleanup
 		if err = <-done; err != nil {
-			log.Error(err)
+			slog.Error("Error during shutdown", "error", err)
 			os.Exit(1)
 		}
 	}
+
+	slog.Debug("ECMP traceroute completed")
 }
