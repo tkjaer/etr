@@ -461,7 +461,7 @@ func (m *tuiModel) View() string {
 	title := fmt.Sprintf(" ECMP Traceroute to %s | Protocol: %s | Port: %d | Elapsed: %s ",
 		m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
 	b.WriteString(titleStyle.Width(m.width).Render(title))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
 	// Calculate available height for content
 	helpHeight := lipgloss.Height(m.help.View(m.keys))
@@ -474,7 +474,7 @@ func (m *tuiModel) View() string {
 	// Render summary pane
 	summary := m.renderSummary(summaryHeight)
 	b.WriteString(summary)
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
 	// Render selected probe details
 	probeView := m.renderProbeDetails(m.selectedProbe, probeHeight)
@@ -506,8 +506,8 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	b.WriteString("\n\n")
 
 	// Header
-	header := fmt.Sprintf("  %-6s %8s %10s %8s %8s %8s %8s %8s %8s",
-		"Probe", "SrcPort", "Path", "Hops", "Loss%", "Avg(ms)", "Min(ms)", "Max(ms)", "StdDev")
+	header := fmt.Sprintf("  %-6s %7s %-9s %4s %8s %8s %8s %8s %8s",
+		"Probe", "SrcPort", " Path", "Hops", "Loss%", "Avg(ms)", "Min(ms)", "Max(ms)", "StdDev")
 	b.WriteString(headerStyle.Render(truncateToWidth(header, m.width-4)))
 	b.WriteString("\n")
 
@@ -581,9 +581,9 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		srcPort := m.srcPort + id
 		cells := []string{
 			formatCell(fmt.Sprintf("#%d", id), 6, alignLeft),
-			formatCell(fmt.Sprintf("%d", srcPort), 8, alignRight),
-			formatCell(stats.PathHash, 10, alignRight),
-			formatCell(fmt.Sprintf("%d", stats.NumHops), 8, alignRight),
+			formatCell(fmt.Sprintf("%d", srcPort), 7, alignRight),
+			formatCell(stats.PathHash, 9, alignRight),
+			formatCell(fmt.Sprintf("%d", stats.NumHops), 4, alignRight),
 			formatCell(fmt.Sprintf("%.1f%%", stats.LossPct), 8, alignRight),
 			formatCell(fmt.Sprintf("%.2f", stats.AvgRTT), 8, alignRight),
 			formatCell(fmt.Sprintf("%.2f", stats.MinRTT), 8, alignRight),
@@ -598,7 +598,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		b.WriteString("\n")
 	}
 
-	summaryContainer := borderStyle.Copy()
+	summaryContainer := borderStyle
 	if m.focus == focusSummary {
 		summaryContainer = summaryContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
@@ -763,7 +763,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 		}
 	}
 
-	visibleLines := maxHeight - 3
+	visibleLines := maxHeight - 4
 	if visibleLines < 0 {
 		visibleLines = 0
 	}
@@ -790,7 +790,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 		b.WriteString("\n")
 	}
 
-	detailContainer := borderStyle.Copy()
+	detailContainer := borderStyle
 	if m.focus == focusDetails {
 		detailContainer = detailContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
