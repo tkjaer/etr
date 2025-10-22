@@ -9,24 +9,27 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
-func (p *probe) decodeRecvProbe(packet gopacket.Packet) (ttl uint8, probeNum uint, timestamp time.Time, ip net.IP, flag string) {
+// decodeRecvProbe decodes a received probe packet and returns the TTL, probe number,
+// timestamp, source IP address, and flag indicating the type of response.
+// It handles both ICMP and non-ICMP protocols, including TCP and UDP.
+func (pm *ProbeManager) decodeRecvProbe(packet gopacket.Packet) (ttl uint8, probeNum uint, timestamp time.Time, ip net.IP, port uint, flag string) {
 	// Decode any ICMP layers first to ensure we're catching TTL exceeded and
 	// not just parsing the inner layer.
 	if icmp4Layer := packet.Layer(layers.LayerTypeICMPv4); icmp4Layer != nil {
-		ttl, probeNum, _ = p.decodeICMPv4Layer(icmp4Layer.(*layers.ICMPv4))
+		ttl, probeNum, port, _ = pm.decodeICMPv4Layer(icmp4Layer.(*layers.ICMPv4))
 		flag = "TTL"
 	} else if icmp6Layer := packet.Layer(layers.LayerTypeICMPv6); icmp6Layer != nil {
 		// TODO: implement decodeICMPv6Layer()
 		fmt.Println("ICMPv6 decode not implemented yet")
 	} else {
-		switch p.proto {
+		switch pm.probeConfig.protocolConfig.transport {
 		case layers.IPProtocolTCP:
 			if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
-				ttl, probeNum, flag = decodeTCPLayer(tcpLayer.(*layers.TCP))
+				ttl, probeNum, port, flag = decodeTCPLayer(tcpLayer.(*layers.TCP))
 			}
 		case layers.IPProtocolUDP:
 			if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
-				ttl, probeNum = decodeUDPLayer(udpLayer.(*layers.UDP))
+				ttl, probeNum, port = decodeUDPLayer(udpLayer.(*layers.UDP))
 			}
 		}
 	}

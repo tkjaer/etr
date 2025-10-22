@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var Args struct {
+type Args struct {
 	TCP             bool
 	UDP             bool
 	forceIPv4       bool
@@ -19,45 +19,52 @@ var Args struct {
 	interProbeDelay time.Duration
 	interTTLDelay   time.Duration
 	timeout         time.Duration
-	json            bool
+	json            bool   // output json to stdout
+	log             string // log file path, empty means no logging
 	destination     string
+	parallelProbes  uint
 }
 
-func getArgs() error {
+func ParseArgs() (Args, error) {
+	var args Args
+	flag.BoolVar(&args.TCP, "T", false, "use TCP (default)")
+	flag.BoolVar(&args.UDP, "U", false, "use UDP: note UDP probes vary in size as packet length is used to encode the probe details")
+	flag.BoolVar(&args.forceIPv4, "4", false, "force IPv4")
+	flag.BoolVar(&args.forceIPv6, "6", false, "force IPv6")
+	flag.UintVar(&args.destinationPort, "p", 443, "destination port")
+	flag.UintVar(&args.sourcePort, "s", 65000, "source port")
 
-	flag.BoolVar(&Args.TCP, "T", false, "use TCP (default)")
-	flag.BoolVar(&Args.UDP, "U", false, "use UDP: note UDP probes vary in size as packet length is used to encode the probe details")
-	flag.BoolVar(&Args.forceIPv4, "4", false, "force IPv4")
-	flag.BoolVar(&Args.forceIPv6, "6", false, "force IPv6")
-	flag.UintVar(&Args.destinationPort, "p", 443, "destination port")
-	flag.UintVar(&Args.sourcePort, "s", 65000, "source port")
-	flag.UintVar(&Args.numProbes, "c", 10, "probe count")
-	flag.UintVar(&Args.maxTTL, "m", 30, "maximum TTL")
-	flag.DurationVar(&Args.interTTLDelay, "h", 50*time.Millisecond, "inter-TTL delay (delay between each TTL or hop for a probe)")
-	flag.DurationVar(&Args.interProbeDelay, "d", 2*time.Second, "inter-probe delay (delay between each probe)")
-	flag.DurationVar(&Args.timeout, "t", 1*time.Second, "timeout")
-	flag.BoolVar(&Args.json, "json", false, "output as json")
+	flag.UintVar(&args.numProbes, "c", 10, "probe count")
+	flag.UintVar(&args.maxTTL, "m", 30, "maximum TTL")
+	flag.UintVar(&args.parallelProbes, "P", 1, "number of parallel probes")
+	flag.DurationVar(&args.interTTLDelay, "h", 50*time.Millisecond, "inter-TTL delay (delay between each TTL or hop for a probe)")
+	flag.DurationVar(&args.interProbeDelay, "d", 2*time.Second, "inter-probe delay (delay between each probe)")
+	flag.DurationVar(&args.timeout, "t", 1*time.Second, "timeout")
+	flag.BoolVar(&args.json, "json", false, "output json to stdout")
+	flag.StringVar(&args.log, "log", "", "log file path, empty means no logging")
 	flag.Parse()
 
-	Args.destination = flag.Arg(0)
-	if Args.destination == "" {
-		return errors.New("destination is required")
+	args.destination = flag.Arg(0)
+	if args.destination == "" {
+		return args, errors.New("destination is required")
 	}
 
 	switch {
-	case Args.TCP && Args.UDP:
-		return errors.New("cannot use both TCP and UDP")
-	case Args.forceIPv6 && Args.forceIPv4:
-		return errors.New("cannot force both IPv4 and IPv6")
-	case Args.destinationPort > 65535:
-		return errors.New("destination port must be between 0 and 65535")
-	case Args.sourcePort > 65535:
-		return errors.New("source port must be between 0 and 65535")
-	case Args.maxTTL > 255:
-		return errors.New("maximum TTL must be between 0 and 255")
-	case Args.timeout >= 20*Args.interProbeDelay*1000:
-		return errors.New("timeout must be less than 20 times the inter-probe delay in seconds, as active probe count is limited to 20")
+	case args.TCP && args.UDP:
+		return args, errors.New("cannot use both TCP and UDP")
+	case !args.TCP && !args.UDP:
+		args.TCP = true // default to TCP
+	case args.forceIPv6 && args.forceIPv4:
+		return args, errors.New("cannot force both IPv4 and IPv6")
+	case args.destinationPort > 65535:
+		return args, errors.New("destination port must be between 0 and 65535")
+	case args.sourcePort+args.parallelProbes > 65535:
+		return args, errors.New("source port+parallel probes must be below 65535")
+	case args.maxTTL > 255:
+		return args, errors.New("maximum TTL must be between 0 and 255")
+	case args.timeout >= 20*args.interProbeDelay*1000:
+		return args, errors.New("timeout must be less than 20 times the inter-probe delay in seconds, as active probe count is limited to 20")
 	}
 
-	return nil
+	return args, nil
 }
