@@ -213,7 +213,16 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	// Get or create HopIPStats
 	ipStats, exists := hopStats.IPs[data.IP]
 	if !exists {
-		ipStats = &HopIPStats{}
+		// If hopStats only contains a single blank entry, we'll attribute it to this IP
+		// and remove the blank entry
+		if len(hopStats.IPs) == 1 {
+			if blankStats, ok := hopStats.IPs[""]; ok {
+				ipStats = blankStats
+				delete(hopStats.IPs, "")
+			}
+		} else {
+			ipStats = &HopIPStats{}
+		}
 		hopStats.IPs[data.IP] = ipStats
 		// Request PTR lookup for new IP
 		go pm.ptrManager.RequestPTR(data.IP)
