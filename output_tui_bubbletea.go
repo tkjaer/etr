@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"hash/crc32"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -216,9 +216,7 @@ func (m *tuiModel) changeSelectedProbe(delta int) {
 
 func (m *tuiModel) scrollDetails(delta int) {
 	next := m.detailScroll + delta
-	if next < 0 {
-		next = 0
-	}
+	next = max(next, 0)
 	m.detailScroll = next
 }
 
@@ -510,12 +508,10 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	for id := range m.probes {
 		probeIDs = append(probeIDs, id)
 	}
-	sort.Slice(probeIDs, func(i, j int) bool { return probeIDs[i] < probeIDs[j] })
+	slices.Sort(probeIDs)
 
 	visibleRows := maxHeight - 3
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
+	visibleRows = max(visibleRows, 1)
 
 	selectedIndex := 0
 	for idx, id := range probeIDs {
@@ -540,7 +536,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	}
 
 	contentWidth := m.width - 4
-	contentWidth = min(contentWidth, 0)
+	contentWidth = max(contentWidth, 0)
 	start := m.summaryScroll
 	end := start + visibleRows
 	if end > len(probeIDs) {
@@ -620,15 +616,11 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 	b.WriteString("\n\n")
 
 	contentWidth := m.width - 4
-	if contentWidth < 20 {
-		contentWidth = 20
-	}
+	contentWidth = max(contentWidth, 20)
 
 	fixedColumns := 65
 	hostWidth := contentWidth - fixedColumns
-	if hostWidth < 10 {
-		hostWidth = 10
-	}
+	hostWidth = max(hostWidth, 10)
 
 	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%8s %%6s %%8s %%8s %%8s %%8s %%8s", 3, hostWidth)
 	header := fmt.Sprintf(headerFmt,
@@ -640,7 +632,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 	for ttl := range probe.Hops {
 		ttls = append(ttls, ttl)
 	}
-	sort.Slice(ttls, func(i, j int) bool { return ttls[i] < ttls[j] })
+	slices.Sort(ttls)
 
 	bodyLines := make([]string, 0)
 
@@ -756,26 +748,19 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 	}
 
 	visibleLines := maxHeight - 4
-	if visibleLines < 0 {
-		visibleLines = 0
-	}
+	visibleLines = max(visibleLines, 0)
 
 	maxScroll := 0
 	if visibleLines > 0 && len(bodyLines) > visibleLines {
 		maxScroll = len(bodyLines) - visibleLines
 	}
-	if m.detailScroll > maxScroll {
-		m.detailScroll = maxScroll
-	}
+	m.detailScroll = min(m.detailScroll, maxScroll)
 
 	start := m.detailScroll
-	if start > len(bodyLines) {
-		start = len(bodyLines)
-	}
+	start = min(start, len(bodyLines))
+
 	end := start + visibleLines
-	if end > len(bodyLines) {
-		end = len(bodyLines)
-	}
+	end = min(end, len(bodyLines))
 
 	for _, line := range bodyLines[start:end] {
 		b.WriteString(line)
@@ -812,7 +797,7 @@ func calculatePathHash(probe *ProbeStats) string {
 	for ttl := range probe.Hops {
 		ttls = append(ttls, ttl)
 	}
-	sort.Slice(ttls, func(i, j int) bool { return ttls[i] < ttls[j] })
+	slices.Sort(ttls)
 
 	// Build path string from CurrentIP at each hop
 	var pathBuilder strings.Builder
@@ -850,9 +835,7 @@ func calculateProbeAggregateStats(probe *ProbeStats) probeAggregateStats {
 
 	// Find the highest TTL (destination hop)
 	for ttl := range probe.Hops {
-		if ttl > maxTTL {
-			maxTTL = ttl
-		}
+		maxTTL = max(maxTTL, ttl)
 	}
 
 	// Calculate all stats from the destination hop only
@@ -915,12 +898,4 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
-}
-
-// min returns the minimum of two ints
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
