@@ -2,8 +2,9 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"time"
+
+	flag "github.com/spf13/pflag"
 )
 
 type Args struct {
@@ -27,21 +28,21 @@ type Args struct {
 
 func ParseArgs() (Args, error) {
 	var args Args
-	flag.BoolVar(&args.TCP, "T", false, "use TCP (default)")
-	flag.BoolVar(&args.UDP, "U", false, "use UDP: note UDP probes vary in size as packet length is used to encode the probe details")
-	flag.BoolVar(&args.forceIPv4, "4", false, "force IPv4")
-	flag.BoolVar(&args.forceIPv6, "6", false, "force IPv6")
-	flag.UintVar(&args.destinationPort, "p", 443, "destination port")
-	flag.UintVar(&args.sourcePort, "s", 65000, "source port")
+	flag.BoolVarP(&args.TCP, "tcp", "T", false, "use TCP (default)")
+	flag.BoolVarP(&args.UDP, "udp", "U", false, "use UDP: note UDP probes vary in size as packet length is used to encode the probe details")
+	flag.BoolVarP(&args.forceIPv4, "ipv4", "4", false, "force IPv4")
+	flag.BoolVarP(&args.forceIPv6, "ipv6", "6", false, "force IPv6")
+	flag.UintVarP(&args.destinationPort, "dest-port", "p", 443, "destination port")
+	flag.UintVarP(&args.sourcePort, "source-port", "s", 65000, "source port")
 
-	flag.UintVar(&args.numProbes, "c", 10, "probe count")
-	flag.UintVar(&args.maxTTL, "m", 30, "maximum TTL")
-	flag.UintVar(&args.parallelProbes, "P", 5, "number of parallel probes")
-	flag.DurationVar(&args.interTTLDelay, "h", 50*time.Millisecond, "inter-TTL delay (delay between each TTL or hop for a probe)")
-	flag.DurationVar(&args.interProbeDelay, "d", 2*time.Second, "inter-probe delay (delay between each probe)")
-	flag.DurationVar(&args.timeout, "t", 1*time.Second, "timeout")
-	flag.BoolVar(&args.json, "json", false, "output json to stdout")
-	flag.StringVar(&args.log, "log", "", "log file path, empty means no logging")
+	flag.UintVarP(&args.numProbes, "count", "c", 10, "probe count")
+	flag.UintVarP(&args.maxTTL, "max-ttl", "m", 30, "maximum TTL")
+	flag.UintVarP(&args.parallelProbes, "parallel-probes", "P", 5, "number of parallel probes")
+	flag.DurationVarP(&args.interTTLDelay, "inter-ttl-delay", "h", 100*time.Millisecond, "inter-TTL delay (delay between each TTL or hop for a probe)")
+	flag.DurationVarP(&args.interProbeDelay, "inter-probe-delay", "d", 2*time.Second, "inter-probe delay (delay between each probe)")
+	flag.DurationVarP(&args.timeout, "timeout", "t", 1*time.Second, "timeout")
+	flag.BoolVarP(&args.json, "json", "j", false, "output json to stdout")
+	flag.StringVarP(&args.log, "log", "l", "", "log file path, empty means no logging")
 	flag.Parse()
 
 	args.destination = flag.Arg(0)
