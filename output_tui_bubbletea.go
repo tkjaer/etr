@@ -508,7 +508,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	// Header
 	header := fmt.Sprintf("  %-6s %8s %10s %8s %8s %8s %8s %8s %8s",
 		"Probe", "SrcPort", "Path", "Hops", "Loss%", "Avg(ms)", "Min(ms)", "Max(ms)", "StdDev")
-	b.WriteString(headerStyle.Render(truncateToWidth(header, m.width-6)))
+	b.WriteString(headerStyle.Render(truncateToWidth(header, m.width-4)))
 	b.WriteString("\n")
 
 	// Get sorted probe IDs
@@ -545,7 +545,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		m.summaryScroll = selectedIndex - visibleRows + 1
 	}
 
-	contentWidth := m.width - 6
+	contentWidth := m.width - 4
 	if contentWidth < 0 {
 		contentWidth = 0
 	}
@@ -603,7 +603,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		summaryContainer = summaryContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
 
-	return summaryContainer.Width(m.width - 4).Render(b.String())
+	return summaryContainer.Width(m.width - 2).Render(b.String())
 }
 
 // renderProbeDetails renders detailed hop-by-hop view for a specific probe
@@ -627,7 +627,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
-	contentWidth := m.width - 6
+	contentWidth := m.width - 4
 	if contentWidth < 20 {
 		contentWidth = 20
 	}
@@ -795,7 +795,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 		detailContainer = detailContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
 
-	return detailContainer.Width(m.width - 4).Render(b.String())
+	return detailContainer.Width(m.width - 2).Render(b.String())
 }
 
 // Helper types for aggregate stats
