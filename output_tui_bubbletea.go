@@ -637,9 +637,6 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 	if hostWidth < 10 {
 		hostWidth = 10
 	}
-	if hostWidth > 50 {
-		hostWidth = 50
-	}
 
 	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%8s %%6s %%8s %%8s %%8s %%8s %%8s", 3, hostWidth)
 	header := fmt.Sprintf(headerFmt,
