@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"net"
 	"sync"
 	"time"
@@ -29,6 +30,99 @@ type TransmitEvent struct {
 	Buffer  gopacket.SerializeBuffer
 	ProbeID uint16
 	TTL     uint8
+}
+
+// calculateMSS calculates the Maximum Segment Size based on interface MTU and IP version
+func calculateMSS(iface *net.Interface, isIPv6 bool) uint16 {
+	mtu := iface.MTU
+	if mtu <= 0 {
+		// Default to Ethernet MTU if not available
+		mtu = 1500
+	}
+
+	// MSS = MTU - IP header - TCP header
+	// IPv4 header: 20 bytes (without options)
+	// IPv6 header: 40 bytes
+	// TCP header: 20 bytes (without options)
+	var mss int
+	if isIPv6 {
+		mss = mtu - 40 - 20
+	} else {
+		mss = mtu - 20 - 20
+	}
+
+	// Ensure MSS is reasonable
+	if mss < 536 {
+		mss = 536 // Minimum MSS per RFC 879
+	}
+	if mss > 65495 {
+		mss = 65495 // Maximum possible
+	}
+
+	return uint16(mss)
+}
+
+// createTCPOptions creates realistic TCP options based on interface settings
+func createTCPOptions(iface *net.Interface, isIPv6 bool) []layers.TCPOption {
+	mss := calculateMSS(iface, isIPv6)
+	mssBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(mssBytes, mss)
+
+	return []layers.TCPOption{
+		// MSS option (calculated from interface MTU)
+		{
+			OptionType:   layers.TCPOptionKindMSS,
+			OptionLength: 4,
+			OptionData:   mssBytes,
+		},
+		// NOP for alignment
+		{
+			OptionType:   layers.TCPOptionKindNop,
+			OptionLength: 1,
+		},
+		// Window Scale
+		{
+			OptionType:   layers.TCPOptionKindWindowScale,
+			OptionLength: 3,
+			OptionData:   []byte{0x07}, // Scale factor 7
+		},
+		// NOP for alignment
+		{
+			OptionType:   layers.TCPOptionKindNop,
+			OptionLength: 1,
+		},
+		// NOP for alignment
+		{
+			OptionType:   layers.TCPOptionKindNop,
+			OptionLength: 1,
+		},
+		// Timestamp
+		{
+			OptionType:   layers.TCPOptionKindTimestamps,
+			OptionLength: 10,
+			OptionData:   generateTimestampOption(),
+		},
+		// SACK Permitted
+		{
+			OptionType:   layers.TCPOptionKindSACKPermitted,
+			OptionLength: 2,
+		},
+		// End of options
+		{
+			OptionType:   layers.TCPOptionKindEndList,
+			OptionLength: 1,
+		},
+	}
+}
+
+// generateTimestampOption creates timestamp option data
+func generateTimestampOption() []byte {
+	timestamp := uint32(time.Now().Unix())
+	data := make([]byte, 8)
+	binary.BigEndian.PutUint32(data[0:4], timestamp)
+	// Echo reply timestamp (0 for SYN)
+	binary.BigEndian.PutUint32(data[4:8], 0)
+	return data
 }
 
 // newProbe holds configuration for a single probe instance
@@ -65,7 +159,7 @@ func (p *Probe) Run() {
 			return
 		default:
 		}
-		
+
 		log.Debugf("Starting probe %d", n)
 		lastProbeStart = time.Now()
 		ttl := uint8(0)
@@ -104,6 +198,7 @@ func (p *Probe) Run() {
 							DstPort: layers.TCPPort(probeConfig.dstPort),
 							SYN:     true,
 							Window:  65535,
+							Options: createTCPOptions(probeConfig.route.Interface, false),
 						}
 						tcp.SetNetworkLayerForChecksum(&ip)
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
@@ -148,6 +243,7 @@ func (p *Probe) Run() {
 							DstPort: layers.TCPPort(probeConfig.dstPort),
 							SYN:     true,
 							Window:  65535,
+							Options: createTCPOptions(probeConfig.route.Interface, true),
 						}
 						tcp.SetNetworkLayerForChecksum(&ip)
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
