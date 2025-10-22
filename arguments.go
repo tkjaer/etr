@@ -22,6 +22,7 @@ type Args struct {
 	timeout         time.Duration
 	json            bool   // output json to stdout
 	log             string // log file path, empty means no logging
+	logLevel        string // log level: debug, info, warn, error
 	destination     string
 	parallelProbes  uint
 }
@@ -43,6 +44,7 @@ func ParseArgs() (Args, error) {
 	flag.DurationVarP(&args.timeout, "timeout", "t", 1*time.Second, "Timeout")
 	flag.BoolVarP(&args.json, "json", "j", false, "Output json to stdout")
 	flag.StringVarP(&args.log, "log", "l", "", "Log file path, empty means no logging")
+	flag.StringVar(&args.logLevel, "log-level", "error", "Log level: debug, info, warn, error")
 	flag.Parse()
 
 	args.destination = flag.Arg(0)
@@ -68,4 +70,15 @@ func ParseArgs() (Args, error) {
 	}
 
 	return args, nil
+}
+
+// ProtocolName returns the protocol name based on args
+func (a Args) ProtocolName() string {
+	if a.TCP {
+		return "TCP"
+	}
+	if a.UDP {
+		return "UDP"
+	}
+	return "TCP"
 }

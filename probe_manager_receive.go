@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"github.com/google/gopacket"
 )
 
@@ -16,7 +17,7 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 		var packet gopacket.Packet
 		select {
 		case <-stop:
-			log.Debug("stopping recvProbes")
+			slog.Debug("Stopping receive probes")
 			return
 		case packet = <-in:
 			ttl, probeNum, timestamp, ip, port, flag := pm.decodeRecvProbe(packet)
@@ -41,7 +42,7 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 					if _, exists := pm.probeTracker.probes[probeID]; exists {
 						pm.probeTracker.probes[probeID].responseChan <- probeNum
 					} else {
-						log.Debugf("No probe found for probeID %d when notifying response received", probeID)
+						slog.Debug("No probe found when notifying response received", "probe_id", probeID)
 					}
 				}
 			}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"fmt"
 	"hash/crc32"
 	"slices"
@@ -285,14 +286,14 @@ func (b *BubbleTUIOutput) Start() {
 		defer func() {
 			close(doneCh)
 			if r := recover(); r != nil {
-				log.Errorf("TUI panic: %v", r)
+				slog.Error("TUI panic", "error", r)
 				// Force cleanup
 				b.program.Kill()
 			}
 		}()
 
 		if _, err := b.program.Run(); err != nil {
-			log.Errorf("Error running TUI: %v", err)
+			slog.Error("Error running TUI", "error", err)
 		}
 	}()
 }
