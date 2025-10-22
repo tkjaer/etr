@@ -31,12 +31,6 @@ type tuiUpdateMsg struct {
 	hopStats HopStats
 }
 
-// tuiCompleteMsg is sent when a probe completes
-type tuiCompleteMsg struct {
-	probeID uint16
-	stats   ProbeStats
-}
-
 // tickMsg is sent periodically to refresh the display
 type tickMsg time.Time
 
@@ -546,9 +540,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	}
 
 	contentWidth := m.width - 4
-	if contentWidth < 0 {
-		contentWidth = 0
-	}
+	contentWidth = min(contentWidth, 0)
 	start := m.summaryScroll
 	end := start + visibleRows
 	if end > len(probeIDs) {
