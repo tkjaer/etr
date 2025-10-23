@@ -33,7 +33,7 @@ func main() {
 
 	pm, err := NewProbeManager(args)
 	if err != nil {
-		slog.Error("Failed to create probe manager", "error", err)
+		fmt.Fprintf(os.Stderr, "Failed to create probe manager: %v\n", err)
 		os.Exit(1)
 	}
 
