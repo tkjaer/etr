@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -178,6 +179,10 @@ func (pm *ProbeManager) init(a Args) error {
 	}
 
 	// Resolve gateway MAC address
+	// if gw is empty, this is a directly connected route, so use dst IP
+	if probeConfig.route.Gateway == (netip.Addr{}) {
+		probeConfig.route.Gateway = probeConfig.route.Destination
+	}
 	probeConfig.dstMAC, err = arp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface, probeConfig.route.Source.AsSlice())
 	if err != nil {
 		return err
@@ -259,7 +264,7 @@ func (pm *ProbeManager) Run() error {
 
 	// Track just the probe goroutines separately
 	var probesWg sync.WaitGroup
-	
+
 	// Start all probes
 	for _, p := range pm.probeTracker.probes {
 		pm.wg.Add(1)
