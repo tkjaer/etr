@@ -1,9 +1,9 @@
 package main
 
 import (
-	"log/slog"
 	"fmt"
 	"hash/crc32"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -322,6 +322,10 @@ func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats HopStats
 // CompleteProbe implements the Output interface
 func (b *BubbleTUIOutput) CompleteProbe(probeID uint16, stats ProbeStats) {
 	// Updates are handled through UpdateHop
+}
+
+func (b *BubbleTUIOutput) CompleteProbeRun(run *ProbeRun) {
+	// No-op for TUI, we use UpdateHop for real-time updates
 }
 
 // Close implements the Output interface

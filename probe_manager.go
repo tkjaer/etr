@@ -25,6 +25,7 @@ type ProbeEvent struct {
 }
 
 type ProbeEventDataSent struct {
+	ProbeNum  uint
 	TTL       uint8
 	Timestamp time.Time
 }
@@ -38,13 +39,18 @@ type ProbeEventDataReceived struct {
 }
 
 type ProbeEventDataTimeout struct {
+	ProbeNum uint
 	SentTime time.Time
 	TTL      uint8
 }
 
+type ProbeEventDataIterationComplete struct {
+	ProbeNum  uint      // Which iteration just completed
+	Timestamp time.Time // When it completed
+}
+
 type outputConfig struct {
 	jsonOutput bool
-	logFile    string
 }
 
 // FIXME: Rewrite this to only have the needed elements
@@ -62,8 +68,9 @@ type outputMsg struct {
 	// maxRTT time.Duration
 	loss    uint
 	flag    string
-	msgType string // Added to differentiate message types: "probe_result", "ptr_result", etc.
-	ptrName string // Added for PTR results
+	msgType string    // Added to differentiate message types: "probe_result", "ptr_result", etc.
+	ptrName string    // Added for PTR results
+	run     *ProbeRun // For probe_run messages
 }
 
 // ProbeManager coordinates multiple parallel probes to the same destination
@@ -134,7 +141,6 @@ func NewProbeManager(a Args) (*ProbeManager, error) {
 		},
 		outputConfig: outputConfig{
 			jsonOutput: a.json,
-			logFile:    a.log,
 		},
 	}
 
@@ -225,6 +231,7 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	p.config = &pm.probeConfig
 	p.transmitChan = pm.transmitChan
 	p.responseChan = pm.responseChan
+	p.statsChan = pm.statsChan
 	p.stop = pm.stop
 	p.wg = &pm.wg
 
@@ -259,7 +266,7 @@ func (pm *ProbeManager) Run() error {
 
 	// Track just the probe goroutines separately
 	var probesWg sync.WaitGroup
-	
+
 	// Start all probes
 	for _, p := range pm.probeTracker.probes {
 		pm.wg.Add(1)
@@ -359,17 +366,18 @@ func (pm *ProbeManager) createOutputs() (*BubbleTUIOutput, *OutputManager) {
 	}
 
 	var bubbleTUI *BubbleTUIOutput
-	if !pm.outputConfig.jsonOutput {
-		bubbleTUI = NewBubbleTUIOutput(info)
-		bubbleTUI.Start()
-		om.Register(bubbleTUI)
-	}
 
-	if pm.outputConfig.logFile != "" {
-		jsonOut, err := NewJSONOutput(pm.outputConfig.logFile)
+	// If JSON output is enabled, output to stdout and disable TUI
+	if pm.outputConfig.jsonOutput {
+		jsonOut, err := NewJSONOutput("") // empty string = stdout
 		if err == nil {
 			om.Register(jsonOut)
 		}
+	} else {
+		// TUI mode: show interactive interface
+		bubbleTUI = NewBubbleTUIOutput(info)
+		bubbleTUI.Start()
+		om.Register(bubbleTUI)
 	}
 
 	return bubbleTUI, om
@@ -382,6 +390,11 @@ func (pm *ProbeManager) outputRoutine(om *OutputManager) {
 		case "hop":
 			if probeHopStats, exists := pm.getProbeHopStats(uint16(msg.probeNum), msg.ttl); exists {
 				om.UpdateHop(uint16(msg.probeNum), msg.ttl, probeHopStats)
+			}
+		case "probe_run":
+			// Output individual probe run (for JSON)
+			if msg.run != nil {
+				om.CompleteProbeRun(msg.run)
 			}
 		case "complete":
 			if probeStats, exists := pm.getProbeStats(uint16(msg.probeNum)); exists {

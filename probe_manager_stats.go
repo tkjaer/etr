@@ -1,25 +1,45 @@
 package main
 
 import (
-	"log/slog"
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 )
 
+// ProbeRun represents a single TTL iteration for one probe
+type ProbeRun struct {
+	ProbeID   uint16            `json:"probe_id"`
+	ProbeNum  uint              `json:"probe_num"` // Which iteration (0, 1, 2, ...)
+	Hops      map[uint8]*HopRun `json:"hops"`      // TTL -> hop result
+	Timestamp time.Time         `json:"timestamp"`
+}
+
+// HopRun represents the result for a single TTL in one probe run
+type HopRun struct {
+	TTL      uint8     `json:"ttl"`
+	IP       string    `json:"ip"`        // IP that responded (empty if timeout)
+	RTT      int64     `json:"rtt"`       // RTT in microseconds (0 if timeout)
+	Timeout  bool      `json:"timeout"`   // Whether this hop timed out
+	PTR      string    `json:"ptr"`       // PTR record for this IP
+	RecvTime time.Time `json:"recv_time"` // When response was received
+}
+
 // Top-level stats structure for all probes
 type ProbeManagerStats struct {
-	Probes   map[uint16]*ProbeStats
-	Mutex    sync.RWMutex
-	TTLCache *ttlcache.Cache[TTLCacheKey, TTLCacheValue]
+	Probes      map[uint16]*ProbeStats
+	CurrentRuns map[uint16]*ProbeRun // Current probe run being built for each probe ID
+	Mutex       sync.RWMutex
+	TTLCache    *ttlcache.Cache[TTLCacheKey, TTLCacheValue]
 }
 
 // Key for the TTL cache
 type TTLCacheKey struct {
-	ProbeID uint16
-	TTL     uint8
+	ProbeID  uint16
+	ProbeNum uint // Which iteration
+	TTL      uint8
 }
 
 // Value stored in the TTL cache
@@ -29,38 +49,40 @@ type TTLCacheValue struct {
 
 // Holds stats for a single probe instance
 type ProbeStats struct {
-	ProbeID uint16
-	Hops    map[uint8]*HopStats // TTL -> hop stats
+	ProbeID uint16              `json:"probe_id"`
+	Hops    map[uint8]*HopStats `json:"hops"` // TTL -> hop stats
 }
 
 // Holds stats for a single hop (TTL)
 type HopStats struct {
-	IPs       map[string]*HopIPStats // IP string -> stats
-	CurrentIP string                 // Most recent IP seen at this hop
-	Received  uint                   // Number of probes received at this TTL
-	Lost      uint                   // Number of probes lost at this TTL
-	LossPct   float64                // Percentage loss at this TTL
+	IPs       map[string]*HopIPStats `json:"ips"`        // IP string -> stats
+	CurrentIP string                 `json:"current_ip"` // Most recent IP seen at this hop
+	Received  uint                   `json:"received"`   // Number of probes received at this TTL
+	Lost      uint                   `json:"lost"`       // Number of probes lost at this TTL
+	LossPct   float64                `json:"loss_pct"`   // Percentage loss at this TTL
 }
 
 // Holds stats for a single IP at a given hop
 type HopIPStats struct {
-	Min, Max   int64   // RTT in microseconds
-	Avg        int64   // RTT in microseconds
-	Last       int64   // Last RTT in microseconds
-	StdDev     float64 // RTT standard deviation in microseconds
-	Lost       uint    // Number of timeouts/losses
-	LossPct    float64 // Percentage loss
-	Responses  uint    // Number of responses
-	Sum        int64   // Sum of RTTs for calculating average
-	SumSquares int64   // Sum of squares for stddev calculation
-	PTR        string  // PTR record for this IP
+	Min        int64   `json:"min"`         // RTT in microseconds
+	Max        int64   `json:"max"`         // RTT in microseconds
+	Avg        int64   `json:"avg"`         // RTT in microseconds
+	Last       int64   `json:"last"`        // Last RTT in microseconds
+	StdDev     float64 `json:"stddev"`      // RTT standard deviation in microseconds
+	Lost       uint    `json:"lost"`        // Number of timeouts/losses
+	LossPct    float64 `json:"loss_pct"`    // Percentage loss
+	Responses  uint    `json:"responses"`   // Number of responses
+	Sum        int64   `json:"sum"`         // Sum of RTTs for calculating average
+	SumSquares int64   `json:"sum_squares"` // Sum of squares for stddev calculation
+	PTR        string  `json:"ptr"`         // PTR record for this IP
 }
 
 func (pm *ProbeManager) statsProcessor() {
 	pm.stats = ProbeManagerStats{
-		Probes:   make(map[uint16]*ProbeStats),
-		Mutex:    sync.RWMutex{},
-		TTLCache: ttlcache.New(ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.timeout)),
+		Probes:      make(map[uint16]*ProbeStats),
+		CurrentRuns: make(map[uint16]*ProbeRun),
+		Mutex:       sync.RWMutex{},
+		TTLCache:    ttlcache.New(ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.timeout)),
 	}
 	pm.stats.TTLCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[TTLCacheKey, TTLCacheValue]) {
 		if reason == ttlcache.EvictionReasonExpired {
@@ -68,6 +90,7 @@ func (pm *ProbeManager) statsProcessor() {
 				ProbeID:   item.Key().ProbeID,
 				EventType: "timeout",
 				Data: &ProbeEventDataTimeout{
+					ProbeNum: item.Key().ProbeNum,
 					SentTime: item.Value().SentTime,
 					TTL:      item.Key().TTL,
 				},
@@ -102,6 +125,17 @@ func (pm *ProbeManager) statsProcessor() {
 					pm.updateTimeoutStats(event.ProbeID, data)
 					pm.notifyOutput(event.ProbeID, data.TTL)
 				}
+			case "iteration_complete":
+				if data, ok := event.Data.(*ProbeEventDataIterationComplete); ok {
+					// Output the completed probe run
+					pm.outputProbeRun(event.ProbeID, data)
+				}
+			case "complete":
+				// Probe is complete, notify output with special marker
+				pm.outputChan <- outputMsg{
+					probeNum: uint(event.ProbeID),
+					msgType:  "complete",
+				}
 			default:
 				// Unknown event type
 				slog.Debug("Unknown probe event type", "type", event.EventType)
@@ -131,6 +165,12 @@ func (pm *ProbeManager) statsProcessor() {
 							pm.updateTimeoutStats(event.ProbeID, data)
 							pm.notifyOutput(event.ProbeID, data.TTL)
 						}
+					case "complete":
+						// Probe is complete, notify output
+						pm.outputChan <- outputMsg{
+							probeNum: uint(event.ProbeID),
+							msgType:  "complete",
+						}
 					}
 				default:
 					// No more events, exit
@@ -143,23 +183,65 @@ func (pm *ProbeManager) statsProcessor() {
 }
 
 func (pm *ProbeManager) notifyOutput(probeID uint16, ttl uint8) {
-	// Check if this is the last remaining hop for this probe
+	// Notify output of hop update (for TUI)
+	pm.outputChan <- outputMsg{
+		probeNum: uint(probeID),
+		ttl:      ttl,
+		msgType:  "hop",
+	}
+}
+
+func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataIterationComplete) {
+	// Convert current ProbeStats to ProbeRun format for this iteration
 	pm.stats.Mutex.RLock()
-	defer pm.stats.Mutex.RUnlock()
-	_, exists := pm.stats.Probes[probeID]
+	probeStats, exists := pm.stats.Probes[probeID]
+	pm.stats.Mutex.RUnlock()
+
 	if !exists {
-		pm.outputChan <- outputMsg{
-			probeNum: uint(probeID),
-			ttl:      ttl,
-			msgType:  "complete",
-		}
 		return
-	} else {
-		pm.outputChan <- outputMsg{
-			probeNum: uint(probeID),
-			ttl:      ttl,
-			msgType:  "hop",
+	}
+
+	// Build ProbeRun from ProbeStats (just use the "Last" value from each hop)
+	run := &ProbeRun{
+		ProbeID:   probeID,
+		ProbeNum:  data.ProbeNum,
+		Hops:      make(map[uint8]*HopRun),
+		Timestamp: data.Timestamp,
+	}
+
+	pm.stats.Mutex.RLock()
+	for ttl, hopStats := range probeStats.Hops {
+		if hopStats.CurrentIP != "" {
+			// Find the IP stats for this hop
+			ipStats, ok := hopStats.IPs[hopStats.CurrentIP]
+			if ok {
+				run.Hops[ttl] = &HopRun{
+					TTL:      ttl,
+					IP:       hopStats.CurrentIP,
+					RTT:      ipStats.Last,
+					Timeout:  false,
+					PTR:      ipStats.PTR,
+					RecvTime: data.Timestamp, // Approximate
+				}
+			}
+		} else if hopStats.Lost > 0 {
+			// This hop timed out
+			run.Hops[ttl] = &HopRun{
+				TTL:     ttl,
+				IP:      "",
+				RTT:     0,
+				Timeout: true,
+				PTR:     "",
+			}
 		}
+	}
+	pm.stats.Mutex.RUnlock()
+
+	// Send to output
+	pm.outputChan <- outputMsg{
+		probeNum: data.ProbeNum,
+		msgType:  "probe_run",
+		run:      run,
 	}
 }
 
@@ -177,7 +259,28 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 		pm.stats.Probes[probeID] = probeStats
 	}
 
-	pm.stats.TTLCache.Set(TTLCacheKey{ProbeID: probeID, TTL: data.TTL}, TTLCacheValue{SentTime: data.Timestamp}, pm.probeConfig.timeout)
+	pm.stats.TTLCache.Set(TTLCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}, TTLCacheValue{SentTime: data.Timestamp}, pm.probeConfig.timeout)
+
+	// Also build/update current ProbeRun for JSON output
+	run, exists := pm.stats.CurrentRuns[probeID]
+	if !exists || run.ProbeNum != data.ProbeNum {
+		// New run
+		run = &ProbeRun{
+			ProbeID:   probeID,
+			ProbeNum:  data.ProbeNum,
+			Hops:      make(map[uint8]*HopRun),
+			Timestamp: data.Timestamp,
+		}
+		pm.stats.CurrentRuns[probeID] = run
+	}
+
+	// Initialize hop as pending (will be updated on receive or timeout)
+	if _, ok := run.Hops[data.TTL]; !ok {
+		run.Hops[data.TTL] = &HopRun{
+			TTL:     data.TTL,
+			Timeout: true, // Assume timeout until we get a response
+		}
+	}
 
 	// Get or create HopStats entry
 	hopStats, exists := probeStats.Hops[data.TTL]
@@ -238,7 +341,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	hopStats.CurrentIP = data.IP
 
 	// Check and remove from TTL cache
-	cacheKey := TTLCacheKey{ProbeID: probeID, TTL: data.TTL}
+	cacheKey := TTLCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}
 	sentTime := time.Time{}
 	if cacheEntry, present := pm.stats.TTLCache.GetAndDelete(cacheKey); present {
 		sentTime = cacheEntry.Value().SentTime
@@ -250,6 +353,18 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	// Update and calculate stats
 
 	rtt := data.Timestamp.Sub(sentTime).Microseconds()
+
+	// Update ProbeRun for this iteration
+	if run, ok := pm.stats.CurrentRuns[probeID]; ok && run.ProbeNum == data.ProbeNum {
+		run.Hops[data.TTL] = &HopRun{
+			TTL:      data.TTL,
+			IP:       data.IP,
+			RTT:      rtt,
+			Timeout:  false,
+			PTR:      ipStats.PTR,
+			RecvTime: data.Timestamp,
+		}
+	}
 
 	ipStats.Last = rtt
 

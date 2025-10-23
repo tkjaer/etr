@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"sync"
@@ -37,29 +35,19 @@ func NewJSONOutput(filename string) (*JSONOutput, error) {
 }
 
 func (j *JSONOutput) UpdateHop(probeID uint16, ttl uint8, hopStats HopStats) {
-	// No-op for JSON, only output on complete
+	// No-op for JSON, only output on complete run
 }
 
 func (j *JSONOutput) CompleteProbe(probeID uint16, stats ProbeStats) {
+	// No-op for JSON, we use CompleteProbeRun instead
+}
+
+func (j *JSONOutput) CompleteProbeRun(run *ProbeRun) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	// Compute path hash
-	path := getProbePath(stats)
-	hash := sha256.Sum256([]byte(path))
-	hashStr := hex.EncodeToString(hash[:])
 
-	// Prepare output struct
-	out := struct {
-		ProbeID  uint16     `json:"probe_id"`
-		PathHash string     `json:"path_hash"`
-		Stats    ProbeStats `json:"stats"`
-	}{
-		ProbeID:  probeID,
-		PathHash: hashStr,
-		Stats:    stats,
-	}
-
-	_ = j.enc.Encode(out)
+	// Just output the run directly
+	_ = j.enc.Encode(run)
 }
 
 func (j *JSONOutput) Close() error {

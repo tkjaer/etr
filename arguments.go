@@ -42,9 +42,9 @@ func ParseArgs() (Args, error) {
 	flag.DurationVarP(&args.interTTLDelay, "inter-ttl-delay", "h", 100*time.Millisecond, "Inter-TTL delay (delay between each TTL or hop for a probe)")
 	flag.DurationVarP(&args.interProbeDelay, "inter-probe-delay", "d", 2*time.Second, "Inter-probe delay (delay between each probe)")
 	flag.DurationVarP(&args.timeout, "timeout", "t", 1*time.Second, "Timeout")
-	flag.BoolVarP(&args.json, "json", "j", false, "Output json to stdout")
-	flag.StringVarP(&args.log, "log", "l", "", "Log file path, empty means no logging")
-	flag.StringVar(&args.logLevel, "log-level", "error", "Log level: debug, info, warn, error")
+	flag.BoolVarP(&args.json, "json", "j", false, "Output JSON to stdout (disables TUI)")
+	flag.StringVarP(&args.log, "log", "l", "", "Diagnostic log file path (empty = no diagnostic logs)")
+	flag.StringVar(&args.logLevel, "log-level", "error", "Diagnostic log level: debug, info, warn, error")
 	flag.Parse()
 
 	args.destination = flag.Arg(0)
