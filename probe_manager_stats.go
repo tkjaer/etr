@@ -1,8 +1,8 @@
 package main
 
 import (
-	"log/slog"
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
