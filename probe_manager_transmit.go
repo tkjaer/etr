@@ -22,6 +22,7 @@ func (pm *ProbeManager) transmitRoutine() error {
 					ProbeID:   event.ProbeID,
 					EventType: "sent",
 					Data: &ProbeEventDataSent{
+						ProbeNum:  event.ProbeNum,
 						TTL:       event.TTL,
 						Timestamp: time.Now(),
 					},

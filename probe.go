@@ -28,9 +28,10 @@ type ProbeConfig struct {
 }
 
 type TransmitEvent struct {
-	Buffer  gopacket.SerializeBuffer
-	ProbeID uint16
-	TTL     uint8
+	Buffer   gopacket.SerializeBuffer
+	ProbeID  uint16
+	ProbeNum uint
+	TTL      uint8
 }
 
 // calculateMSS calculates the Maximum Segment Size based on interface MTU and IP version
@@ -132,6 +133,7 @@ type Probe struct {
 	config       *ProbeConfig
 	transmitChan chan TransmitEvent
 	responseChan chan uint
+	statsChan    chan ProbeEvent
 	stop         chan struct{}
 	wg           *sync.WaitGroup
 }
@@ -207,9 +209,10 @@ func (p *Probe) Run() {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
 						p.transmitChan <- TransmitEvent{
-							Buffer:  buf,
-							ProbeID: p.probeID,
-							TTL:     ttl,
+							Buffer:   buf,
+							ProbeID:  p.probeID,
+							ProbeNum: uint(n),
+							TTL:      ttl,
 						}
 					case layers.IPProtocolUDP:
 						udp := layers.UDP{
@@ -223,9 +226,10 @@ func (p *Probe) Run() {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
 						p.transmitChan <- TransmitEvent{
-							Buffer:  buf,
-							ProbeID: p.probeID,
-							TTL:     ttl,
+							Buffer:   buf,
+							ProbeID:  p.probeID,
+							ProbeNum: uint(n),
+							TTL:      ttl,
 						}
 					}
 				case layers.IPProtocolIPv6:
@@ -252,9 +256,10 @@ func (p *Probe) Run() {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
 						p.transmitChan <- TransmitEvent{
-							Buffer:  buf,
-							ProbeID: p.probeID,
-							TTL:     ttl,
+							Buffer:   buf,
+							ProbeID:  p.probeID,
+							ProbeNum: uint(n),
+							TTL:      ttl,
 						}
 					case layers.IPProtocolUDP:
 						udp := layers.UDP{
@@ -268,9 +273,10 @@ func (p *Probe) Run() {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
 						p.transmitChan <- TransmitEvent{
-							Buffer:  buf,
-							ProbeID: p.probeID,
-							TTL:     ttl,
+							Buffer:   buf,
+							ProbeID:  p.probeID,
+							ProbeNum: uint(n),
+							TTL:      ttl,
 						}
 					}
 				}
@@ -286,8 +292,25 @@ func (p *Probe) Run() {
 		if time.Since(lastProbeStart) < probeConfig.interProbeDelay {
 			time.Sleep(probeConfig.interProbeDelay - time.Since(lastProbeStart))
 		}
+
+		// Notify that this iteration is complete
+		p.statsChan <- ProbeEvent{
+			ProbeID:   p.probeID,
+			EventType: "iteration_complete",
+			Data: &ProbeEventDataIterationComplete{
+				ProbeNum:  uint(n),
+				Timestamp: time.Now(),
+			},
+		}
 	}
 	// Wait for any remaining responses before exiting
 	time.Sleep(probeConfig.timeout)
 	slog.Debug("Probe finished sending all probes", "probe_id", p.probeID)
+
+	// Notify stats processor that this probe is complete
+	p.statsChan <- ProbeEvent{
+		ProbeID:   p.probeID,
+		EventType: "complete",
+		Data:      nil,
+	}
 }
