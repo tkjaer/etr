@@ -52,6 +52,7 @@ type ProbeEventDataIterationComplete struct {
 
 type outputConfig struct {
 	jsonOutput bool
+	jsonFile   string
 }
 
 // FIXME: Rewrite this to only have the needed elements
@@ -142,6 +143,7 @@ func NewProbeManager(a Args) (*ProbeManager, error) {
 		},
 		outputConfig: outputConfig{
 			jsonOutput: a.json,
+			jsonFile:   a.jsonFile,
 		},
 	}
 
@@ -383,6 +385,16 @@ func (pm *ProbeManager) createOutputs() (*BubbleTUIOutput, *OutputManager) {
 		bubbleTUI = NewBubbleTUIOutput(info)
 		bubbleTUI.Start()
 		om.Register(bubbleTUI)
+	}
+
+	// If JSON file output is enabled, write to file (alongside TUI if not disabled)
+	if pm.outputConfig.jsonFile != "" {
+		jsonOut, err := NewJSONOutput(pm.outputConfig.jsonFile)
+		if err == nil {
+			om.Register(jsonOut)
+		} else {
+			slog.Warn("Failed to create JSON file output", "error", err)
+		}
 	}
 
 	return bubbleTUI, om

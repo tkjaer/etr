@@ -21,6 +21,7 @@ type Args struct {
 	interTTLDelay   time.Duration
 	timeout         time.Duration
 	json            bool   // output json to stdout
+	jsonFile        string // output json to file while showing TUI
 	log             string // log file path, empty means no logging
 	logLevel        string // log level: debug, info, warn, error
 	destination     string
@@ -43,6 +44,7 @@ func ParseArgs() (Args, error) {
 	flag.DurationVarP(&args.interProbeDelay, "inter-probe-delay", "d", 2*time.Second, "Inter-probe delay (delay between each probe)")
 	flag.DurationVarP(&args.timeout, "timeout", "t", 1*time.Second, "Timeout")
 	flag.BoolVarP(&args.json, "json", "j", false, "Output JSON to stdout (disables TUI)")
+	flag.StringVarP(&args.jsonFile, "json-file", "J", "", "Output JSON to file (keeps TUI enabled)")
 	flag.StringVarP(&args.log, "log", "l", "", "Diagnostic log file path (empty = no diagnostic logs)")
 	flag.StringVar(&args.logLevel, "log-level", "error", "Diagnostic log level: debug, info, warn, error")
 	flag.Parse()
@@ -53,6 +55,8 @@ func ParseArgs() (Args, error) {
 	}
 
 	switch {
+	case args.json && args.jsonFile != "":
+		return args, errors.New("cannot use both --json and --json-file")
 	case args.TCP && args.UDP:
 		return args, errors.New("cannot use both TCP and UDP")
 	case !args.TCP && !args.UDP:

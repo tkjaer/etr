@@ -11,10 +11,10 @@ import (
 
 // ProbeRun represents a single TTL iteration for one probe
 type ProbeRun struct {
-	ProbeID   uint16            `json:"probe_id"`
-	ProbeNum  uint              `json:"probe_num"` // Which iteration (0, 1, 2, ...)
-	Hops      map[uint8]*HopRun `json:"hops"`      // TTL -> hop result
-	Timestamp time.Time         `json:"timestamp"`
+	ProbeID   uint16    `json:"probe_id"`
+	ProbeNum  uint      `json:"probe_num"` // Which iteration (0, 1, 2, ...)
+	Hops      []*HopRun `json:"hops"`      // Hops sorted by TTL
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // HopRun represents the result for a single TTL in one probe run
@@ -27,10 +27,18 @@ type HopRun struct {
 	RecvTime time.Time `json:"recv_time"` // When response was received
 }
 
+// ProbeRunBuilder is used internally to build a ProbeRun incrementally
+type ProbeRunBuilder struct {
+	ProbeID   uint16
+	ProbeNum  uint
+	Hops      map[uint8]*HopRun // TTL -> hop result (internal map for building)
+	Timestamp time.Time
+}
+
 // Top-level stats structure for all probes
 type ProbeManagerStats struct {
 	Probes      map[uint16]*ProbeStats
-	CurrentRuns map[uint16]*ProbeRun // Current probe run being built for each probe ID
+	CurrentRuns map[uint16]*ProbeRunBuilder // Current probe run being built for each probe ID
 	Mutex       sync.RWMutex
 	TTLCache    *ttlcache.Cache[TTLCacheKey, TTLCacheValue]
 }
@@ -80,7 +88,7 @@ type HopIPStats struct {
 func (pm *ProbeManager) statsProcessor() {
 	pm.stats = ProbeManagerStats{
 		Probes:      make(map[uint16]*ProbeStats),
-		CurrentRuns: make(map[uint16]*ProbeRun),
+		CurrentRuns: make(map[uint16]*ProbeRunBuilder),
 		Mutex:       sync.RWMutex{},
 		TTLCache:    ttlcache.New(ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.timeout)),
 	}
@@ -201,13 +209,8 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 		return
 	}
 
-	// Build ProbeRun from ProbeStats (just use the "Last" value from each hop)
-	run := &ProbeRun{
-		ProbeID:   probeID,
-		ProbeNum:  data.ProbeNum,
-		Hops:      make(map[uint8]*HopRun),
-		Timestamp: data.Timestamp,
-	}
+	// Build temporary map of hops
+	hopsMap := make(map[uint8]*HopRun)
 
 	pm.stats.Mutex.RLock()
 	for ttl, hopStats := range probeStats.Hops {
@@ -215,18 +218,23 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 			// Find the IP stats for this hop
 			ipStats, ok := hopStats.IPs[hopStats.CurrentIP]
 			if ok {
-				run.Hops[ttl] = &HopRun{
+				// Get the latest PTR from the manager
+				ptrValue := ipStats.PTR
+				if ptr, found := pm.ptrManager.GetPTR(hopStats.CurrentIP); found && ptr != "" {
+					ptrValue = ptr
+				}
+				hopsMap[ttl] = &HopRun{
 					TTL:      ttl,
 					IP:       hopStats.CurrentIP,
 					RTT:      ipStats.Last,
 					Timeout:  false,
-					PTR:      ipStats.PTR,
+					PTR:      ptrValue,
 					RecvTime: data.Timestamp, // Approximate
 				}
 			}
 		} else if hopStats.Lost > 0 {
 			// This hop timed out
-			run.Hops[ttl] = &HopRun{
+			hopsMap[ttl] = &HopRun{
 				TTL:     ttl,
 				IP:      "",
 				RTT:     0,
@@ -236,6 +244,22 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 		}
 	}
 	pm.stats.Mutex.RUnlock()
+
+	// Convert map to sorted slice
+	hopsSlice := make([]*HopRun, 0, len(hopsMap))
+	for ttl := uint8(1); ttl != 0; ttl++ {
+		if hop, ok := hopsMap[ttl]; ok {
+			hopsSlice = append(hopsSlice, hop)
+		}
+	}
+
+	// Build ProbeRun with sorted hops
+	run := &ProbeRun{
+		ProbeID:   probeID,
+		ProbeNum:  data.ProbeNum,
+		Hops:      hopsSlice,
+		Timestamp: data.Timestamp,
+	}
 
 	// Send to output
 	pm.outputChan <- outputMsg{
@@ -265,7 +289,7 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 	run, exists := pm.stats.CurrentRuns[probeID]
 	if !exists || run.ProbeNum != data.ProbeNum {
 		// New run
-		run = &ProbeRun{
+		run = &ProbeRunBuilder{
 			ProbeID:   probeID,
 			ProbeNum:  data.ProbeNum,
 			Hops:      make(map[uint8]*HopRun),
@@ -354,6 +378,14 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 
 	rtt := data.Timestamp.Sub(sentTime).Microseconds()
 
+	// Get the latest PTR from the manager
+	ptrValue := ipStats.PTR
+	if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
+		ptrValue = ptr
+		// Update ipStats.PTR as well for consistency
+		ipStats.PTR = ptr
+	}
+
 	// Update ProbeRun for this iteration
 	if run, ok := pm.stats.CurrentRuns[probeID]; ok && run.ProbeNum == data.ProbeNum {
 		run.Hops[data.TTL] = &HopRun{
@@ -361,7 +393,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 			IP:       data.IP,
 			RTT:      rtt,
 			Timeout:  false,
-			PTR:      ipStats.PTR,
+			PTR:      ptrValue,
 			RecvTime: data.Timestamp,
 		}
 	}
