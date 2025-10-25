@@ -6,15 +6,24 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/gopacket/layers"
 	"github.com/jellydator/ttlcache/v3"
 )
 
 // ProbeRun represents a single TTL iteration for one probe
 type ProbeRun struct {
-	ProbeID   uint16    `json:"probe_id"`
-	ProbeNum  uint      `json:"probe_num"` // Which iteration (0, 1, 2, ...)
-	Hops      []*HopRun `json:"hops"`      // Hops sorted by TTL
-	Timestamp time.Time `json:"timestamp"`
+	ProbeID         uint16    `json:"probe_id"`
+	ProbeNum        uint      `json:"probe_num"`        // Which iteration (0, 1, 2, ...)
+	PathHash        string    `json:"path_hash"`        // Hash of the path taken
+	SourceIP        string    `json:"source_ip"`        // Source IP address
+	SourcePort      uint16    `json:"source_port"`      // Source port
+	DestinationIP   string    `json:"destination_ip"`   // Destination IP address
+	DestinationPort uint16    `json:"destination_port"` // Destination port
+	DestinationPTR  string    `json:"destination_ptr"`  // PTR record for destination
+	Protocol        string    `json:"protocol"`         // Protocol (TCP/UDP)
+	ReachedDest     bool      `json:"reached_dest"`     // Whether destination was reached
+	Hops            []*HopRun `json:"hops"`             // Hops sorted by TTL
+	Timestamp       time.Time `json:"timestamp"`
 }
 
 // HopRun represents the result for a single TTL in one probe run
@@ -106,6 +115,9 @@ func (pm *ProbeManager) statsProcessor() {
 		}
 	})
 	go pm.stats.TTLCache.Start()
+
+	// Request PTR lookup for destination IP early
+	go pm.ptrManager.RequestPTR(pm.probeConfig.route.Destination.String())
 	defer pm.stats.TTLCache.Stop()
 
 	for {
@@ -187,85 +199,6 @@ func (pm *ProbeManager) statsProcessor() {
 				}
 			}
 		}
-	}
-}
-
-func (pm *ProbeManager) notifyOutput(probeID uint16, ttl uint8) {
-	// Notify output of hop update (for TUI)
-	pm.outputChan <- outputMsg{
-		probeNum: uint(probeID),
-		ttl:      ttl,
-		msgType:  "hop",
-	}
-}
-
-func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataIterationComplete) {
-	// Convert current ProbeStats to ProbeRun format for this iteration
-	pm.stats.Mutex.RLock()
-	probeStats, exists := pm.stats.Probes[probeID]
-	pm.stats.Mutex.RUnlock()
-
-	if !exists {
-		return
-	}
-
-	// Build temporary map of hops
-	hopsMap := make(map[uint8]*HopRun)
-
-	pm.stats.Mutex.RLock()
-	for ttl, hopStats := range probeStats.Hops {
-		if hopStats.CurrentIP != "" {
-			// Find the IP stats for this hop
-			ipStats, ok := hopStats.IPs[hopStats.CurrentIP]
-			if ok {
-				// Get the latest PTR from the manager
-				ptrValue := ipStats.PTR
-				if ptr, found := pm.ptrManager.GetPTR(hopStats.CurrentIP); found && ptr != "" {
-					ptrValue = ptr
-				}
-				hopsMap[ttl] = &HopRun{
-					TTL:      ttl,
-					IP:       hopStats.CurrentIP,
-					RTT:      ipStats.Last,
-					Timeout:  false,
-					PTR:      ptrValue,
-					RecvTime: data.Timestamp, // Approximate
-				}
-			}
-		} else if hopStats.Lost > 0 {
-			// This hop timed out
-			hopsMap[ttl] = &HopRun{
-				TTL:     ttl,
-				IP:      "",
-				RTT:     0,
-				Timeout: true,
-				PTR:     "",
-			}
-		}
-	}
-	pm.stats.Mutex.RUnlock()
-
-	// Convert map to sorted slice
-	hopsSlice := make([]*HopRun, 0, len(hopsMap))
-	for ttl := uint8(1); ttl != 0; ttl++ {
-		if hop, ok := hopsMap[ttl]; ok {
-			hopsSlice = append(hopsSlice, hop)
-		}
-	}
-
-	// Build ProbeRun with sorted hops
-	run := &ProbeRun{
-		ProbeID:   probeID,
-		ProbeNum:  data.ProbeNum,
-		Hops:      hopsSlice,
-		Timestamp: data.Timestamp,
-	}
-
-	// Send to output
-	pm.outputChan <- outputMsg{
-		probeNum: data.ProbeNum,
-		msgType:  "probe_run",
-		run:      run,
 	}
 }
 
@@ -470,4 +403,117 @@ func (pm *ProbeManager) getProbeStats(probeID uint16) (ProbeStats, bool) {
 		exists = true
 	}
 	return stats, exists
+}
+
+// Notifies the output system of a hop update for TUI
+func (pm *ProbeManager) notifyOutput(probeID uint16, ttl uint8) {
+	pm.outputChan <- outputMsg{
+		probeNum: uint(probeID),
+		ttl:      ttl,
+		msgType:  "hop",
+	}
+}
+
+// Outputs the completed ProbeRun for a given probeID and iteration
+func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataIterationComplete) {
+	// Convert current ProbeStats to ProbeRun format for this iteration
+	pm.stats.Mutex.RLock()
+	probeStats, exists := pm.stats.Probes[probeID]
+	pm.stats.Mutex.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	// Build temporary map of hops
+	hopsMap := make(map[uint8]*HopRun)
+
+	pm.stats.Mutex.RLock()
+	for ttl, hopStats := range probeStats.Hops {
+		if hopStats.CurrentIP != "" {
+			// Find the IP stats for this hop
+			ipStats, ok := hopStats.IPs[hopStats.CurrentIP]
+			if ok {
+				// Get the latest PTR from the manager
+				ptrValue := ipStats.PTR
+				if ptr, found := pm.ptrManager.GetPTR(hopStats.CurrentIP); found && ptr != "" {
+					ptrValue = ptr
+				}
+				hopsMap[ttl] = &HopRun{
+					TTL:      ttl,
+					IP:       hopStats.CurrentIP,
+					RTT:      ipStats.Last,
+					Timeout:  false,
+					PTR:      ptrValue,
+					RecvTime: data.Timestamp, // Approximate
+				}
+			}
+		} else if hopStats.Lost > 0 {
+			// This hop timed out
+			hopsMap[ttl] = &HopRun{
+				TTL:     ttl,
+				IP:      "",
+				RTT:     0,
+				Timeout: true,
+				PTR:     "",
+			}
+		}
+	}
+	pm.stats.Mutex.RUnlock()
+
+	// Convert map to sorted slice
+	hopsSlice := make([]*HopRun, 0, len(hopsMap))
+	for ttl := uint8(1); ttl != 0; ttl++ {
+		if hop, ok := hopsMap[ttl]; ok {
+			hopsSlice = append(hopsSlice, hop)
+		}
+	}
+
+	// Calculate path hash using the configured algorithm
+	pathHash := calculatePathHashFromHops(hopsSlice, pm.outputConfig.hashAlgorithm)
+
+	// Determine protocol name
+	protocol := "TCP"
+	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {
+		protocol = "UDP"
+	}
+
+	// Check if destination was reached (last hop matches destination)
+	reachedDest := false
+	if len(hopsSlice) > 0 {
+		lastHop := hopsSlice[len(hopsSlice)-1]
+		if lastHop.IP == pm.probeConfig.route.Destination.String() {
+			reachedDest = true
+		}
+	}
+
+	// Get destination PTR
+	destIP := pm.probeConfig.route.Destination.String()
+	destPTR := ""
+	if ptr, found := pm.ptrManager.GetPTR(destIP); found && ptr != "" {
+		destPTR = ptr
+	}
+
+	// Build ProbeRun with all metadata
+	run := &ProbeRun{
+		ProbeID:         probeID,
+		ProbeNum:        data.ProbeNum,
+		PathHash:        pathHash,
+		SourceIP:        pm.probeConfig.route.Source.String(),
+		SourcePort:      pm.probeConfig.srcPort + probeID, // Each probe uses a different source port
+		DestinationIP:   destIP,
+		DestinationPort: pm.probeConfig.dstPort,
+		DestinationPTR:  destPTR,
+		Protocol:        protocol,
+		ReachedDest:     reachedDest,
+		Hops:            hopsSlice,
+		Timestamp:       data.Timestamp,
+	}
+
+	// Send to output
+	pm.outputChan <- outputMsg{
+		probeNum: data.ProbeNum,
+		msgType:  "probe_run",
+		run:      run,
+	}
 }

@@ -22,7 +22,7 @@ type ProbeTracker struct {
 type ProbeEvent struct {
 	ProbeID   uint16
 	EventType string // "sent", "received", "timeout", etc.
-	Data      interface{}
+	Data      any
 }
 
 type ProbeEventDataSent struct {
@@ -51,8 +51,9 @@ type ProbeEventDataIterationComplete struct {
 }
 
 type outputConfig struct {
-	jsonOutput bool
-	jsonFile   string
+	jsonOutput    bool
+	jsonFile      string
+	hashAlgorithm string
 }
 
 // FIXME: Rewrite this to only have the needed elements
@@ -142,8 +143,9 @@ func NewProbeManager(a Args) (*ProbeManager, error) {
 			timeout:         a.timeout,
 		},
 		outputConfig: outputConfig{
-			jsonOutput: a.json,
-			jsonFile:   a.jsonFile,
+			jsonOutput:    a.json,
+			jsonFile:      a.jsonFile,
+			hashAlgorithm: a.hashAlgorithm,
 		},
 	}
 
@@ -367,6 +369,7 @@ func (pm *ProbeManager) createOutputs() (*BubbleTUIOutput, *OutputManager) {
 		srcPort:        pm.probeConfig.srcPort,
 		dstPort:        pm.probeConfig.dstPort,
 		parallelProbes: pm.parallelProbes,
+		hashAlgorithm:  pm.outputConfig.hashAlgorithm,
 	}
 	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {
 		info.protocol = "UDP"

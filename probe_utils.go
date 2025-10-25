@@ -1,11 +1,15 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"math"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 )
 
@@ -93,10 +97,86 @@ func calculateLossPct(lost uint, received uint) float64 {
 	return (100 * float64(lost)) / float64(total)
 }
 
-func getProbePath(stats ProbeStats) string {
-	var path []string
-	for ttl := range stats.Hops {
-		path = append(path, stats.Hops[ttl].CurrentIP)
+// calculatePathHash computes a hash of the network path using the specified algorithm
+// It takes a slice of IP addresses representing the path and returns a hash string
+func calculatePathHash(ips []string, algorithm string) string {
+	if len(ips) == 0 {
+		switch algorithm {
+		case "sha256":
+			return "0000000000000000000000000000000000000000000000000000000000000000"
+		case "crc32":
+			return "00000000"
+		default:
+			return "00000000"
+		}
 	}
-	return fmt.Sprintf("%s", strings.Join(path, " "))
+
+	// Build path string from IPs
+	var pathBuilder strings.Builder
+	for _, ip := range ips {
+		if ip != "" {
+			pathBuilder.WriteString(ip)
+			pathBuilder.WriteString("|")
+		}
+	}
+
+	pathString := pathBuilder.String()
+
+	// Calculate hash based on algorithm
+	switch algorithm {
+	case "sha256":
+		hash := sha256.Sum256([]byte(pathString))
+		return hex.EncodeToString(hash[:])
+	case "crc32":
+		hash := crc32.ChecksumIEEE([]byte(pathString))
+		return fmt.Sprintf("%08x", hash)
+	default:
+		// Default to CRC32
+		hash := crc32.ChecksumIEEE([]byte(pathString))
+		return fmt.Sprintf("%08x", hash)
+	}
+}
+
+// calculatePathHashFromHops computes a hash from a slice of HopRun structs
+func calculatePathHashFromHops(hops []*HopRun, algorithm string) string {
+	// Extract IPs from hops
+	ips := make([]string, 0, len(hops))
+	for _, hop := range hops {
+		if hop != nil && hop.IP != "" {
+			ips = append(ips, hop.IP)
+		}
+	}
+	return calculatePathHash(ips, algorithm)
+}
+
+// calculatePathHashFromProbe computes a hash from a ProbeStats struct
+func calculatePathHashFromProbe(probe *ProbeStats, algorithm string) string {
+	if probe == nil || len(probe.Hops) == 0 {
+		switch algorithm {
+		case "sha256":
+			return "0000000000000000000000000000000000000000000000000000000000000000"
+		case "crc32":
+			return "00000000"
+		default:
+			return "00000000"
+		}
+	}
+
+	// Get sorted TTLs to ensure consistent ordering
+	ttls := make([]uint8, 0, len(probe.Hops))
+	for ttl := range probe.Hops {
+		ttls = append(ttls, ttl)
+	}
+	slices.Sort(ttls)
+
+	// Extract IPs from sorted hops
+	ips := make([]string, 0, len(probe.Hops))
+	for _, ttl := range ttls {
+		hop := probe.Hops[ttl]
+		if hop.CurrentIP != "" {
+			ips = append(ips, hop.CurrentIP)
+		}
+	}
+
+	return calculatePathHash(ips, algorithm)
 }

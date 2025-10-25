@@ -6,6 +6,7 @@ type OutputInfo struct {
 	srcPort        uint16
 	dstPort        uint16
 	parallelProbes uint16
+	hashAlgorithm  string
 }
 
 // Output interface for different output types

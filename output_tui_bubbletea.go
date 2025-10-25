@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"hash/crc32"
 	"log/slog"
 	"slices"
 	"strings"
@@ -38,13 +37,14 @@ type tickMsg time.Time
 // tuiModel holds the Bubble Tea model state
 type tuiModel struct {
 	// Data
-	probes      map[uint16]*ProbeStats
-	mu          sync.RWMutex
-	destination string
-	protocol    string
-	dstPort     uint16
-	srcPort     uint16
-	startTime   time.Time
+	probes        map[uint16]*ProbeStats
+	mu            sync.RWMutex
+	destination   string
+	protocol      string
+	dstPort       uint16
+	srcPort       uint16
+	startTime     time.Time
+	hashAlgorithm string
 
 	// UI state
 	width         int
@@ -244,6 +244,7 @@ func NewBubbleTUIOutput(info OutputInfo) *BubbleTUIOutput {
 		srcPort:       info.srcPort,
 		dstPort:       info.dstPort,
 		startTime:     time.Now(),
+		hashAlgorithm: info.hashAlgorithm,
 		selectedProbe: 0,
 		focus:         focusSummary,
 		help:          help.New(),
@@ -494,7 +495,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	// Calculate unique paths
 	uniquePaths := make(map[string]bool)
 	for _, probe := range m.probes {
-		hash := calculatePathHash(probe)
+		hash := calculatePathHashFromProbe(probe, m.hashAlgorithm)
 		uniquePaths[hash] = true
 	}
 
@@ -550,7 +551,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 
 	for _, id := range probeIDs[start:end] {
 		probe := m.probes[id]
-		stats := calculateProbeAggregateStats(probe)
+		stats := calculateProbeAggregateStats(probe, m.hashAlgorithm)
 
 		style := hopStyle
 		prefix := "  "
@@ -575,7 +576,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		cells := []string{
 			formatCell(fmt.Sprintf("#%d", id), 6, alignLeft),
 			formatCell(fmt.Sprintf("%d", srcPort), 7, alignRight),
-			formatCell(stats.PathHash, 9, alignRight),
+			formatCell(fmt.Sprintf("%.8s", stats.PathHash), 9, alignRight),
 			formatCell(fmt.Sprintf("%d", stats.NumHops), 4, alignRight),
 			formatCell(fmt.Sprintf("%.1f%%", stats.LossPct), 8, alignRight),
 			formatCell(fmt.Sprintf("%.2f", stats.AvgRTT), 8, alignRight),
@@ -788,42 +789,11 @@ type probeAggregateStats struct {
 	MinRTT   float64
 	MaxRTT   float64
 	StdDev   float64
-	PathHash string // CRC32 hash of the path (8 hex chars)
-}
-
-// calculatePathHash computes a CRC32 hash of the network path
-func calculatePathHash(probe *ProbeStats) string {
-	if probe == nil || len(probe.Hops) == 0 {
-		return "00000000"
-	}
-
-	// Get sorted TTLs to ensure consistent ordering
-	ttls := make([]uint8, 0, len(probe.Hops))
-	for ttl := range probe.Hops {
-		ttls = append(ttls, ttl)
-	}
-	slices.Sort(ttls)
-
-	// Build path string from CurrentIP at each hop
-	var pathBuilder strings.Builder
-	for _, ttl := range ttls {
-		hop := probe.Hops[ttl]
-		if hop.CurrentIP != "" {
-			pathBuilder.WriteString(hop.CurrentIP)
-			pathBuilder.WriteString("|")
-		}
-	}
-
-	// Calculate CRC32 hash
-	pathString := pathBuilder.String()
-	hash := crc32.ChecksumIEEE([]byte(pathString))
-
-	// Return as 8-character hex string
-	return fmt.Sprintf("%08x", hash)
+	PathHash string // CRC32 or SHA256 hash of the path (truncated to 8 hex chars)
 }
 
 // calculateProbeAggregateStats calculates aggregate stats for a probe
-func calculateProbeAggregateStats(probe *ProbeStats) probeAggregateStats {
+func calculateProbeAggregateStats(probe *ProbeStats, algorithm string) probeAggregateStats {
 	stats := probeAggregateStats{
 		NumHops: len(probe.Hops),
 	}
@@ -886,7 +856,7 @@ func calculateProbeAggregateStats(probe *ProbeStats) probeAggregateStats {
 	}
 
 	// Calculate path hash
-	stats.PathHash = calculatePathHash(probe)
+	stats.PathHash = calculatePathHashFromProbe(probe, algorithm)
 
 	return stats
 }

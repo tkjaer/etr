@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-// JSONOutput writes probe summary to a file or stdout when complete
+// JSONOutput writes probe data to a file or stdout when complete
 type JSONOutput struct {
 	mu       sync.Mutex
 	file     *os.File

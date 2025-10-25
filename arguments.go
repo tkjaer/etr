@@ -22,6 +22,7 @@ type Args struct {
 	timeout         time.Duration
 	json            bool   // output json to stdout
 	jsonFile        string // output json to file while showing TUI
+	hashAlgorithm   string // hash algorithm: crc32, sha256
 	log             string // log file path, empty means no logging
 	logLevel        string // log level: debug, info, warn, error
 	destination     string
@@ -45,6 +46,7 @@ func ParseArgs() (Args, error) {
 	flag.DurationVarP(&args.timeout, "timeout", "t", 1*time.Second, "Timeout")
 	flag.BoolVarP(&args.json, "json", "j", false, "Output JSON to stdout (disables TUI)")
 	flag.StringVarP(&args.jsonFile, "json-file", "J", "", "Output JSON to file (keeps TUI enabled)")
+	flag.StringVar(&args.hashAlgorithm, "hash-algorithm", "crc32", "Hash algorithm for path hash: crc32, sha256 (truncated to 8 hex chars in TUI)")
 	flag.StringVarP(&args.log, "log", "l", "", "Diagnostic log file path (empty = no diagnostic logs)")
 	flag.StringVar(&args.logLevel, "log-level", "error", "Diagnostic log level: debug, info, warn, error")
 	flag.Parse()
@@ -57,6 +59,8 @@ func ParseArgs() (Args, error) {
 	switch {
 	case args.json && args.jsonFile != "":
 		return args, errors.New("cannot use both --json and --json-file")
+	case args.hashAlgorithm != "crc32" && args.hashAlgorithm != "sha256":
+		return args, errors.New("hash algorithm must be either 'crc32' or 'sha256'")
 	case args.TCP && args.UDP:
 		return args, errors.New("cannot use both TCP and UDP")
 	case !args.TCP && !args.UDP:
