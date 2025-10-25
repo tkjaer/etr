@@ -28,6 +28,7 @@ func fetchRIBMessages() ([]route.Message, error) {
 func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 	mostSpecific := Route{}
 	mostSpecificMaskLength := int(0)
+	routeFound := false
 
 	for _, msg := range msgs {
 		rm := msg.(*route.RouteMessage)
@@ -37,20 +38,24 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 		mask := rm.Addrs[2]
 		source := rm.Addrs[5]
 
-		if rm.Flags&syscall.RTF_UP == 0 {
-			// Skip down routes
+		if mask == nil {
+			// Skip routes without a mask
 			continue
 		}
 
-		if _, ok := gateway.(*route.LinkAddr); ok {
-			// Gateway is a link address, skipping we've not implemented this yet
+		if rm.Flags&syscall.RTF_UP == 0 {
+			// Skip down routes
 			continue
 		}
 
 		switch destination.(type) {
 		case *route.Inet4Addr:
 			a := netip.AddrFrom4(destination.(*route.Inet4Addr).IP)
-			g := netip.AddrFrom4(gateway.(*route.Inet4Addr).IP)
+			// Support routes without a gateway (i.e., directly connected)
+			g := netip.Addr{}
+			if _, ok := gateway.(*route.Inet4Addr); ok {
+				g = netip.AddrFrom4(gateway.(*route.Inet4Addr).IP)
+			}
 			s := netip.AddrFrom4(source.(*route.Inet4Addr).IP)
 
 			// Check if the destination is a host route and matches the IP
@@ -67,8 +72,8 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 				}, nil
 			}
 
-			// Check if the destination is a subnet and contains the IP
-			if ip.Is4() && mask != nil {
+			// Check if the destination subnet contains the IP
+			if ip.Is4() {
 				bitLen, _ := net.IPv4Mask(mask.(*route.Inet4Addr).IP[0], mask.(*route.Inet4Addr).IP[1], mask.(*route.Inet4Addr).IP[2], mask.(*route.Inet4Addr).IP[3]).Size()
 				subnet := netip.PrefixFrom(a, bitLen)
 				if subnet.Contains(ip) {
@@ -76,13 +81,14 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 					if err != nil {
 						return Route{}, err
 					}
-					if bitLen >= mostSpecificMaskLength {
+					if bitLen > mostSpecificMaskLength || (bitLen == mostSpecificMaskLength && !routeFound) {
 						mostSpecific = Route{
 							Destination: ip,
 							Gateway:     g,
 							Source:      s,
 							Interface:   intf,
 						}
+						routeFound = true
 						mostSpecificMaskLength = bitLen
 					}
 				}
@@ -90,7 +96,11 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 
 		case *route.Inet6Addr:
 			a := netip.AddrFrom16(destination.(*route.Inet6Addr).IP)
-			g := netip.AddrFrom16(gateway.(*route.Inet6Addr).IP)
+			// Support routes without a gateway (i.e., directly connected)
+			g := netip.Addr{}
+			if _, ok := gateway.(*route.Inet6Addr); ok {
+				g = netip.AddrFrom16(gateway.(*route.Inet6Addr).IP)
+			}
 			s := netip.AddrFrom16(source.(*route.Inet6Addr).IP)
 
 			// Check if the destination is a host route and matches the IP
@@ -107,8 +117,8 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 				}, nil
 			}
 
-			// Check if the destination is a subnet and contains the IP
-			if ip.Is6() && mask != nil {
+			// Check if the destination subnet contains the IP
+			if ip.Is6() {
 				bitLen, _ := net.IPMask(mask.(*route.Inet6Addr).IP[:]).Size()
 				subnet := netip.PrefixFrom(a, bitLen)
 				if subnet.Contains(ip) {
@@ -116,13 +126,14 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 					if err != nil {
 						return Route{}, err
 					}
-					if bitLen >= mostSpecificMaskLength {
+					if bitLen > mostSpecificMaskLength || (bitLen == mostSpecificMaskLength && !routeFound) {
 						mostSpecific = Route{
 							Destination: ip,
 							Gateway:     g,
 							Source:      s,
 							Interface:   intf,
 						}
+						routeFound = true
 						mostSpecificMaskLength = bitLen
 					}
 				}
