@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+
 	"github.com/google/gopacket"
 )
 
@@ -24,25 +25,24 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 			probeID := uint16(port) - pm.probeConfig.srcPort
 			// All valid received probes will have a TTL.
 			if ttl > 0 {
-				pm.statsChan <- ProbeEvent{
-					ProbeID:   probeID,
-					EventType: "received",
-					Data: &ProbeEventDataReceived{
-						ProbeNum:  probeNum,
-						TTL:       ttl,
-						Timestamp: timestamp,
-						IP:        ip.String(),
-						Flag:      flag,
-					},
-				}
-
-				// Report if we've received a non-"TTL exceeded" response so we
-				// stop sending further packets for this probe number.
-				if flag != "TTL" {
-					if _, exists := pm.probeTracker.probes[probeID]; exists {
-						pm.probeTracker.probes[probeID].responseChan <- probeNum
-					} else {
-						slog.Debug("No probe found when notifying response received", "probe_id", probeID)
+				if _, exists := pm.probeTracker.probes[probeID]; exists {
+					// Update stats
+					pm.probeTracker.probes[probeID].statsChan <- ProbeEvent{
+						ProbeID:   probeID,
+						EventType: "received",
+						Data: &ProbeEventDataReceived{
+							ProbeNum:  probeNum,
+							TTL:       ttl,
+							Timestamp: timestamp,
+							IP:        ip.String(),
+							Flag:      flag,
+						},
+					}
+					// Update probe
+					pm.probeTracker.probes[probeID].responseChan <- ResponseEvent{
+						ProbeNum: probeNum,
+						TTL:      ttl,
+						Flag:     flag,
 					}
 				}
 			}
