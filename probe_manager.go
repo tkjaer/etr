@@ -56,24 +56,16 @@ type outputConfig struct {
 	hashAlgorithm string
 }
 
-// FIXME: Rewrite this to only have the needed elements
-// Message type for communication between sendStats() and outputStats().
 type outputMsg struct {
-	probeNum uint
-	ttl      uint8
-	ip       string
-	// host     string
-	// sentTime time.Time
-	// rtt      time.Duration
-	// delayVariation time.Duration
-	// avgRTT time.Duration
-	// minRTT time.Duration
-	// maxRTT time.Duration
-	loss    uint
-	flag    string
-	msgType string    // Added to differentiate message types: "probe_result", "ptr_result", etc.
-	ptrName string    // Added for PTR results
-	run     *ProbeRun // For probe_run messages
+	probeNum   uint
+	ttl        uint8
+	ip         string
+	loss       uint
+	flag       string
+	msgType    string    // Added to differentiate message types: "probe_result", "ptr_result", etc.
+	ptrName    string    // Added for PTR results
+	run        *ProbeRun // For probe_run messages
+	deleteTTLs []uint8   // For delete_hops messages
 }
 
 // ProbeManager coordinates multiple parallel probes to the same destination
@@ -92,7 +84,7 @@ type ProbeManager struct {
 	handle       *pcap.Handle
 	outputChan   chan outputMsg
 	transmitChan chan TransmitEvent
-	responseChan chan uint
+	responseChan chan ResponseEvent
 	ptrManager   *ptr.PtrManager
 
 	// Probe Configuration
@@ -120,7 +112,7 @@ func NewProbeManager(a Args) (*ProbeManager, error) {
 		statsChan:    make(chan ProbeEvent, 100),
 		outputChan:   make(chan outputMsg, 100),
 		transmitChan: make(chan TransmitEvent, 100),
-		responseChan: make(chan uint, 100),
+		responseChan: make(chan ResponseEvent, 100),
 		ptrManager:   ptr.NewPtrManager(),
 
 		probeTracker: ProbeTracker{
@@ -411,6 +403,9 @@ func (pm *ProbeManager) outputRoutine(om *OutputManager) {
 			if probeHopStats, exists := pm.getProbeHopStats(uint16(msg.probeNum), msg.ttl); exists {
 				om.UpdateHop(uint16(msg.probeNum), msg.ttl, probeHopStats)
 			}
+		case "delete_hops":
+			// Notify outputs to delete specific hops
+			om.DeleteHops(uint16(msg.probeNum), msg.deleteTTLs)
 		case "probe_run":
 			// Output individual probe run (for JSON)
 			if msg.run != nil {

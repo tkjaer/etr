@@ -26,9 +26,10 @@ type BubbleTUIOutput struct {
 
 // tuiUpdateMsg is sent when hop stats are updated
 type tuiUpdateMsg struct {
-	probeID  uint16
-	ttl      uint8
-	hopStats HopStats
+	probeID    uint16
+	ttl        uint8
+	hopStats   HopStats
+	deleteTTLs []uint8 // TTLs to delete from this probe
 }
 
 // tickMsg is sent periodically to refresh the display
@@ -325,6 +326,19 @@ func (b *BubbleTUIOutput) CompleteProbe(probeID uint16, stats ProbeStats) {
 	// Updates are handled through UpdateHop
 }
 
+func (b *BubbleTUIOutput) DeleteHops(probeID uint16, ttls []uint8) {
+	b.mu.RLock()
+	updateCh := b.updateCh
+	b.mu.RUnlock()
+
+	if updateCh != nil && len(ttls) > 0 {
+		updateCh <- tuiUpdateMsg{
+			probeID:    probeID,
+			deleteTTLs: ttls,
+		}
+	}
+}
+
 func (b *BubbleTUIOutput) CompleteProbeRun(run *ProbeRun) {
 	// No-op for TUI, we use UpdateHop for real-time updates
 }
@@ -432,9 +446,17 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if probe.Hops == nil {
 				probe.Hops = make(map[uint8]*HopStats)
 			}
-			// Deep copy the hop stats
-			hopCopy := msg.hopStats
-			probe.Hops[msg.ttl] = &hopCopy
+
+			// Handle hop deletions
+			if len(msg.deleteTTLs) > 0 {
+				for _, ttl := range msg.deleteTTLs {
+					delete(probe.Hops, ttl)
+				}
+			} else {
+				// Deep copy the hop stats
+				hopCopy := msg.hopStats
+				probe.Hops[msg.ttl] = &hopCopy
+			}
 		}
 		m.mu.Unlock()
 		return m, waitForUpdate(m.updateCh)

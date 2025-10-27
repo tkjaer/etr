@@ -42,6 +42,10 @@ func (j *JSONOutput) CompleteProbe(probeID uint16, stats ProbeStats) {
 	// No-op for JSON, we use CompleteProbeRun instead
 }
 
+func (j *JSONOutput) DeleteHops(probeID uint16, ttls []uint8) {
+	// No-op for JSON, as it doesn't maintain state
+}
+
 func (j *JSONOutput) CompleteProbeRun(run *ProbeRun) {
 	j.mu.Lock()
 	defer j.mu.Unlock()

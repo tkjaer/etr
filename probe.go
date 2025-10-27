@@ -34,6 +34,12 @@ type TransmitEvent struct {
 	TTL      uint8
 }
 
+type ResponseEvent struct {
+	ProbeNum uint
+	TTL      uint8
+	Flag     string
+}
+
 // calculateMSS calculates the Maximum Segment Size based on interface MTU and IP version
 func calculateMSS(iface *net.Interface, isIPv6 bool) uint16 {
 	mtu := iface.MTU
@@ -132,7 +138,7 @@ type Probe struct {
 	probeID      uint16
 	config       *ProbeConfig
 	transmitChan chan TransmitEvent
-	responseChan chan uint
+	responseChan chan ResponseEvent
 	statsChan    chan ProbeEvent
 	stop         chan struct{}
 	wg           *sync.WaitGroup
@@ -154,6 +160,7 @@ func (p *Probe) Run() {
 	}
 
 	var lastProbeStart time.Time
+	maxTTL := probeConfig.maxTTL
 
 	for n := range p.config.numProbes {
 		select {
@@ -168,16 +175,27 @@ func (p *Probe) Run() {
 		ttl := uint8(0)
 
 	TTLLoop:
-		for ttl < p.config.maxTTL {
+		for ttl < maxTTL {
 			select {
 			case <-p.stop:
 				slog.Debug("Probe received stop signal during TTL loop", "probe_id", p.probeID)
 				return
 			case response := <-p.responseChan:
-				// Stop sending TTL increments if we've received a response from the
-				// final destination for this probe.
-				if response == uint(n) {
-					break TTLLoop
+				if response.ProbeNum == n {
+					// Update maxTTL to original value if we got a TTL exceeded at current maxTTL
+					// This allows continuing probing if the path has changed.
+					if response.Flag == "TTL" && response.TTL == maxTTL {
+						maxTTL = probeConfig.maxTTL
+					}
+					// Stop sending TTL increments if we've received a response from the
+					// final destination for this probe.
+					if response.Flag != "TTL" {
+						// Update maxTTL to the TTL of the received response
+						if response.TTL < maxTTL {
+							maxTTL = response.TTL
+						}
+						break TTLLoop
+					}
 				} else {
 					slog.Debug("Received response for wrong probe", "expected", n, "received", response)
 				}
@@ -287,10 +305,15 @@ func (p *Probe) Run() {
 				}
 			}
 		}
-		// Sleep for interProbeDelay if we haven't already spent that much time
-		// sending the probe.
-		if time.Since(lastProbeStart) < probeConfig.interProbeDelay {
-			time.Sleep(probeConfig.interProbeDelay - time.Since(lastProbeStart))
+		// If this is the first probe run, we'll sleep for timeout to allow responses to arrive
+		if n == 0 {
+			time.Sleep(probeConfig.timeout)
+		} else {
+			// Sleep for interProbeDelay if we haven't already spent that much time
+			// sending the probe.
+			if time.Since(lastProbeStart) < probeConfig.interProbeDelay {
+				time.Sleep(probeConfig.interProbeDelay - time.Since(lastProbeStart))
+			}
 		}
 
 		// Notify that this iteration is complete

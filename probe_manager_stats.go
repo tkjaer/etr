@@ -274,8 +274,9 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	// Get or create HopIPStats
 	ipStats, exists := hopStats.IPs[data.IP]
 	if !exists {
-		// If hopStats only contains a single blank entry, we'll attribute it to this IP
-		// and remove the blank entry
+		// If hopStats only contains a single blank entry (meaning we've had
+		// packet loss on this hop until now), we'll attribute it to this IP and
+		// remove the blank entry
 		if len(hopStats.IPs) == 1 {
 			if blankStats, ok := hopStats.IPs[""]; ok {
 				ipStats = blankStats
@@ -347,6 +348,28 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	ipStats.SumSquares += rtt * rtt
 	ipStats.Avg = ipStats.Sum / int64(ipStats.Responses)
 	ipStats.StdDev = calculateStdDev(ipStats.Sum, ipStats.SumSquares, ipStats.Responses)
+	// If we've received a non-TTL response and stats exists for > this TTL, we'll
+	// delete the statistics for higher TTLs as they are no longer relevant
+	if data.Flag != "TTL" && len(probeStats.Hops) > int(data.TTL) {
+		var deletedTTLs []uint8
+		for ttl := data.TTL + 1; ; ttl++ {
+			if _, ok := probeStats.Hops[ttl]; ok {
+				delete(probeStats.Hops, ttl)
+				deletedTTLs = append(deletedTTLs, ttl)
+			} else {
+				break
+			}
+		}
+
+		// Notify output manager to delete these hops from the display
+		if len(deletedTTLs) > 0 {
+			pm.outputChan <- outputMsg{
+				probeNum:   uint(probeID),
+				msgType:    "delete_hops",
+				deleteTTLs: deletedTTLs,
+			}
+		}
+	}
 }
 
 func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataTimeout) {
