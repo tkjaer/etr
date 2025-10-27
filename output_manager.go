@@ -12,6 +12,7 @@ type OutputInfo struct {
 // Output interface for different output types
 type Output interface {
 	UpdateHop(probeID uint16, ttl uint8, hopStats HopStats)
+	DeleteHops(probeID uint16, ttls []uint8)
 	CompleteProbe(probeID uint16, stats ProbeStats)
 	CompleteProbeRun(run *ProbeRun)
 	Close() error
@@ -29,6 +30,12 @@ func (om *OutputManager) Register(o Output) {
 func (om *OutputManager) UpdateHop(probeID uint16, ttl uint8, hopStats HopStats) {
 	for _, o := range om.outputs {
 		o.UpdateHop(probeID, ttl, hopStats)
+	}
+}
+
+func (om *OutputManager) DeleteHops(probeID uint16, ttls []uint8) {
+	for _, o := range om.outputs {
+		o.DeleteHops(probeID, ttls)
 	}
 }
 

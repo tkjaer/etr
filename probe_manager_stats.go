@@ -351,11 +351,22 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	// If we've received a non-TTL response and stats exists for > this TTL, we'll
 	// delete the statistics for higher TTLs as they are no longer relevant
 	if data.Flag != "TTL" && len(probeStats.Hops) > int(data.TTL) {
+		var deletedTTLs []uint8
 		for ttl := data.TTL + 1; ; ttl++ {
 			if _, ok := probeStats.Hops[ttl]; ok {
 				delete(probeStats.Hops, ttl)
+				deletedTTLs = append(deletedTTLs, ttl)
 			} else {
 				break
+			}
+		}
+
+		// Notify output manager to delete these hops from the display
+		if len(deletedTTLs) > 0 {
+			pm.outputChan <- outputMsg{
+				probeNum:   uint(probeID),
+				msgType:    "delete_hops",
+				deleteTTLs: deletedTTLs,
 			}
 		}
 	}
