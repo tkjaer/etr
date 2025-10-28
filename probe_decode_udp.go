@@ -8,6 +8,6 @@ func decodeUDPLayer(udpLayer *layers.UDP) (ttl uint8, probeNum uint, port uint) 
 	ttl, probeNum = decodeTTLAndProbe(uint32(udpLayer.Length - 8))
 
 	// We only support TTLExceeded responses for UDP, so we just use the dstPort
-	port = uint(udpLayer.DstPort) // Use destination port for UDP packets
+	port = uint(udpLayer.SrcPort) // Use destination port for UDP packets
 	return
 }
