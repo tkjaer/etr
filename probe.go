@@ -233,13 +233,15 @@ func (p *Probe) Run() {
 							TTL:      ttl,
 						}
 					case layers.IPProtocolUDP:
+						length := uint16(8 + encodeTTLAndProbe(ttl, uint(n)))
+						payload := gopacket.Payload(make([]byte, length-8))
 						udp := layers.UDP{
 							SrcPort: layers.UDPPort(probeConfig.srcPort + p.probeID),
 							DstPort: layers.UDPPort(probeConfig.dstPort),
-							Length:  uint16(8 + encodeTTLAndProbe(ttl, uint(n))),
+							Length:  uint16(length),
 						}
 						udp.SetNetworkLayerForChecksum(&ip)
-						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
+						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp, &payload)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
@@ -280,13 +282,15 @@ func (p *Probe) Run() {
 							TTL:      ttl,
 						}
 					case layers.IPProtocolUDP:
+						length := uint16(8 + encodeTTLAndProbe(ttl, uint(n)))
+						payload := gopacket.Payload(make([]byte, length-8))
 						udp := layers.UDP{
 							SrcPort: layers.UDPPort(probeConfig.srcPort + p.probeID),
 							DstPort: layers.UDPPort(probeConfig.dstPort),
-							Length:  uint16(8 + encodeTTLAndProbe(ttl, uint(n))),
+							Length:  uint16(length),
 						}
 						udp.SetNetworkLayerForChecksum(&ip)
-						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp)
+						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp, &payload)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
