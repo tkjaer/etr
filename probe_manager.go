@@ -9,6 +9,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/tkjaer/etr/pkg/arp"
+	"github.com/tkjaer/etr/pkg/ndp"
 	"github.com/tkjaer/etr/pkg/ptr"
 	"github.com/tkjaer/etr/pkg/route"
 )
@@ -185,9 +186,18 @@ func (pm *ProbeManager) init(a Args) error {
 	if probeConfig.route.Gateway == (netip.Addr{}) {
 		probeConfig.route.Gateway = probeConfig.route.Destination
 	}
-	probeConfig.dstMAC, err = arp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface, probeConfig.route.Source.AsSlice())
-	if err != nil {
-		return err
+	// Use the ARP package to resolve MAC for IPv4 neighbors
+	switch pm.probeConfig.protocolConfig.inet {
+	case layers.IPProtocolIPv4:
+		probeConfig.dstMAC, err = arp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface, probeConfig.route.Source.AsSlice())
+		if err != nil {
+			return err
+		}
+	case layers.IPProtocolIPv6:
+		probeConfig.dstMAC, err = ndp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Initialize pcap handle and set BPF filter

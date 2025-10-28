@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/gopacket v1.1.19
 	github.com/juruen/goarp v0.0.0-20180716135452-3ab95825448f
+	github.com/mdlayher/ndp v1.1.0
 	golang.org/x/net v0.38.0
 )
 
