@@ -1,6 +1,8 @@
 module github.com/tkjaer/etr
 
-go 1.24.2
+go 1.24.0
+
+toolchain go1.24.1
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
