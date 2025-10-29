@@ -10,6 +10,8 @@ import (
 	"github.com/jsimonetti/rtnetlink/rtnl"
 )
 
+// getARPTable is a variable holding the function to retrieve ARP table entries.
+// This allows for easy mocking in tests.
 var getARPTable = func(iface *net.Interface) ([]*rtnl.Neigh, error) {
 	c, err := rtnl.Dial(nil)
 	if err != nil {
@@ -25,6 +27,7 @@ var getARPTable = func(iface *net.Interface) ([]*rtnl.Neigh, error) {
 	return r, nil
 }
 
+// isARPEntryMatch checks if the given ARP entry matches the provided IP address.
 func isARPEntryMatch(n *rtnl.Neigh, ip net.IP) bool {
 	return n.IP.Equal(ip)
 }

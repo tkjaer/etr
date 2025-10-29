@@ -18,6 +18,7 @@ var getARPTable = func() ([]arp.Entry, error) {
 	return arp.DumpArpTable()
 }
 
+// isARPEntryMatch checks if the given ARP entry matches the provided IP address.
 func isARPEntryMatch(entry arp.Entry, ip net.IP) bool {
 	return entry.IPAddr.Equal(ip)
 }

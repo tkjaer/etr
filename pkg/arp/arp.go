@@ -66,6 +66,9 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 	return mac, nil
 }
 
+// CheckARPTable checks if IP is in the kernel ARP table for the provided interface
+// and returns the corresponding MAC address if found.
+// It supports Linux and Darwin (macOS) platforms.
 func CheckARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
 	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
 		return checkARPTable(ip, iface)
