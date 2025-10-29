@@ -12,16 +12,26 @@ import (
 	"github.com/juruen/goarp/arp"
 )
 
+// getARPTable is a variable holding the function to retrieve ARP table entries.
+// This allows for easy mocking in tests.
+var getARPTable = func() ([]arp.Entry, error) {
+	return arp.DumpArpTable()
+}
+
+func isARPEntryMatch(entry arp.Entry, ip net.IP) bool {
+	return entry.IPAddr.Equal(ip)
+}
+
 func checkARPTable(ip net.IP, _ *net.Interface) (net.HardwareAddr, error) {
 	// On Darwin, we can use the ARP package to check the ARP table
 	// but it doesn't support checking for a specific interface.
 	// Instead, we can use the system ARP table and filter by interface.
-	entries, err := arp.DumpArpTable()
+	entries, err := getARPTable()
 	if err != nil {
 		return nil, err
 	}
 	for _, entry := range entries {
-		if entry.IPAddr.Equal(ip) {
+		if isARPEntryMatch(entry, ip) {
 			return entry.HwAddr, nil
 		}
 	}

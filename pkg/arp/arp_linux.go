@@ -10,8 +10,7 @@ import (
 	"github.com/jsimonetti/rtnetlink/rtnl"
 )
 
-// Check if IP is in the kernel ARP table for the provided interface
-func checkARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
+var getARPTable = func(iface *net.Interface) ([]*rtnl.Neigh, error) {
 	c, err := rtnl.Dial(nil)
 	if err != nil {
 		return nil, err
@@ -23,8 +22,22 @@ func checkARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
 		return nil, err
 	}
 
+	return r, nil
+}
+
+func isARPEntryMatch(n *rtnl.Neigh, ip net.IP) bool {
+	return n.IP.Equal(ip)
+}
+
+// Check if IP is in the kernel ARP table for the provided interface
+func checkARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
+	r, err := getARPTable(iface)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, n := range r {
-		if n.IP.Equal(ip) {
+		if isARPEntryMatch(n, ip) {
 			return n.HwAddr, nil
 		}
 	}

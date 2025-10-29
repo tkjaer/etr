@@ -6,14 +6,12 @@
 package arp
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"runtime"
 	"time"
 
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
@@ -85,12 +83,9 @@ func RecvARPRequest(handle *pcap.Handle, arpChan chan net.HardwareAddr, ip net.I
 	for {
 		select {
 		case packet := <-in:
-			if arpLayer := packet.Layer(layers.LayerTypeARP); arpLayer != nil {
-				arp := arpLayer.(*layers.ARP)
-				if arp.Operation == layers.ARPReply && bytes.Equal(arp.SourceProtAddress, ip) {
-					arpChan <- arp.SourceHwAddress
-					return nil
-				}
+			if mac, ok := IsARPReplyFor(packet, ip); ok {
+				arpChan <- mac
+				return nil
 			}
 		case <-stop:
 			return nil
@@ -100,34 +95,12 @@ func RecvARPRequest(handle *pcap.Handle, arpChan chan net.HardwareAddr, ip net.I
 
 // SendARPRequest sends an ARP request to the network using the provided handle
 func SendARPRequest(handle *pcap.Handle, srcMAC net.HardwareAddr, srcIP, dstIP net.IP) error {
-
-	eth := layers.Ethernet{
-		SrcMAC:       srcMAC,
-		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
-		EthernetType: layers.EthernetTypeARP,
-	}
-
-	arp := layers.ARP{
-		AddrType:          layers.LinkTypeEthernet,
-		Protocol:          layers.EthernetTypeIPv4,
-		HwAddressSize:     6,
-		ProtAddressSize:   4,
-		Operation:         layers.ARPRequest,
-		SourceHwAddress:   []byte(srcMAC),
-		SourceProtAddress: []byte(srcIP),
-		DstHwAddress:      []byte{0, 0, 0, 0, 0, 0},
-		DstProtAddress:    []byte(dstIP),
-	}
-
-	buffer := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{}
-
-	if err := gopacket.SerializeLayers(buffer, opts, &eth, &arp); err != nil {
+	r, err := CreateARPRequest(srcMAC, srcIP, dstIP)
+	if err != nil {
 		return err
 	}
-	if err := handle.WritePacketData(buffer.Bytes()); err != nil {
+	if err := handle.WritePacketData(r); err != nil {
 		return err
 	}
-
 	return nil
 }
