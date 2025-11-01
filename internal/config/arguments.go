@@ -38,7 +38,7 @@ func ParseArgs() (Args, error) {
 	flag.UintVarP(&args.DestinationPort, "dest-port", "p", 443, "Destination port")
 	flag.UintVarP(&args.SourcePort, "source-port", "s", 65000, "Source port")
 
-	flag.UintVarP(&args.NumProbes, "count", "c", 10, "Probe count")
+	flag.UintVarP(&args.NumProbes, "count", "c", 0, "Probe count (0 = infinite)")
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL")
 	flag.UintVarP(&args.ParallelProbes, "parallel-probes", "P", 5, "Number of parallel probes")
 	flag.DurationVarP(&args.InterTTLDelay, "inter-ttl-delay", "h", 100*time.Millisecond, "Inter-TTL delay (delay between each TTL or hop for a probe)")

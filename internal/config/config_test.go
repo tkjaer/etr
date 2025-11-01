@@ -197,8 +197,8 @@ func TestParseArgs_Defaults(t *testing.T) {
 	if args.SourcePort != 65000 {
 		t.Errorf("Default source port = %v, want 65000", args.SourcePort)
 	}
-	if args.NumProbes != 10 {
-		t.Errorf("Default probe count = %v, want 10", args.NumProbes)
+	if args.NumProbes != 0 {
+		t.Errorf("Default probe count = %v, want 0 (infinite)", args.NumProbes)
 	}
 	if args.MaxTTL != 30 {
 		t.Errorf("Default max TTL = %v, want 30", args.MaxTTL)
