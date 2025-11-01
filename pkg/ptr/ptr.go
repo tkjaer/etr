@@ -2,43 +2,85 @@ package ptr
 
 import (
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
 
+// LookupFunc is a function type for DNS PTR lookups.
+// This allows mocking in tests.
+type LookupFunc func(ip string) ([]string, error)
+
 // PtrManager handles PTR lookups with simple caching
 type PtrManager struct {
-	cache map[string]string
-	mu    sync.RWMutex
+	cache      map[string]string
+	mu         sync.RWMutex
+	lookupFunc LookupFunc
+	retries    int
+	retryDelay time.Duration
 }
 
-// NewPtrManager creates a new PtrManager
+// NewPtrManager creates a new PtrManager with default settings
 func NewPtrManager() *PtrManager {
 	return &PtrManager{
-		cache: make(map[string]string),
+		cache:      make(map[string]string),
+		lookupFunc: net.LookupAddr,
+		retries:    3,
+		retryDelay: 100 * time.Millisecond,
 	}
+}
+
+// normalizePTR removes the trailing dot from a PTR record
+func normalizePTR(ptr string) string {
+	return strings.TrimSuffix(ptr, ".")
+}
+
+// isCached checks if a PTR record is already cached
+func (pm *PtrManager) isCached(ip string) bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	_, exists := pm.cache[ip]
+	return exists
+}
+
+// markInProgress marks a lookup as in progress
+func (pm *PtrManager) markInProgress(ip string) {
+	pm.mu.Lock()
+	pm.cache[ip] = ""
+	pm.mu.Unlock()
+}
+
+// setCached stores a PTR record in the cache
+func (pm *PtrManager) setCached(ip, ptr string) {
+	pm.mu.Lock()
+	pm.cache[ip] = ptr
+	pm.mu.Unlock()
+}
+
+// performLookup attempts to lookup a PTR record with retries
+func (pm *PtrManager) performLookup(ip string) (string, bool) {
+	for range pm.retries {
+		ptrs, err := pm.lookupFunc(ip)
+		if err == nil && len(ptrs) > 0 {
+			return normalizePTR(ptrs[0]), true
+		}
+		if pm.retryDelay > 0 {
+			time.Sleep(pm.retryDelay)
+		}
+	}
+	return "", false
 }
 
 // RequestPTR initiates a PTR lookup for the given IP address if not cached
 func (pm *PtrManager) RequestPTR(ip string) {
-	pm.mu.Lock()
-	if _, exists := pm.cache[ip]; exists {
-		pm.mu.Unlock()
+	if pm.isCached(ip) {
 		return
 	}
-	pm.cache[ip] = "" // Mark as "in progress" to avoid duplicate lookups
-	pm.mu.Unlock()
 
-	attempts := 3
-	for range attempts {
-		ptr, err := net.LookupAddr(ip)
-		if err == nil && len(ptr) > 0 {
-			pm.mu.Lock()
-			pm.cache[ip] = ptr[0][:len(ptr[0])-1] // Remove trailing dot
-			pm.mu.Unlock()
-			return
-		}
-		time.Sleep(100 * time.Millisecond) // Retry after a short delay
+	pm.markInProgress(ip)
+
+	if ptr, ok := pm.performLookup(ip); ok {
+		pm.setCached(ip, ptr)
 	}
 }
 
@@ -50,7 +92,7 @@ func (pm *PtrManager) GetPTR(ip string) (string, bool) {
 
 	ptr, exists := pm.cache[ip]
 	if ptr == "" {
-		return ptr, false
+		return "", false
 	}
 	return ptr, exists
 }
