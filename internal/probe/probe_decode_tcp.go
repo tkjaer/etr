@@ -1,4 +1,4 @@
-package main
+package probe
 
 import "github.com/google/gopacket/layers"
 

@@ -1,4 +1,4 @@
-package main
+package probe
 
 import (
 	"log/slog"
@@ -12,6 +12,10 @@ import (
 	"github.com/tkjaer/etr/pkg/ndp"
 	"github.com/tkjaer/etr/pkg/ptr"
 	"github.com/tkjaer/etr/pkg/route"
+
+	"github.com/tkjaer/etr/internal/config"
+	"github.com/tkjaer/etr/internal/output"
+	"github.com/tkjaer/etr/internal/shared"
 )
 
 type ProbeTracker struct {
@@ -63,10 +67,10 @@ type outputMsg struct {
 	ip         string
 	loss       uint
 	flag       string
-	msgType    string    // Added to differentiate message types: "probe_result", "ptr_result", etc.
-	ptrName    string    // Added for PTR results
-	run        *ProbeRun // For probe_run messages
-	deleteTTLs []uint8   // For delete_hops messages
+	msgType    string           // Added to differentiate message types: "probe_result", "ptr_result", etc.
+	ptrName    string           // Added for PTR results
+	run        *shared.ProbeRun // For probe_run messages
+	deleteTTLs []uint8          // For delete_hops messages
 }
 
 // ProbeManager coordinates multiple parallel probes to the same destination
@@ -104,7 +108,7 @@ type ProtocolConfig struct {
 }
 
 // NewProbeManager creates and initializes a probe manager
-func NewProbeManager(a Args) (*ProbeManager, error) {
+func NewProbeManager(a config.Args) (*ProbeManager, error) {
 	pm := &ProbeManager{
 		// Coordination
 		wg:   sync.WaitGroup{},
@@ -122,23 +126,23 @@ func NewProbeManager(a Args) (*ProbeManager, error) {
 		},
 
 		// Probe Configuration
-		parallelProbes: uint16(a.parallelProbes),
+		parallelProbes: uint16(a.ParallelProbes),
 		probeConfig: ProbeConfig{
-			destination:     a.destination,
-			numProbes:       uint(a.numProbes),
+			destination:     a.Destination,
+			numProbes:       uint(a.NumProbes),
 			protocolConfig:  ProtocolConfig{},
-			dstPort:         uint16(a.destinationPort),
-			srcPort:         uint16(a.sourcePort),
+			dstPort:         uint16(a.DestinationPort),
+			srcPort:         uint16(a.SourcePort),
 			route:           route.Route{},
-			maxTTL:          uint8(a.maxTTL),
-			interProbeDelay: a.interProbeDelay,
-			interTTLDelay:   a.interTTLDelay,
-			timeout:         a.timeout,
+			maxTTL:          uint8(a.MaxTTL),
+			interProbeDelay: a.InterProbeDelay,
+			interTTLDelay:   a.InterTTLDelay,
+			timeout:         a.Timeout,
 		},
 		outputConfig: outputConfig{
-			jsonOutput:    a.json,
-			jsonFile:      a.jsonFile,
-			hashAlgorithm: a.hashAlgorithm,
+			jsonOutput:    a.Json,
+			jsonFile:      a.JsonFile,
+			hashAlgorithm: a.HashAlgorithm,
 		},
 	}
 
@@ -151,7 +155,7 @@ func NewProbeManager(a Args) (*ProbeManager, error) {
 }
 
 // init initializes the probe manager by setting up routes, pcap handles, and probes
-func (pm *ProbeManager) init(a Args) error {
+func (pm *ProbeManager) init(a config.Args) error {
 	var err error
 
 	probeConfig := &pm.probeConfig
@@ -362,39 +366,39 @@ func (pm *ProbeManager) Stop() {
 
 // createOutputs creates and initializes output handlers
 // Returns the BubbleTUIOutput instance (may be nil) and the OutputManager
-func (pm *ProbeManager) createOutputs() (*BubbleTUIOutput, *OutputManager) {
-	om := &OutputManager{}
+func (pm *ProbeManager) createOutputs() (*output.BubbleTUIOutput, *output.OutputManager) {
+	om := &output.OutputManager{}
 
-	info := OutputInfo{
-		destination:    pm.probeConfig.destination,
-		protocol:       "TCP",
-		srcPort:        pm.probeConfig.srcPort,
-		dstPort:        pm.probeConfig.dstPort,
-		parallelProbes: pm.parallelProbes,
-		hashAlgorithm:  pm.outputConfig.hashAlgorithm,
+	info := shared.OutputInfo{
+		Destination:    pm.probeConfig.destination,
+		Protocol:       "TCP",
+		SrcPort:        pm.probeConfig.srcPort,
+		DstPort:        pm.probeConfig.dstPort,
+		ParallelProbes: pm.parallelProbes,
+		HashAlgorithm:  pm.outputConfig.hashAlgorithm,
 	}
 	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {
-		info.protocol = "UDP"
+		info.Protocol = "UDP"
 	}
 
-	var bubbleTUI *BubbleTUIOutput
+	var bubbleTUI *output.BubbleTUIOutput
 
 	// If JSON output is enabled, output to stdout and disable TUI
 	if pm.outputConfig.jsonOutput {
-		jsonOut, err := NewJSONOutput("") // empty string = stdout
+		jsonOut, err := output.NewJSONOutput("") // empty string = stdout
 		if err == nil {
 			om.Register(jsonOut)
 		}
 	} else {
 		// TUI mode: show interactive interface
-		bubbleTUI = NewBubbleTUIOutput(info)
+		bubbleTUI = output.NewBubbleTUIOutput(info)
 		bubbleTUI.Start()
 		om.Register(bubbleTUI)
 	}
 
 	// If JSON file output is enabled, write to file (alongside TUI if not disabled)
 	if pm.outputConfig.jsonFile != "" {
-		jsonOut, err := NewJSONOutput(pm.outputConfig.jsonFile)
+		jsonOut, err := output.NewJSONOutput(pm.outputConfig.jsonFile)
 		if err == nil {
 			om.Register(jsonOut)
 		} else {
@@ -406,7 +410,7 @@ func (pm *ProbeManager) createOutputs() (*BubbleTUIOutput, *OutputManager) {
 }
 
 // outputRoutine processes output messages and updates displays
-func (pm *ProbeManager) outputRoutine(om *OutputManager) {
+func (pm *ProbeManager) outputRoutine(om *output.OutputManager) {
 	for msg := range pm.outputChan {
 		switch msg.msgType {
 		case "hop":

@@ -1,20 +1,13 @@
-package main
+package output
 
-type OutputInfo struct {
-	destination    string
-	protocol       string
-	srcPort        uint16
-	dstPort        uint16
-	parallelProbes uint16
-	hashAlgorithm  string
-}
+import "github.com/tkjaer/etr/internal/shared"
 
 // Output interface for different output types
 type Output interface {
-	UpdateHop(probeID uint16, ttl uint8, hopStats HopStats)
+	UpdateHop(probeID uint16, ttl uint8, hopStats shared.HopStats)
 	DeleteHops(probeID uint16, ttls []uint8)
-	CompleteProbe(probeID uint16, stats ProbeStats)
-	CompleteProbeRun(run *ProbeRun)
+	CompleteProbe(probeID uint16, stats shared.ProbeStats)
+	CompleteProbeRun(run *shared.ProbeRun)
 	Close() error
 }
 
@@ -27,7 +20,7 @@ func (om *OutputManager) Register(o Output) {
 	om.outputs = append(om.outputs, o)
 }
 
-func (om *OutputManager) UpdateHop(probeID uint16, ttl uint8, hopStats HopStats) {
+func (om *OutputManager) UpdateHop(probeID uint16, ttl uint8, hopStats shared.HopStats) {
 	for _, o := range om.outputs {
 		o.UpdateHop(probeID, ttl, hopStats)
 	}
@@ -39,13 +32,13 @@ func (om *OutputManager) DeleteHops(probeID uint16, ttls []uint8) {
 	}
 }
 
-func (om *OutputManager) CompleteProbe(probeID uint16, stats ProbeStats) {
+func (om *OutputManager) CompleteProbe(probeID uint16, stats shared.ProbeStats) {
 	for _, o := range om.outputs {
 		o.CompleteProbe(probeID, stats)
 	}
 }
 
-func (om *OutputManager) CompleteProbeRun(run *ProbeRun) {
+func (om *OutputManager) CompleteProbeRun(run *shared.ProbeRun) {
 	for _, o := range om.outputs {
 		o.CompleteProbeRun(run)
 	}
