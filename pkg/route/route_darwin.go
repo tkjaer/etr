@@ -12,7 +12,8 @@ import (
 )
 
 // fetchRIBMessages retrieves the routing information base (RIB) messages from the kernel.
-func fetchRIBMessages() ([]route.Message, error) {
+// Variable for mocking in tests.
+var fetchRIBMessages = func() ([]route.Message, error) {
 	r, err := route.FetchRIB(syscall.AF_UNSPEC, route.RIBTypeRoute, 0)
 	if err != nil {
 		return nil, err

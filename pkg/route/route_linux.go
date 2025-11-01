@@ -12,7 +12,8 @@ import (
 )
 
 // fetchRIBMessagesForIP fetches the RIB messages for the given IP address.
-func fetchRIBMessagesForIP(ip netip.Addr) ([]rtnetlink.RouteMessage, error) {
+// Variable for mocking in tests.
+var fetchRIBMessagesForIP = func(ip netip.Addr) ([]rtnetlink.RouteMessage, error) {
 	c, err := rtnetlink.Dial(nil)
 	if err != nil {
 		return nil, err
