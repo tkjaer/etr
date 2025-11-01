@@ -162,7 +162,13 @@ func (p *Probe) Run() {
 	var lastProbeStart time.Time
 	maxTTL := probeConfig.maxTTL
 
-	for n := range p.config.numProbes {
+	// Handle infinite probes (numProbes == 0)
+	probeCount := p.config.numProbes
+	if probeCount == 0 {
+		probeCount = 1<<63 - 1 // effectively infinite
+	}
+
+	for n := range probeCount {
 		select {
 		case <-p.stop:
 			slog.Debug("Probe received stop signal", "probe_id", p.probeID)
