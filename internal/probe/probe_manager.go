@@ -62,15 +62,11 @@ type outputConfig struct {
 }
 
 type outputMsg struct {
-	probeNum   uint
-	ttl        uint8
-	ip         string
-	loss       uint
-	flag       string
-	msgType    string           // Added to differentiate message types: "probe_result", "ptr_result", etc.
-	ptrName    string           // Added for PTR results
+	msgType    string           // Message type: "hop", "probe_run", "complete", "delete_hops"
 	run        *shared.ProbeRun // For probe_run messages
 	deleteTTLs []uint8          // For delete_hops messages
+	probeNum   uint             // Probe number for hop/delete_hops/complete messages
+	ttl        uint8            // TTL for hop messages
 }
 
 // ProbeManager coordinates multiple parallel probes to the same destination
