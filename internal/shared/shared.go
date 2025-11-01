@@ -127,7 +127,7 @@ func CalculatePathHashFromHops(hops []*HopRun, algorithm string) string {
 	return calculatePathHash(ips, algorithm)
 }
 
-// calculatePathHashFromProbe computes a hash from a ProbeStats struct
+// CalculatePathHashFromProbe computes a hash from a ProbeStats struct
 func CalculatePathHashFromProbe(probe *ProbeStats, algorithm string) string {
 	if probe == nil || len(probe.Hops) == 0 {
 		switch algorithm {
