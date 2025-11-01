@@ -6,17 +6,20 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/tkjaer/etr/internal/config"
+	"github.com/tkjaer/etr/internal/probe"
 )
 
 func main() {
-	args, err := ParseArgs()
+	args, err := config.ParseArgs()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Setup logging
-	logFile, err := SetupLogging(args)
+	logFile, err := config.SetupLogging(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to setup logging: %v\n", err)
 		os.Exit(1)
@@ -26,12 +29,12 @@ func main() {
 	}
 
 	slog.Debug("Starting ECMP traceroute",
-		"destination", args.destination,
+		"destination", args.Destination,
 		"protocol", args.ProtocolName(),
-		"parallel_probes", args.parallelProbes,
+		"parallel_probes", args.ParallelProbes,
 	)
 
-	pm, err := NewProbeManager(args)
+	pm, err := probe.NewProbeManager(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create probe manager: %v\n", err)
 		os.Exit(1)

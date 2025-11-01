@@ -1,9 +1,11 @@
-package main
+package output
 
 import (
 	"encoding/json"
 	"os"
 	"sync"
+
+	"github.com/tkjaer/etr/internal/shared"
 )
 
 // JSONOutput writes probe data to a file or stdout when complete
@@ -34,11 +36,11 @@ func NewJSONOutput(filename string) (*JSONOutput, error) {
 	}, nil
 }
 
-func (j *JSONOutput) UpdateHop(probeID uint16, ttl uint8, hopStats HopStats) {
+func (j *JSONOutput) UpdateHop(probeID uint16, ttl uint8, hopStats shared.HopStats) {
 	// No-op for JSON, only output on complete run
 }
 
-func (j *JSONOutput) CompleteProbe(probeID uint16, stats ProbeStats) {
+func (j *JSONOutput) CompleteProbe(probeID uint16, stats shared.ProbeStats) {
 	// No-op for JSON, we use CompleteProbeRun instead
 }
 
@@ -46,7 +48,7 @@ func (j *JSONOutput) DeleteHops(probeID uint16, ttls []uint8) {
 	// No-op for JSON, as it doesn't maintain state
 }
 
-func (j *JSONOutput) CompleteProbeRun(run *ProbeRun) {
+func (j *JSONOutput) CompleteProbeRun(run *shared.ProbeRun) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 

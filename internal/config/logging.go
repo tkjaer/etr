@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"io"
@@ -11,7 +11,7 @@ import (
 func SetupLogging(args Args) (*os.File, error) {
 	// Determine output mode
 	mode := "tui"
-	if args.json {
+	if args.Json {
 		mode = "json"
 	}
 
@@ -19,8 +19,8 @@ func SetupLogging(args Args) (*os.File, error) {
 	var logFile *os.File
 
 	// Add file writer if specified
-	if args.log != "" {
-		f, err := os.OpenFile(args.log, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if args.Log != "" {
+		f, err := os.OpenFile(args.Log, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +55,7 @@ func SetupLogging(args Args) (*os.File, error) {
 	}
 
 	// Parse log level
-	logLevel := parseLogLevel(args.logLevel)
+	logLevel := parseLogLevel(args.LogLevel)
 
 	// Create handler based on mode
 	var handler slog.Handler
