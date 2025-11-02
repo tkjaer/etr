@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'etr-monitor'
+
+scrape_configs:
+  - job_name: 'etr-exporter'
+    static_configs:
+      - targets: ['etr-exporter:8080']
+        labels:
+          service: 'etr'
