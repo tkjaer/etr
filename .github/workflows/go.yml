@@ -24,8 +24,31 @@ jobs:
     - name: Install libpcap-dev
       run: sudo apt-get update && sudo apt-get install -y libpcap-dev
 
-    - name: Build
-      run: go build -v ./...
+    - name: Install golangci-lint
+      run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+    - name: Check formatting
+      run: |
+        if [ -n "$(gofmt -l .)" ]; then
+          echo "The following files are not formatted:"
+          gofmt -l .
+          exit 1
+        fi
+
+    - name: golangci-lint
+      run: golangci-lint run --timeout=5m
+
+    - name: go mod tidy
+      run: |
+        go mod tidy
+        if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+          echo "go.mod or go.sum is not tidy"
+          git diff go.mod go.sum
+          exit 1
+        fi
 
     - name: Test
       run: go test -v ./...
+
+    - name: Build
+      run: go build -v ./cmd/etr

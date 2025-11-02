@@ -7,10 +7,10 @@ import (
 
 func TestCalculateMSS(t *testing.T) {
 	tests := []struct {
-		name    string
-		mtu     int
-		isIPv6  bool
-		want    uint16
+		name   string
+		mtu    int
+		isIPv6 bool
+		want   uint16
 	}{
 		{
 			name:   "IPv4 standard ethernet",
