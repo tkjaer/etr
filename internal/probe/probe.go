@@ -176,6 +176,17 @@ func (p *Probe) Run() {
 		default:
 		}
 
+		// Drain any old responses from the channel before starting this probe
+		draining := true
+		for draining {
+			select {
+			case oldResponse := <-p.responseChan:
+				slog.Debug("Drained old response before starting probe", "probe_num", n, "old_response", oldResponse)
+			default:
+				draining = false
+			}
+		}
+
 		slog.Debug("Starting probe", "probe_num", n)
 		lastProbeStart = time.Now()
 		ttl := uint8(0)
@@ -187,7 +198,7 @@ func (p *Probe) Run() {
 				slog.Debug("Probe received stop signal during TTL loop", "probe_id", p.probeID)
 				return
 			case response := <-p.responseChan:
-				if response.ProbeNum == n {
+				if response.ProbeNum == n%20 {
 					// Update maxTTL to original value if we got a TTL exceeded at current maxTTL
 					// This allows continuing probing if the path has changed.
 					if response.Flag == "TTL" && response.TTL == maxTTL {
@@ -203,7 +214,7 @@ func (p *Probe) Run() {
 						break TTLLoop
 					}
 				} else {
-					slog.Debug("Received response for wrong probe", "expected", n, "received", response)
+					slog.Debug("Received response for wrong probe", "expected", n%20, "received", response)
 				}
 			default:
 				ttl++
@@ -235,7 +246,7 @@ func (p *Probe) Run() {
 						p.transmitChan <- TransmitEvent{
 							Buffer:   buf,
 							ProbeID:  p.probeID,
-							ProbeNum: uint(n),
+							ProbeNum: uint(n % 20),
 							TTL:      ttl,
 						}
 					case layers.IPProtocolUDP:
@@ -254,7 +265,7 @@ func (p *Probe) Run() {
 						p.transmitChan <- TransmitEvent{
 							Buffer:   buf,
 							ProbeID:  p.probeID,
-							ProbeNum: uint(n),
+							ProbeNum: uint(n % 20),
 							TTL:      ttl,
 						}
 					}
@@ -284,7 +295,7 @@ func (p *Probe) Run() {
 						p.transmitChan <- TransmitEvent{
 							Buffer:   buf,
 							ProbeID:  p.probeID,
-							ProbeNum: uint(n),
+							ProbeNum: uint(n % 20),
 							TTL:      ttl,
 						}
 					case layers.IPProtocolUDP:
@@ -303,7 +314,7 @@ func (p *Probe) Run() {
 						p.transmitChan <- TransmitEvent{
 							Buffer:   buf,
 							ProbeID:  p.probeID,
-							ProbeNum: uint(n),
+							ProbeNum: uint(n % 20),
 							TTL:      ttl,
 						}
 					}
