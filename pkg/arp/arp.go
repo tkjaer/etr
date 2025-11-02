@@ -1,5 +1,4 @@
 //go:build linux || darwin
-// +build linux darwin
 
 // This should work on freebsd, netbsd and openbsd as well (but not tested).
 
@@ -7,6 +6,7 @@ package arp
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"runtime"
 	"time"
@@ -33,7 +33,11 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 		arpChan := make(chan net.HardwareAddr)
 
 		// Listen for ARP response in a goroutine
-		go RecvARPRequest(handle, arpChan, ip, stop)
+		go func() {
+			if err := RecvARPRequest(handle, arpChan, ip, stop); err != nil {
+				slog.Error("ARP receiver error", "error", err)
+			}
+		}()
 
 		// Wait for a short time to allow the receiver to start
 		time.Sleep(1 * time.Millisecond)
@@ -44,7 +48,9 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 			case <-stop:
 				return
 			default:
-				SendARPRequest(handle, srcMAC, src, dstIP)
+				if err := SendARPRequest(handle, srcMAC, src, dstIP); err != nil {
+					slog.Error("ARP send error", "error", err)
+				}
 				// Use a short 0.1s retry interval
 				time.Sleep(100 * time.Millisecond)
 			}

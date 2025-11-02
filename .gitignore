@@ -21,4 +21,4 @@
 go.work
 
 # Compiled binaries
-etr
+^etr

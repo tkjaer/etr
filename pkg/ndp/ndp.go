@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"runtime"
@@ -32,7 +33,11 @@ func PerformNeighborDiscovery(targetIP net.IP, iface *net.Interface, timeout tim
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			slog.Error("Failed to close NDP connection", "error", err)
+		}
+	}()
 
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -60,7 +65,9 @@ func PerformNeighborDiscovery(targetIP net.IP, iface *net.Interface, timeout tim
 	}
 
 	// Set read deadline
-	conn.SetReadDeadline(time.Now().Add(timeout))
+	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		slog.Error("Failed to set read deadline", "error", err)
+	}
 
 	// Wait for Neighbor Advertisement response
 	for {

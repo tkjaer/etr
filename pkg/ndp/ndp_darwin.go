@@ -1,5 +1,4 @@
 //go:build darwin
-// +build darwin
 
 // This should work on freebsd, netbsd and openbsd as well (but not tested).
 

@@ -25,7 +25,11 @@ func main() {
 		os.Exit(1)
 	}
 	if logFile != nil {
-		defer logFile.Close()
+		defer func() {
+			if err := logFile.Close(); err != nil {
+				slog.Error("Failed to close log file", "error", err)
+			}
+		}()
 	}
 
 	slog.Debug("Starting ECMP traceroute",
