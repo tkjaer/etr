@@ -1,6 +1,10 @@
 package output
 
-import "github.com/tkjaer/etr/internal/shared"
+import (
+	"log/slog"
+
+	"github.com/tkjaer/etr/internal/shared"
+)
 
 // Output interface for different output types
 type Output interface {
@@ -46,6 +50,8 @@ func (om *OutputManager) CompleteProbeRun(run *shared.ProbeRun) {
 
 func (om *OutputManager) Close() {
 	for _, o := range om.outputs {
-		o.Close()
+		if err := o.Close(); err != nil {
+			slog.Error("Failed to close output", "error", err)
+		}
 	}
 }

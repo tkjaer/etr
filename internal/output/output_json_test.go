@@ -14,7 +14,11 @@ func TestNewJSONOutput_Stdout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewJSONOutput() error = %v", err)
 	}
-	defer output.Close()
+	defer func() {
+		if err := output.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	}()
 
 	if !output.toStdout {
 		t.Error("NewJSONOutput(\"\") should output to stdout")
@@ -32,7 +36,11 @@ func TestNewJSONOutput_File(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewJSONOutput() error = %v", err)
 	}
-	defer output.Close()
+	defer func() {
+		if err := output.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	}()
 
 	if output.toStdout {
 		t.Error("NewJSONOutput() with filename should not output to stdout")
@@ -65,7 +73,9 @@ func TestJSONOutput_CompleteProbeRun(t *testing.T) {
 	}
 
 	output.CompleteProbeRun(run)
-	output.Close()
+	if err := output.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
 
 	// Read and verify the JSON file
 	data, err := os.ReadFile(filename)
@@ -126,7 +136,11 @@ func TestJSONOutput_NoOps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewJSONOutput() error = %v", err)
 	}
-	defer output.Close()
+	defer func() {
+		if err := output.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	}()
 
 	// These should all be no-ops and not panic
 	output.UpdateHop(1, 1, shared.HopStats{})

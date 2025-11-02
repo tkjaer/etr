@@ -96,18 +96,18 @@ func TestCalculateMSS_DefaultMTU(t *testing.T) {
 func TestGenerateTimestampOption(t *testing.T) {
 	// Test that timestamp option generates 8 bytes
 	ts := generateTimestampOption()
-	
+
 	if len(ts) != 8 {
 		t.Errorf("generateTimestampOption() length = %d, want 8", len(ts))
 	}
-	
+
 	// Echo reply should be 0 (bytes 4-7)
 	for i := 4; i < 8; i++ {
 		if ts[i] != 0 {
 			t.Errorf("Echo reply timestamp byte %d = %d, want 0", i, ts[i])
 		}
 	}
-	
+
 	// Timestamp should be non-zero (bytes 0-3)
 	allZero := true
 	for i := 0; i < 4; i++ {
@@ -124,7 +124,7 @@ func TestGenerateTimestampOption(t *testing.T) {
 func TestCreateTCPOptions(t *testing.T) {
 	// Test that TCP options are created correctly
 	iface := &net.Interface{MTU: 1500}
-	
+
 	tests := []struct {
 		name   string
 		isIPv6 bool
@@ -132,15 +132,15 @@ func TestCreateTCPOptions(t *testing.T) {
 		{"IPv4", false},
 		{"IPv6", true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := createTCPOptions(iface, tt.isIPv6)
-			
+
 			if len(opts) == 0 {
 				t.Fatal("createTCPOptions() returned empty options")
 			}
-			
+
 			// Verify key option types are present
 			var hasMSS, hasWindowScale, hasTimestamp, hasSACK bool
 			for _, opt := range opts {
@@ -167,7 +167,7 @@ func TestCreateTCPOptions(t *testing.T) {
 					}
 				}
 			}
-			
+
 			if !hasMSS {
 				t.Error("TCP options missing MSS")
 			}

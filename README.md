@@ -62,7 +62,7 @@ etr -j example.com > results.json
 etr -p 80 -c 1000 -d 5s target.example.com
 ```
 
-**Common options**: 
+**Common options**:
 - `-T/-U`: TCP (default) or UDP probes
 - `-P <n>`: Number of parallel probes (default: 5)
 - `-p <port>`: Destination port (default: 443)

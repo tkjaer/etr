@@ -238,7 +238,9 @@ func (p *Probe) Run() {
 							Window:  65535,
 							Options: createTCPOptions(probeConfig.route.Interface, false),
 						}
-						tcp.SetNetworkLayerForChecksum(&ip)
+						if err := tcp.SetNetworkLayerForChecksum(&ip); err != nil {
+							slog.Error("Failed to set network layer for checksum", "error", err)
+						}
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
@@ -257,7 +259,9 @@ func (p *Probe) Run() {
 							DstPort: layers.UDPPort(probeConfig.dstPort),
 							Length:  uint16(length),
 						}
-						udp.SetNetworkLayerForChecksum(&ip)
+						if err := udp.SetNetworkLayerForChecksum(&ip); err != nil {
+							slog.Error("Failed to set network layer for checksum", "error", err)
+						}
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp, &payload)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
@@ -287,7 +291,9 @@ func (p *Probe) Run() {
 							Window:  65535,
 							Options: createTCPOptions(probeConfig.route.Interface, true),
 						}
-						tcp.SetNetworkLayerForChecksum(&ip)
+						if err := tcp.SetNetworkLayerForChecksum(&ip); err != nil {
+							slog.Error("Failed to set network layer for checksum", "error", err)
+						}
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
@@ -306,7 +312,9 @@ func (p *Probe) Run() {
 							DstPort: layers.UDPPort(probeConfig.dstPort),
 							Length:  uint16(length),
 						}
-						udp.SetNetworkLayerForChecksum(&ip)
+						if err := udp.SetNetworkLayerForChecksum(&ip); err != nil {
+							slog.Error("Failed to set network layer for checksum", "error", err)
+						}
 						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp, &payload)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
