@@ -194,8 +194,8 @@ func TestParseArgs_Defaults(t *testing.T) {
 	if args.DestinationPort != 443 {
 		t.Errorf("Default destination port = %v, want 443", args.DestinationPort)
 	}
-	if args.SourcePort != 65000 {
-		t.Errorf("Default source port = %v, want 65000", args.SourcePort)
+	if args.SourcePort != 33434 {
+		t.Errorf("Default source port = %v, want 33434", args.SourcePort)
 	}
 	if args.NumProbes != 0 {
 		t.Errorf("Default probe count = %v, want 0 (infinite)", args.NumProbes)
