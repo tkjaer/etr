@@ -36,7 +36,7 @@ func ParseArgs() (Args, error) {
 	flag.BoolVarP(&args.ForceIPv4, "ipv4", "4", false, "Force IPv4")
 	flag.BoolVarP(&args.ForceIPv6, "ipv6", "6", false, "Force IPv6")
 	flag.UintVarP(&args.DestinationPort, "dest-port", "p", 443, "Destination port")
-	flag.UintVarP(&args.SourcePort, "source-port", "s", 65000, "Source port")
+	flag.UintVarP(&args.SourcePort, "source-port", "s", 33434, "Base source port")
 
 	flag.UintVarP(&args.NumProbes, "count", "c", 0, "Probe count (0 = infinite)")
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL")
@@ -73,8 +73,8 @@ func ParseArgs() (Args, error) {
 		return args, errors.New("source port+parallel probes must be below 65535")
 	case args.MaxTTL > 255:
 		return args, errors.New("maximum TTL must be between 0 and 255")
-	case args.Timeout >= 20*args.InterProbeDelay*1000:
-		return args, errors.New("timeout must be less than 20 times the inter-probe delay in seconds, as active probe count is limited to 20")
+	case args.Timeout >= 20*args.InterProbeDelay:
+		return args, errors.New("timeout must be less than 20 times inter-probe delay to prevent probe number wrapping issues")
 	}
 
 	return args, nil

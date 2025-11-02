@@ -185,9 +185,8 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 	}
 
 	// Get or create HopStats entry
-	hopStats, exists := probeStats.Hops[data.TTL]
-	if !exists {
-		hopStats = &shared.HopStats{
+	if _, exists := probeStats.Hops[data.TTL]; !exists {
+		hopStats := &shared.HopStats{
 			IPs: make(map[string]*shared.HopIPStats),
 		}
 		probeStats.Hops[data.TTL] = hopStats
@@ -245,17 +244,15 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 
 	// Check and remove from TTL cache
 	cacheKey := TTLCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}
-	sentTime := time.Time{}
-	if cacheEntry, present := pm.stats.TTLCache.GetAndDelete(cacheKey); present {
-		sentTime = cacheEntry.Value().SentTime
-	} else {
+	cacheEntry, present := pm.stats.TTLCache.GetAndDelete(cacheKey)
+	if !present {
 		slog.Debug("Received probe for TTL that has already expired", "ttl", data.TTL, "probe_id", probeID)
 		return
 	}
 
 	// Update and calculate stats
 
-	rtt := data.Timestamp.Sub(sentTime).Microseconds()
+	rtt := data.Timestamp.Sub(cacheEntry.Value().SentTime).Microseconds()
 
 	// Get the latest PTR from the manager
 	ptrValue := ipStats.PTR
