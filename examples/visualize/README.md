@@ -21,7 +21,7 @@ Generate visual diagrams from ETR JSON output showing ECMP path diversity.
 ./examples/visualize/path-diagram --ascii examples/monitoring/data/etr.json
 
 # stdin
-./etr --count 5 --tcp --json 8.8.8.8 | ./path-diagram --ascii -
+./etr --count 5 --tcp --json 192.0.2.1 | ./path-diagram --ascii -
 ```
 
 ### Image Mode (requires graphviz)

@@ -31,6 +31,26 @@ type Args struct {
 
 func ParseArgs() (Args, error) {
 	var args Args
+
+	// Set custom usage message
+	flag.Usage = func() {
+		println("ETR - ECMP Traceroute")
+		println()
+		println("A modern traceroute tool with ECMP path detection and visualization support.")
+		println()
+		println("Usage:")
+		println("  etr [OPTIONS] DESTINATION")
+		println()
+		println("Examples:")
+		println("  etr <destination>                    # Basic TCP traceroute")
+		println("  etr --udp <destination>              # UDP traceroute")
+		println("  etr -c 10 --json <destination>       # 10 probes, JSON output")
+		println("  etr -J results.json <destination>    # Save JSON while showing TUI")
+		println()
+		println("Options:")
+		flag.PrintDefaults()
+	}
+
 	flag.BoolVarP(&args.TCP, "tcp", "T", false, "Use TCP (default)")
 	flag.BoolVarP(&args.UDP, "udp", "U", false, "Use UDP: note UDP probes vary in size as packet length is used to encode the probe details")
 	flag.BoolVarP(&args.ForceIPv4, "ipv4", "4", false, "Force IPv4")
