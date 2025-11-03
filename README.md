@@ -17,6 +17,10 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
 
 **Use cases**: Network troubleshooting, ECMP path discovery, finding specific paths for tools like iperf
 
+## Demo
+
+![demo](https://github.com/user-attachments/assets/cd010ecc-6c7e-49f7-bbac-100410c45548)
+
 ## Installation
 
 ### Pre-built Binaries
@@ -95,10 +99,10 @@ etr example.com
 etr -U -P 10 example.com
 
 # Export JSON while showing TUI
-etr -J output.json example.com
+etr -j output.json example.com
 
 # JSON-only output (no TUI)
-etr -j example.com > results.json
+etr -J example.com > results.json
 
 # Custom port and extended monitoring
 etr -p 80 -c 1000 -d 5s target.example.com
@@ -109,7 +113,8 @@ etr -p 80 -c 1000 -d 5s target.example.com
 - `-P <n>`: Number of parallel probes (default: 5)
 - `-p <port>`: Destination port (default: 443)
 - `-c <n>`: Probe iterations (default: 10)
-- `-j/-J <file>`: JSON output
+- `-j <file>`: JSON output to file (keeps TUI)
+- `-J`: JSON output to stdout (disables TUI)
 - `--help`: Full option list
 
 **TUI controls**: `↑/↓` scroll, `←/→` or `Tab` switch views, `q` quit
@@ -118,7 +123,7 @@ etr -p 80 -c 1000 -d 5s target.example.com
 
 ```bash
 # Discover paths with many parallel probes
-etr -U -P 20 -J paths.json target.example.com
+etr -U -P 20 -j paths.json target.example.com
 
 # Analyze JSON to find paths with specific characteristics
 # Use iperf with matching source ports to test the exact same path

@@ -20,7 +20,7 @@ go build -o etr ./cmd/etr
 
 # Run with JSON output
 mkdir -p examples/monitoring/data
-sudo ./etr --json-file examples/monitoring/data/etr.json 192.0.2.1
+sudo ./etr -j examples/monitoring/data/etr.json 192.0.2.1
 ```
 
 **3. View metrics:**
@@ -57,12 +57,12 @@ etr-exporter:
 
 **Continuous monitoring** - ETR runs infinitely by default (like mtr):
 ```bash
-sudo ./etr --json-file examples/monitoring/data/etr.json 192.0.2.1
+sudo ./etr -j examples/monitoring/data/etr.json 192.0.2.1
 ```
 
 To run a specific number of probes, use `--count`:
 ```bash
-sudo ./etr --json-file examples/monitoring/data/etr.json --count 10 192.0.2.1
+sudo ./etr -j examples/monitoring/data/etr.json --count 10 192.0.2.1
 ```
 
 **Stop the stack:**
