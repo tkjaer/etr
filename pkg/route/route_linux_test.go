@@ -169,7 +169,7 @@ func Test_get_Linux(t *testing.T) {
 
 func Test_get_Linux_RealCall(t *testing.T) {
 	// Smoke test with real routing table
-	ip := netip.MustParseAddr("8.8.8.8")
+	ip := netip.MustParseAddr("192.0.2.1")
 	route, err := get(ip)
 
 	if err == nil {
