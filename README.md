@@ -19,6 +19,12 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
 
 ## Installation
 
+### Pre-built Binaries
+
+Download the latest release for macOS or Linux from the [releases page](https://github.com/tkjaer/etr/releases).
+
+### From Source
+
 ```bash
 go install github.com/tkjaer/etr@latest
 ```
@@ -31,15 +37,51 @@ cd etr
 go build
 ```
 
-**Permissions**: ETR requires raw socket access.
+### BSD Systems
+
+ETR is not yet tested on or built for BSD systems ([help appreciated!](https://github.com/tkjaer/etr/issues/41)). FreeBSD, OpenBSD, and NetBSD users should build from source. First install dependencies:
+
+**FreeBSD:**
+```bash
+pkg install go libpcap
+```
+
+**OpenBSD:**
+```bash
+pkg_add go libpcap
+```
+
+**NetBSD:**
+```bash
+pkgin install go libpcap
+```
+
+Then build:
+```bash
+go install github.com/tkjaer/etr@latest
+```
+
+Or clone and build locally as shown above.
+
+### Permissions
+
+ETR requires raw socket access.
 
 - **macOS**: Run with `sudo` or add your user to the `access_bpf` group:
    ```bash
    sudo dseditgroup -o edit -a $USER -t user access_bpf
    ```
 
-- **Linux**: Run with `sudo` or grant CAP_NET_RAW capability:
+- **Linux**: Run with `sudo`, grant CAP_NET_RAW capability, or add your user to a capture group:
   ```bash
+  # Option 1: Set capabilities on the binary
+  sudo setcap cap_net_raw+ep ./etr
+
+  # Option 2: Use wireshark group (if it exists on your system)
+  sudo usermod -a -G wireshark $USER
+  # Then re-login and set capabilities with group restriction:
+  sudo chgrp wireshark ./etr
+  sudo chmod 750 ./etr
   sudo setcap cap_net_raw+ep ./etr
   ```
 
@@ -84,28 +126,40 @@ etr -U -P 20 -J paths.json target.example.com
 
 ## JSON Output Format
 
-Each probe iteration outputs:
+Each probe iteration outputs one line of JSON (newline-delimited):
 
 ```json
 {
   "probe_id": 0,
-  "iteration": 1,
-  "timestamp": "2025-10-27T12:00:00Z",
-  "destination": "example.com",
+  "probe_num": 1,
+  "path_hash": "a3f5c2d1",
+  "source_ip": "198.51.100.1",
+  "source_port": 33434,
+  "destination_ip": "203.0.113.1",
+  "destination_port": 443,
+  "destination_ptr": "example.com",
   "protocol": "TCP",
-  "dst_port": 443,
-  "src_port": 65000,
+  "reached_dest": true,
   "hops": [
     {
       "ttl": 1,
       "ip": "192.0.2.1",
       "rtt": 1234567,
       "timeout": false,
-      "ptr": "gateway.local"
+      "ptr": "gateway.local",
+      "recv_time": "2025-10-27T12:00:00Z"
     }
-  ]
+  ],
+  "timestamp": "2025-10-27T12:00:00Z"
 }
 ```
+
+**Key fields:**
+- `path_hash`: Unique identifier for this network path (CRC32 or SHA256)
+- `probe_id`: Which parallel probe (0 to N-1)
+- `probe_num`: Iteration number (0, 1, 2, ...)
+- `reached_dest`: Whether the final destination was reached
+- `rtt`: Round-trip time in microseconds
 
 ## License
 

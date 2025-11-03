@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            name: etr-linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            name: etr-linux-arm64
+          - os: macos-13  # Intel
+            goos: darwin
+            goarch: amd64
+            name: etr-darwin-amd64
+          - os: macos-latest  # Apple Silicon
+            goos: darwin
+            goarch: arm64
+            name: etr-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Install libpcap (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+
+      - name: Build binary
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          COMMIT=$(git rev-parse --short HEAD)
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          LDFLAGS="-X github.com/tkjaer/etr/internal/version.Version=${VERSION} \
+                   -X github.com/tkjaer/etr/internal/version.GitCommit=${COMMIT} \
+                   -X github.com/tkjaer/etr/internal/version.BuildDate=${DATE}"
+
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -ldflags="${LDFLAGS}" -o ${{ matrix.name }} ./cmd/etr
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          mv artifacts/etr-*/* release/
+          cd release
+          sha256sum etr-* > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
