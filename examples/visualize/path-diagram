@@ -1,0 +1,404 @@
+#!/usr/bin/env python3
+"""
+Generate a visual path diagram from ETR JSON output as an image or ASCII.
+
+Requirements (for image output):
+    pip install graphviz
+
+Usage:
+    # Image output
+    ./path-diagram examples/monitoring/data/etr.json
+    ./path-diagram examples/monitoring/data/etr.json --output paths.png
+
+    # ASCII output
+    ./path-diagram examples/monitoring/data/etr.json --ascii
+    ./path-diagram examples/monitoring/data/etr.json --ascii --output diagram.txt
+
+    # From stdin
+    cat etr.json | ./path-diagram - --ascii
+"""
+
+import json
+import sys
+import argparse
+from collections import defaultdict
+from typing import Dict, List, Tuple
+
+try:
+    from graphviz import Digraph
+    GRAPHVIZ_AVAILABLE = True
+except ImportError:
+    GRAPHVIZ_AVAILABLE = False
+
+
+def parse_etr_json(filename: str) -> List[dict]:
+    """Parse ETR JSON file (one JSON object per line)."""
+    probes = []
+
+    if filename == '-':
+        data = sys.stdin.read()
+    else:
+        with open(filename, 'r') as f:
+            data = f.read()
+
+    for line in data.strip().split('\n'):
+        if line.strip():
+            probes.append(json.loads(line))
+
+    return probes
+
+
+def extract_paths(probes: List[dict]) -> Dict[str, dict]:
+    """Extract unique paths from probes, grouped by path_hash."""
+    paths = defaultdict(lambda: {'hops': [], 'count': 0, 'five_tuple': None})
+
+    for probe in probes:
+        path_hash = probe['path_hash']
+        paths[path_hash]['count'] += 1
+
+        # Only store hops and 5-tuple once per path_hash
+        if not paths[path_hash]['hops']:
+            hops = []
+            for hop in probe['hops']:
+                ttl = hop['ttl']
+                ip = hop['ip'] if hop['ip'] else '*'
+                ptr = hop.get('ptr', '')
+                hops.append((ttl, ip, ptr))
+            paths[path_hash]['hops'] = hops
+
+            # Store 5-tuple info (src_ip, src_port, dst_ip, dst_port, protocol)
+            paths[path_hash]['five_tuple'] = {
+                'src_ip': probe.get('source_ip', ''),
+                'src_port': probe.get('source_port', 0),
+                'dst_ip': probe.get('destination_ip', ''),
+                'dst_port': probe.get('destination_port', 0),
+                'protocol': probe.get('protocol', '')
+            }
+
+    return paths
+
+
+def format_five_tuple(five_tuple: dict) -> str:
+    """Format 5-tuple as string: src_ip:port -> dst_ip:port (protocol)."""
+    if not five_tuple or not five_tuple.get('src_ip'):
+        return ""
+    src = f"{five_tuple.get('src_ip', '')}:{five_tuple.get('src_port', '')}"
+    dst = f"{five_tuple.get('dst_ip', '')}:{five_tuple.get('dst_port', '')}"
+    proto = five_tuple.get('protocol', '').upper()
+    return f"{src} -> {dst} ({proto})"
+
+
+def truncate_ptr(ptr: str, max_len: int = 60) -> str:
+    """Truncate PTR record if too long."""
+    if len(ptr) > max_len:
+        return ptr[:max_len - 3] + "..."
+    return ptr
+
+
+def find_common_hops(paths: Dict[str, dict]) -> Dict[int, set]:
+    """Find which hops are common across all paths at each TTL."""
+    # Collect all IPs at each TTL
+    ttl_ips = defaultdict(lambda: defaultdict(int))
+
+    for path_data in paths.values():
+        for ttl, ip, _ in path_data['hops']:
+            if ip != '*':  # Ignore timeouts
+                ttl_ips[ttl][ip] += 1
+
+    # A hop is "common" if it appears in all paths at that TTL
+    num_paths = len(paths)
+    common_hops = {}
+
+    for ttl, ip_counts in ttl_ips.items():
+        # If only one unique IP at this TTL and it's in all paths, it's common
+        if len(ip_counts) == 1:
+            ip = list(ip_counts.keys())[0]
+            common_hops[ttl] = {ip}
+        else:
+            # Multiple IPs = divergence point
+            common_hops[ttl] = set()
+
+    return common_hops
+
+
+def create_ascii_diagram(probes: List[dict], output_file: str = None):
+    """Create an ASCII diagram showing all paths separately with color coding."""
+    if not probes:
+        print("No probe data found", file=sys.stderr)
+        return
+
+    paths = extract_paths(probes)
+    common_hops = find_common_hops(paths)
+    total_probes = len(probes)
+
+    # Get destination info
+    dest = probes[0]['destination_ip']
+    dest_ptr = probes[0].get('destination_ptr', '')
+    dest_label = f"{dest} ({dest_ptr})" if dest_ptr else dest
+
+    # Sort paths by count (most common first)
+    sorted_paths = sorted(paths.items(), key=lambda x: (-x[1]['count'], x[0]))
+
+    # Build output
+    output_lines = [
+        "=" * 100,
+        f"ETR Path Diagram - Destination: {dest_label}",
+        f"Total Probes: {total_probes} | Unique Paths: {len(paths)}",
+        "=" * 100,
+        "",
+        "Legend: [COMMON] = Same across all paths  |  <DIFFER> = ECMP divergence  |  * = Timeout",
+        "=" * 100,
+        ""
+    ]
+
+    # Print each path
+    for idx, (path_hash, path_data) in enumerate(sorted_paths, 1):
+        hops = path_data['hops']
+        count = path_data['count']
+        pct = (count / total_probes) * 100
+
+        output_lines.append(f"Path {idx}: {path_hash} - {count} probes ({pct:.1f}%)")
+
+        # Add 5-tuple info if available
+        five_tuple_str = format_five_tuple(path_data.get('five_tuple', {}))
+        if five_tuple_str:
+            output_lines.append(f"Flow: {five_tuple_str}")
+
+        output_lines.append("-" * 100)
+
+        for ttl, ip, ptr in hops:
+            is_common = ip in common_hops.get(ttl, set())
+
+            # Format the hop display
+            if ip == '*':
+                label = f"TTL {ttl:2d} │ {'*':^8} │ * * * (timeout)"
+            else:
+                marker = "[COMMON]" if is_common else "<DIFFER>"
+                label = f"TTL {ttl:2d} │ {marker:^8} │ {ip}"
+                if ptr:
+                    label += f" ({truncate_ptr(ptr)})"
+
+            output_lines.append(label)
+
+        output_lines.append("")
+
+    # Summary section
+    output_lines.extend([
+        "=" * 100,
+        "",
+        "Path Hash Summary:",
+        "-" * 100
+    ])
+    for path_hash, path_data in sorted_paths:
+        count = path_data['count']
+        pct = (count / total_probes) * 100
+        output_lines.append(f"  {path_hash}: {count:3d} probes ({pct:5.1f}%)")
+
+    # Output to file or stdout
+    output_text = '\n'.join(output_lines)
+
+    if output_file:
+        with open(output_file, 'w') as f:
+            f.write(output_text)
+        print(f"ASCII diagram saved to: {output_file}")
+    else:
+        print(output_text)
+
+
+def create_diagram(probes: List[dict], output_file: str = 'etr-paths', dark_mode: bool = False):
+    """Create a graphviz diagram showing all paths separately."""
+    if not GRAPHVIZ_AVAILABLE:
+        print("Error: graphviz package not found", file=sys.stderr)
+        print("Install with: pip install graphviz", file=sys.stderr)
+        print("Or use --ascii for text output", file=sys.stderr)
+        sys.exit(1)
+
+    if not probes:
+        print("No probe data found", file=sys.stderr)
+        return
+
+    paths = extract_paths(probes)
+    common_hops = find_common_hops(paths)
+    total_probes = len(probes)
+
+    # Get destination info
+    dest = probes[0]['destination_ip']
+    dest_ptr = probes[0].get('destination_ptr', '')
+
+    # Determine format from output filename
+    format = 'png'
+    if '.' in output_file:
+        base, ext = output_file.rsplit('.', 1)
+        if ext.lower() in ['png', 'svg', 'pdf', 'jpg', 'jpeg']:
+            format = ext.lower()
+            output_file = base
+
+    # Color scheme based on mode
+    if dark_mode:
+        colors = {
+            'bg': '#1e1e1e',
+            'text': '#d4d4d4',
+            'cluster_bg': '#2d2d2d',
+            'cluster_border': '#555555',
+            'common': '#2d5016',      # dark green
+            'different': '#7a3b00',   # dark orange
+            'timeout': '#5c4e00',     # dark yellow
+            'node_text': '#d4d4d4',
+            'edge': '#808080'
+        }
+    else:
+        colors = {
+            'bg': 'white',
+            'text': 'black',
+            'cluster_bg': 'white',
+            'cluster_border': 'gray',
+            'common': 'lightgreen',
+            'different': 'lightsalmon',
+            'timeout': 'lightyellow',
+            'node_text': 'black',
+            'edge': 'black'
+        }
+
+    # Create main graph
+    dot = Digraph(comment='ETR Path Diagram', format=format)
+    dot.attr(bgcolor=colors['bg'])
+    dot.attr(rankdir='LR', splines='ortho', nodesep='0.5', ranksep='1.0')
+    dot.attr('node', shape='box', style='rounded,filled', fillcolor=colors['common'],
+             fontname='monospace', fontsize='10', fontcolor=colors['node_text'])
+    dot.attr('edge', fontname='monospace', fontsize='9', color=colors['edge'],
+             fontcolor=colors['text'])
+
+    # Add title
+    title = f'ETR Path Diagram\\nDestination: {dest}'
+    if dest_ptr:
+        title += f' ({dest_ptr})'
+    title += f'\\nTotal Probes: {total_probes} | Unique Paths: {len(paths)}'
+    dot.node('title', title, shape='plaintext', fillcolor='none',
+             fontsize='14', fontname='Arial Bold', fontcolor=colors['text'])
+
+    # Sort paths by count (most common first)
+    sorted_paths = sorted(paths.items(), key=lambda x: (-x[1]['count'], x[0]))
+
+    # Create a subgraph for each path
+    for idx, (path_hash, path_data) in enumerate(sorted_paths):
+        hops = path_data['hops']
+        count = path_data['count']
+        pct = (count / total_probes) * 100
+
+        # Build cluster label with 5-tuple info
+        cluster_label = f'Path {path_hash[:8]}\\n{count} probes ({pct:.1f}%)'
+        five_tuple_str = format_five_tuple(path_data.get('five_tuple', {}))
+        if five_tuple_str:
+            cluster_label += f'\\nFlow: {five_tuple_str}'
+
+        with dot.subgraph(name=f'cluster_{idx}') as c:
+            c.attr(label=cluster_label, style='rounded,dashed', color=colors['cluster_border'],
+                   bgcolor=colors['cluster_bg'], fontname='Arial Bold', fontsize='11',
+                   labeljust='l', fontcolor=colors['text'])
+
+            prev_node = None
+
+            for ttl, ip, ptr in hops:
+                node_id = f'path{idx}_ttl{ttl}'
+                is_common = ip in common_hops.get(ttl, set())
+
+                # Create node label and color
+                if ip == '*':
+                    label = f'TTL {ttl}\\n* * *\\n(timeout)'
+                    color = colors['timeout']
+                else:
+                    label = f'TTL {ttl}\\n{ip}'
+                    if ptr:
+                        label += f'\\n({truncate_ptr(ptr, 40)})'
+                    color = colors['common'] if is_common else colors['different']
+
+                c.node(node_id, label, fillcolor=color, fontcolor=colors['node_text'])
+
+                # Connect to previous hop
+                if prev_node:
+                    c.edge(prev_node, node_id)
+                else:
+                    # Connect first hop to title
+                    dot.edge('title', node_id, style='invis')
+
+                prev_node = node_id
+
+    # Add legend
+    with dot.subgraph(name='cluster_legend') as legend:
+        legend.attr(label='Legend', style='rounded', color=colors['cluster_border'],
+                   bgcolor=colors['cluster_bg'], fontname='Arial Bold',
+                   fontsize='11', fontcolor=colors['text'])
+        legend.node('leg_common', 'Common Hop\\n(same across all paths)',
+                   fillcolor=colors['common'], shape='box', style='rounded,filled',
+                   fontcolor=colors['node_text'])
+        legend.node('leg_diff', 'Different Hop\\n(ECMP divergence)',
+                   fillcolor=colors['different'], shape='box', style='rounded,filled',
+                   fontcolor=colors['node_text'])
+        legend.node('leg_timeout', 'Timeout\\n(no response)',
+                   fillcolor=colors['timeout'], shape='box', style='rounded,filled',
+                   fontcolor=colors['node_text'])
+        legend.edge('leg_common', 'leg_diff', style='invis')
+        legend.edge('leg_diff', 'leg_timeout', style='invis')
+
+    # Render the graph
+    try:
+        output_path = dot.render(output_file, cleanup=True)
+        print(f"Path diagram saved to: {output_path}")
+
+        # Print summary
+        print(f"\nSummary:")
+        print(f"  Total Probes: {total_probes}")
+        print(f"  Unique Paths: {len(paths)}")
+        print(f"  Destination: {dest}" + (f" ({dest_ptr})" if dest_ptr else ""))
+        print(f"\nPath Distribution:")
+        for path_hash, path_data in sorted_paths:
+            count = path_data['count']
+            pct = (count / total_probes) * 100
+            print(f"  {path_hash}: {count:3d} probes ({pct:5.1f}%)")
+
+    except Exception as e:
+        print(f"Error rendering diagram: {e}", file=sys.stderr)
+        print("Make sure graphviz is installed on your system:", file=sys.stderr)
+        print("  macOS: brew install graphviz", file=sys.stderr)
+        print("  Ubuntu/Debian: sudo apt-get install graphviz", file=sys.stderr)
+        sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Generate visual path diagram from ETR JSON output',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Image output (requires graphviz)
+  %(prog)s examples/monitoring/data/etr.json
+  %(prog)s etr.json --output my-paths.png
+  %(prog)s etr.json --output diagram.svg --dark
+
+  # ASCII output
+  %(prog)s etr.json --ascii
+  %(prog)s etr.json --ascii --output diagram.txt
+  cat etr.json | %(prog)s - --ascii
+        """
+    )
+    parser.add_argument('input', help='ETR JSON file (use - for stdin)')
+    parser.add_argument('-o', '--output',
+                        help='Output file name (default: etr-paths.png for image, stdout for ASCII)')
+    parser.add_argument('--ascii', action='store_true',
+                        help='Generate ASCII diagram instead of image')
+    parser.add_argument('--dark', action='store_true',
+                        help='Use dark mode color scheme for image output')
+
+    args = parser.parse_args()
+
+    probes = parse_etr_json(args.input)
+
+    if args.ascii:
+        create_ascii_diagram(probes, args.output)
+    else:
+        output = args.output if args.output else 'etr-paths'
+        create_diagram(probes, output, dark_mode=args.dark)
+
+
+if __name__ == '__main__':
+    main()
