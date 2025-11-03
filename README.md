@@ -17,6 +17,10 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
 
 **Use cases**: Network troubleshooting, ECMP path discovery, finding specific paths for tools like iperf
 
+## Demo
+
+![demo](https://github.com/user-attachments/assets/cd010ecc-6c7e-49f7-bbac-100410c45548)
+
 ## Installation
 
 ### Pre-built Binaries
