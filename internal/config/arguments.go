@@ -2,9 +2,12 @@ package config
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"time"
 
 	flag "github.com/spf13/pflag"
+	"github.com/tkjaer/etr/internal/version"
 )
 
 type Args struct {
@@ -31,6 +34,7 @@ type Args struct {
 
 func ParseArgs() (Args, error) {
 	var args Args
+	var showVersion bool
 
 	// Set custom usage message
 	flag.Usage = func() {
@@ -51,6 +55,7 @@ func ParseArgs() (Args, error) {
 		flag.PrintDefaults()
 	}
 
+	flag.BoolVarP(&showVersion, "version", "v", false, "Show version information")
 	flag.BoolVarP(&args.TCP, "tcp", "T", false, "Use TCP (default)")
 	flag.BoolVarP(&args.UDP, "udp", "U", false, "Use UDP: note UDP probes vary in size as packet length is used to encode the probe details")
 	flag.BoolVarP(&args.ForceIPv4, "ipv4", "4", false, "Force IPv4")
@@ -70,6 +75,12 @@ func ParseArgs() (Args, error) {
 	flag.StringVarP(&args.Log, "log", "l", "", "Diagnostic log file path (empty = no diagnostic logs)")
 	flag.StringVar(&args.LogLevel, "log-level", "error", "Diagnostic log level: debug, info, warn, error")
 	flag.Parse()
+
+	// Handle version flag
+	if showVersion {
+		fmt.Println(version.FullVersion())
+		os.Exit(0)
+	}
 
 	args.Destination = flag.Arg(0)
 	if args.Destination == "" {
