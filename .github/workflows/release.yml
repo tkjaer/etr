@@ -21,11 +21,11 @@ jobs:
             goos: linux
             goarch: arm64
             name: etr-linux-arm64
-          - os: macos-13  # Intel
+          - os: macos-15-intel  # Intel - macOS 15 will be the last Intel runner
             goos: darwin
             goarch: amd64
             name: etr-darwin-amd64
-          - os: macos-latest  # Apple Silicon
+          - os: macos-latest    # Apple Silicon
             goos: darwin
             goarch: arm64
             name: etr-darwin-arm64
@@ -43,7 +43,14 @@ jobs:
 
       - name: Install libpcap (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          if [ "${{ matrix.goarch }}" = "arm64" ]; then
+            sudo apt-get install -y libpcap-dev:arm64
+          else
+            sudo apt-get install -y libpcap-dev
+          fi
 
       - name: Build binary
         run: |
