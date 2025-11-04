@@ -44,11 +44,12 @@ jobs:
       - name: Install libpcap (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo dpkg --add-architecture arm64
-          sudo apt-get update
           if [ "${{ matrix.goarch }}" = "arm64" ]; then
+            sudo sh -c 'echo "deb [arch=arm64] http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse" >> /etc/apt/sources.list'
+            sudo apt update
             sudo apt-get install -y libpcap-dev:arm64
           else
+            sudo apt-get update
             sudo apt-get install -y libpcap-dev
           fi
 
