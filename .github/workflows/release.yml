@@ -17,7 +17,7 @@ jobs:
             goos: linux
             goarch: amd64
             name: etr-linux-amd64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             name: etr-linux-arm64
@@ -44,14 +44,8 @@ jobs:
       - name: Install libpcap (Linux)
         if: runner.os == 'Linux'
         run: |
-          if [ "${{ matrix.goarch }}" = "arm64" ]; then
-            sudo sh -c 'echo "deb [arch=arm64] http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse" >> /etc/apt/sources.list'
-            sudo apt update
-            sudo apt-get install -y libpcap-dev:arm64
-          else
-            sudo apt-get update
-            sudo apt-get install -y libpcap-dev
-          fi
+          sudo apt-get update
+          sudo apt-get install -y libpcap-dev
 
       - name: Build binary
         run: |
