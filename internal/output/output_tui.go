@@ -684,7 +684,8 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 			continue
 		}
 
-		sent := ipStats.Responses + ipStats.Lost
+		// Use hop-level Sent counter for immediate updates
+		sent := hop.Sent
 		lossPct := hop.LossPct
 
 		lossStyle := statsGoodStyle

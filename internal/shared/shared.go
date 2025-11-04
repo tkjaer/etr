@@ -29,6 +29,7 @@ type HopIPStats struct {
 type HopStats struct {
 	IPs       map[string]*HopIPStats `json:"ips"`        // IP string -> stats
 	CurrentIP string                 `json:"current_ip"` // Most recent IP seen at this hop
+	Sent      uint                   `json:"sent"`       // Number of probes sent at this TTL
 	Received  uint                   `json:"received"`   // Number of probes received at this TTL
 	Lost      uint                   `json:"lost"`       // Number of probes lost at this TTL
 	LossPct   float64                `json:"loss_pct"`   // Percentage loss at this TTL

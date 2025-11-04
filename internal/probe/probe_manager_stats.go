@@ -79,6 +79,7 @@ func (pm *ProbeManager) statsProcessor() {
 			case "sent":
 				if data, ok := event.Data.(*ProbeEventDataSent); ok {
 					pm.updateSentStats(event.ProbeID, data)
+					pm.notifyOutput(event.ProbeID, data.TTL)
 				}
 			case "received":
 				if data, ok := event.Data.(*ProbeEventDataReceived); ok {
@@ -119,6 +120,7 @@ func (pm *ProbeManager) statsProcessor() {
 					case "sent":
 						if data, ok := event.Data.(*ProbeEventDataSent); ok {
 							pm.updateSentStats(event.ProbeID, data)
+							pm.notifyOutput(event.ProbeID, data.TTL)
 						}
 					case "received":
 						if data, ok := event.Data.(*ProbeEventDataReceived); ok {
@@ -191,6 +193,9 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 		}
 		probeStats.Hops[data.TTL] = hopStats
 	}
+
+	// Increment sent counter
+	probeStats.Hops[data.TTL].Sent++
 }
 
 func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventDataReceived) {
@@ -234,9 +239,11 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 		go pm.ptrManager.RequestPTR(data.IP)
 	}
 
-	// Update PTR if available
-	if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
-		ipStats.PTR = ptr
+	// Update PTR if missing in probe, and available in manager
+	if ipStats.PTR == "" {
+		if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
+			ipStats.PTR = ptr
+		}
 	}
 
 	// Update current IP for this hop
@@ -341,6 +348,12 @@ func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataT
 	} else {
 		ipStats.Lost++
 		ipStats.LossPct = calculateLossPct(ipStats.Lost, ipStats.Responses)
+		// Update PTR if missing in probe, and available in manager
+		if ipStats.PTR == "" {
+			if ptr, found := pm.ptrManager.GetPTR(hopStats.CurrentIP); found && ptr != "" {
+				ipStats.PTR = ptr
+			}
+		}
 	}
 }
 
