@@ -56,7 +56,7 @@ Once allowed/trusted, macOS won’t prompt again unless you replace the file. Yo
 ### From Source
 
 ```bash
-go install github.com/tkjaer/etr@latest
+go install github.com/tkjaer/etr/cmd/etr@latest
 ```
 
 Or build from source:
