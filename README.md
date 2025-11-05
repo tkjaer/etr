@@ -64,7 +64,7 @@ Or build from source:
 ```bash
 git clone https://github.com/tkjaer/etr.git
 cd etr
-go build
+go build -o etr ./cmd/etr
 ```
 
 ### Homebrew
