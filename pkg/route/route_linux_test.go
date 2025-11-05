@@ -4,6 +4,7 @@ package route
 
 import (
 	"errors"
+	"net"
 	"net/netip"
 	"testing"
 
@@ -179,5 +180,32 @@ func Test_get_Linux_RealCall(t *testing.T) {
 		if !route.Destination.IsValid() {
 			t.Error("get() returned route with invalid destination")
 		}
+	}
+}
+
+func Test_getGlobalUnicastIPv6_Linux(t *testing.T) {
+	// Smoke test - verify it doesn't panic and returns correct error when no IPv6
+	// This is a real call test that depends on system state
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		t.Skip("Cannot get interfaces:", err)
+	}
+
+	for _, iface := range ifaces {
+		// Test without subnet preference
+		addr, err := getGlobalUnicastIPv6(&iface, netip.Prefix{})
+		if err == nil {
+			// If we found an address, verify it's actually global unicast
+			if !addr.IsGlobalUnicast() {
+				t.Errorf("getGlobalUnicastIPv6(%s) returned non-global address: %v", iface.Name, addr)
+			}
+			if addr.IsLinkLocalUnicast() {
+				t.Errorf("getGlobalUnicastIPv6(%s) returned link-local address: %v", iface.Name, addr)
+			}
+			if !addr.Is6() {
+				t.Errorf("getGlobalUnicastIPv6(%s) returned non-IPv6 address: %v", iface.Name, addr)
+			}
+		}
+		// Error is expected for interfaces without global IPv6
 	}
 }

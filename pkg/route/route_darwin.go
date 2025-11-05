@@ -25,6 +25,55 @@ var fetchRIBMessages = func() ([]route.Message, error) {
 	return m, nil
 }
 
+// getGlobalUnicastIPv6 returns a global unicast IPv6 address from the given interface.
+// Link-local addresses (fe80::/10) are skipped.
+// If routeSubnet is provided, it prefers an address within that subnet.
+func getGlobalUnicastIPv6(iface *net.Interface, routeSubnet netip.Prefix) (netip.Addr, error) {
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return netip.Addr{}, err
+	}
+
+	var fallbackAddr netip.Addr
+
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip, ok := netip.AddrFromSlice(ipNet.IP)
+		if !ok {
+			continue
+		}
+		// Skip if not IPv6
+		if !ip.Is6() {
+			continue
+		}
+		// Skip link-local addresses
+		if ip.IsLinkLocalUnicast() {
+			continue
+		}
+		// Check if it's a global unicast address
+		if ip.IsGlobalUnicast() {
+			// If we have a route subnet, prefer addresses in that subnet
+			if routeSubnet.IsValid() && routeSubnet.Contains(ip) {
+				return ip, nil
+			}
+			// Keep the first global unicast as fallback
+			if !fallbackAddr.IsValid() {
+				fallbackAddr = ip
+			}
+		}
+	}
+
+	// Return fallback if we found any global unicast address
+	if fallbackAddr.IsValid() {
+		return fallbackAddr, nil
+	}
+
+	return netip.Addr{}, fmt.Errorf("no global unicast IPv6 address found on interface %s", iface.Name)
+}
+
 // getMostSpecificRoute finds the most specific route for a given IP address from the routing messages.
 func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 	mostSpecific := Route{}
@@ -110,6 +159,13 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 				if err != nil {
 					return Route{}, err
 				}
+				// If source is link-local, try to find a global unicast address
+				// For host routes, we don't have a meaningful subnet, so pass invalid prefix
+				if s.IsLinkLocalUnicast() {
+					if globalSrc, err := getGlobalUnicastIPv6(intf, netip.Prefix{}); err == nil {
+						s = globalSrc
+					}
+				}
 				return Route{
 					Destination: ip,
 					Gateway:     g,
@@ -128,6 +184,13 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 						return Route{}, err
 					}
 					if bitLen > mostSpecificMaskLength || (bitLen == mostSpecificMaskLength && !routeFound) {
+						// If source is link-local, try to find a global unicast address
+						// Pass the route's subnet to prefer matching addresses
+						if s.IsLinkLocalUnicast() {
+							if globalSrc, err := getGlobalUnicastIPv6(intf, subnet); err == nil {
+								s = globalSrc
+							}
+						}
 						mostSpecific = Route{
 							Destination: ip,
 							Gateway:     g,

@@ -42,6 +42,55 @@ var fetchRIBMessagesForIP = func(ip netip.Addr) ([]rtnetlink.RouteMessage, error
 	return rx, nil
 }
 
+// getGlobalUnicastIPv6 returns a global unicast IPv6 address from the given interface.
+// Link-local addresses (fe80::/10) are skipped.
+// If routeSubnet is provided, it prefers an address within that subnet.
+func getGlobalUnicastIPv6(iface *net.Interface, routeSubnet netip.Prefix) (netip.Addr, error) {
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return netip.Addr{}, err
+	}
+
+	var fallbackAddr netip.Addr
+
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip, ok := netip.AddrFromSlice(ipNet.IP)
+		if !ok {
+			continue
+		}
+		// Skip if not IPv6
+		if !ip.Is6() {
+			continue
+		}
+		// Skip link-local addresses
+		if ip.IsLinkLocalUnicast() {
+			continue
+		}
+		// Check if it's a global unicast address
+		if ip.IsGlobalUnicast() {
+			// If we have a route subnet, prefer addresses in that subnet
+			if routeSubnet.IsValid() && routeSubnet.Contains(ip) {
+				return ip, nil
+			}
+			// Keep the first global unicast as fallback
+			if !fallbackAddr.IsValid() {
+				fallbackAddr = ip
+			}
+		}
+	}
+
+	// Return fallback if we found any global unicast address
+	if fallbackAddr.IsValid() {
+		return fallbackAddr, nil
+	}
+
+	return netip.Addr{}, fmt.Errorf("no global unicast IPv6 address found on interface %s", iface.Name)
+}
+
 // getMostSpecificRoute returns the most specific route for the given IP address.
 func getMostSpecificRoute(ip netip.Addr, msgs []rtnetlink.RouteMessage) (Route, error) {
 	// RTM_GETROUTE on Linux by default returns the most specific route
@@ -69,6 +118,14 @@ func getMostSpecificRoute(ip netip.Addr, msgs []rtnetlink.RouteMessage) (Route, 
 	// Skip down interfaces
 	if intf.Flags&unix.IFF_UP == 0 {
 		return Route{}, fmt.Errorf("interface %s is down", intf.Name)
+	}
+	// If source is link-local IPv6, try to find a global unicast address
+	if src.Is6() && src.IsLinkLocalUnicast() {
+		// Construct subnet from destination and prefix length for better source selection
+		subnet := netip.PrefixFrom(dst, int(m.DstLength))
+		if globalSrc, err := getGlobalUnicastIPv6(intf, subnet); err == nil {
+			src = globalSrc
+		}
 	}
 	if dst == ip {
 		return Route{
