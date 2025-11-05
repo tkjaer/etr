@@ -27,6 +27,32 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
 
 Download the latest release for macOS or Linux from the [releases page](https://github.com/tkjaer/etr/releases).
 
+#### macOS Gatekeeper Warning
+
+The macOS release binary is currently unsigned / un-notarized. If you see:
+
+“Apple cannot verify this app is free of malware”
+
+You can run it anyway:
+
+1. Easiest (Finder):
+   - Right‑click (or Control‑click) the binary → Open → then click “Open” in the dialog.
+2. Or use System Settings:
+   - System Settings → Privacy & Security → scroll to the bottom.
+   - You should see “etr-darwin-arm64 was blocked…” → click “Allow Anyway”, then run it again (macOS will prompt once more; choose Open).
+3. Or remove the quarantine flag (terminal):
+   ```bash
+   xattr -d com.apple.quarantine ./etr-darwin-arm64
+   ./etr-darwin-arm64 --version
+   ```
+
+(Optionally) verify checksum first (from the release checksums file):
+```bash
+shasum -a 256 etr-darwin-arm64
+```
+
+Once allowed/trusted, macOS won’t prompt again unless you replace the file. You can also choose to install from source instead.
+
 ### From Source
 
 ```bash
