@@ -67,6 +67,10 @@ cd etr
 go build
 ```
 
+### Homebrew
+
+A brew formula will be added if/when the [self-submitted criteria](https://docs.brew.sh/Acceptable-Formulae#niche-or-self-submitted-stuff) are fullfilled.
+
 ### BSD Systems
 
 ETR is not yet tested on or built for BSD systems ([help appreciated!](https://github.com/tkjaer/etr/issues/41)). FreeBSD, OpenBSD, and NetBSD users should build from source. First install dependencies:
