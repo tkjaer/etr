@@ -230,6 +230,8 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 			if blankStats, ok := hopStats.IPs[""]; ok {
 				ipStats = blankStats
 				delete(hopStats.IPs, "")
+			} else {
+				ipStats = &shared.HopIPStats{}
 			}
 		} else {
 			ipStats = &shared.HopIPStats{}
