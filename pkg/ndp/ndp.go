@@ -1,3 +1,5 @@
+//go:build linux || darwin || freebsd
+
 package ndp
 
 import (
@@ -101,7 +103,7 @@ func PerformNeighborDiscovery(targetIP net.IP, iface *net.Interface, timeout tim
 }
 
 func CheckNeighbourTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "freebsd" {
 		return checkNeighbourTable(ip, iface)
 	}
 	return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
