@@ -2,6 +2,7 @@ package probe
 
 import (
 	"encoding/binary"
+	"log/slog"
 	"net"
 
 	"github.com/google/gopacket"
@@ -10,8 +11,18 @@ import (
 
 // decodeICMPv4Layer decodes an ICMPv4 layer and returns the TTL, probe number, and flag.
 func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8, probeNum uint, port uint, flag string) {
-	if icmp4Layer.TypeCode.Type() == layers.ICMPv4TypeTimeExceeded && icmp4Layer.TypeCode.Code() == layers.ICMPv4CodeTTLExceeded {
+	// Handle both TTL exceeded (intermediate hops) and destination unreachable (final hop)
+	isTimeExceeded := icmp4Layer.TypeCode.Type() == layers.ICMPv4TypeTimeExceeded && icmp4Layer.TypeCode.Code() == layers.ICMPv4CodeTTLExceeded
+	isDestUnreachable := icmp4Layer.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable && icmp4Layer.TypeCode.Code() == layers.ICMPv4CodePort
+
+	if isTimeExceeded || isDestUnreachable {
+		if isTimeExceeded {
+			flag = "TTL"
+		} else if isDestUnreachable {
+			flag = "D"
+		}
 		if packet := gopacket.NewPacket(icmp4Layer.Payload, protoToLayerType(pm.probeConfig.protocolConfig.inet), gopacket.Default); packet != nil {
+			slog.Debug("Packet received", slog.Any("packet", packet))
 
 			inetLayer := packet.Layer(protoToLayerType(pm.probeConfig.protocolConfig.inet))
 			if inetLayer == nil {
@@ -74,7 +85,16 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 
 // decodeICMPv6Layer decodes an ICMPv6 layer and returns the TTL, probe number, port, and flag.
 func (pm *ProbeManager) decodeICMPv6Layer(icmp6Layer *layers.ICMPv6) (ttl uint8, probeNum uint, port uint, flag string) {
-	if icmp6Layer.TypeCode.Type() == layers.ICMPv6TypeTimeExceeded && icmp6Layer.TypeCode.Code() == layers.ICMPv6CodeHopLimitExceeded {
+	// Handle both time exceeded (intermediate hops) and destination unreachable (final hop)
+	isTimeExceeded := icmp6Layer.TypeCode.Type() == layers.ICMPv6TypeTimeExceeded && icmp6Layer.TypeCode.Code() == layers.ICMPv6CodeHopLimitExceeded
+	isDestUnreachable := icmp6Layer.TypeCode.Type() == layers.ICMPv6TypeDestinationUnreachable && icmp6Layer.TypeCode.Code() == 4 // Port unreachable
+
+	if isTimeExceeded || isDestUnreachable {
+		if isTimeExceeded {
+			flag = "TTL"
+		} else if isDestUnreachable {
+			flag = "D"
+		}
 		innerPayload := icmp6Layer.Payload
 		expectedLayer := protoToLayerType(pm.probeConfig.protocolConfig.inet)
 
