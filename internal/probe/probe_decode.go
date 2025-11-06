@@ -15,11 +15,17 @@ func (pm *ProbeManager) decodeRecvProbe(packet gopacket.Packet) (ttl uint8, prob
 	// Decode any ICMP layers first to ensure we're catching TTL exceeded and
 	// not just parsing the inner layer.
 	if icmp4Layer := packet.Layer(layers.LayerTypeICMPv4); icmp4Layer != nil {
-		ttl, probeNum, port, _ = pm.decodeICMPv4Layer(icmp4Layer.(*layers.ICMPv4))
-		flag = "TTL"
+		ttl, probeNum, port, flag = pm.decodeICMPv4Layer(icmp4Layer.(*layers.ICMPv4))
+		// If no flag was set, default to "TTL" for ICMP time exceeded
+		if flag == "" {
+			flag = "TTL"
+		}
 	} else if icmp6Layer := packet.Layer(layers.LayerTypeICMPv6); icmp6Layer != nil {
-		ttl, probeNum, port, _ = pm.decodeICMPv6Layer(icmp6Layer.(*layers.ICMPv6))
-		flag = "TTL"
+		ttl, probeNum, port, flag = pm.decodeICMPv6Layer(icmp6Layer.(*layers.ICMPv6))
+		// If no flag was set, default to "TTL" for ICMP time exceeded
+		if flag == "" {
+			flag = "TTL"
+		}
 	} else {
 		switch pm.probeConfig.protocolConfig.transport {
 		case layers.IPProtocolTCP:
