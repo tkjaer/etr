@@ -51,9 +51,36 @@ You can run it anyway:
 shasum -a 256 etr-darwin-arm64
 ```
 
-Once allowed/trusted, macOS won’t prompt again unless you replace the file. You can also choose to install from source instead.
+Once allowed/trusted, macOS won't prompt again unless you replace the file. You can also choose to install from source instead.
 
 ### From Source
+
+**Prerequisites:**
+
+ETR requires libpcap development headers to compile:
+
+**Debian/Ubuntu:**
+```bash
+sudo apt-get update
+sudo apt-get install libpcap-dev
+```
+
+**RHEL/CentOS/Fedora:**
+```bash
+sudo dnf install libpcap-devel
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S libpcap
+```
+
+**macOS:**
+```bash
+brew install libpcap
+```
+
+**Install:**
 
 ```bash
 go install github.com/tkjaer/etr/cmd/etr@latest
