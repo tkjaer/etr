@@ -1,6 +1,6 @@
-//go:build darwin
+//go:build darwin || freebsd
 
-// This should work on freebsd, netbsd and openbsd as well (but not tested).
+// This should work on netbsd and openbsd as well (but not tested).
 
 package ndp
 

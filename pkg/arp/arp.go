@@ -1,6 +1,6 @@
-//go:build linux || darwin
+//go:build linux || darwin || freebsd
 
-// This should work on freebsd, netbsd and openbsd as well (but not tested).
+// This should work on netbsd and openbsd as well (but not tested).
 
 package arp
 
@@ -74,9 +74,9 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 
 // CheckARPTable checks if IP is in the kernel ARP table for the provided interface
 // and returns the corresponding MAC address if found.
-// It supports Linux and Darwin (macOS) platforms.
+// It supports Linux, Darwin (macOS) and FreeBSD platforms.
 func CheckARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "freebsd" {
 		return checkARPTable(ip, iface)
 	}
 	return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
