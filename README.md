@@ -100,7 +100,9 @@ A brew formula will be added if/when the [self-submitted criteria](https://docs.
 
 ### BSD Systems
 
-ETR is not yet tested on or built for BSD systems ([help appreciated!](https://github.com/tkjaer/etr/issues/41)). FreeBSD, OpenBSD, and NetBSD users should build from source. First install dependencies:
+ETR supports FreeBSD. OpenBSD and NetBSD are not yet tested ([help appreciated!](https://github.com/tkjaer/etr/issues/41)).
+
+Pre-built binaries are not currently provided for BSD systems. Build from source by first installing dependencies:
 
 **FreeBSD:**
 ```bash
@@ -119,7 +121,7 @@ pkgin install go libpcap
 
 Then build:
 ```bash
-go install github.com/tkjaer/etr@latest
+go install github.com/tkjaer/etr/cmd/etr@latest
 ```
 
 Or clone and build locally as shown above.
