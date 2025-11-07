@@ -169,7 +169,7 @@ etr -p 80 -c 1000 -d 5s target.example.com
 - `-T/-U`: TCP (default) or UDP probes
 - `-P <n>`: Number of parallel probes (default: 5)
 - `-p <port>`: Destination port (default: 443)
-- `-c <n>`: Probe iterations (default: 10)
+- `-c <n>`: Probe iterations (default: unlimited)
 - `-j <file>`: JSON output to file (keeps TUI)
 - `-J`: JSON output to stdout (disables TUI)
 - `--help`: Full option list
