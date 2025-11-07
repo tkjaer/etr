@@ -66,7 +66,8 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 				} else if dstPort := tcpLayer.(*layers.TCP).DstPort; dstPort != layers.TCPPort(pm.probeConfig.dstPort) {
 					return
 				}
-				ttl, probeNum, port, flag = decodeTCPLayer(tcpLayer.(*layers.TCP))
+				ttl, probeNum, port, _ = decodeTCPLayer(tcpLayer.(*layers.TCP))
+				// Keep the ICMP-level flag (TTL or D) rather than TCP flags
 				return
 			}
 			if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
@@ -157,7 +158,8 @@ func (pm *ProbeManager) decodeICMPv6Layer(icmp6Layer *layers.ICMPv6) (ttl uint8,
 				} else if dstPort := tcpLayer.(*layers.TCP).DstPort; dstPort != layers.TCPPort(pm.probeConfig.dstPort) {
 					return
 				}
-				ttl, probeNum, port, flag = decodeTCPLayer(tcpLayer.(*layers.TCP))
+				ttl, probeNum, port, _ = decodeTCPLayer(tcpLayer.(*layers.TCP))
+				// Keep the ICMP-level flag (TTL or D) rather than TCP flags
 				return
 			}
 			if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
