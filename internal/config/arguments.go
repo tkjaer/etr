@@ -60,7 +60,7 @@ func ParseArgs() (Args, error) {
 	flag.BoolVarP(&args.UDP, "udp", "U", false, "Use UDP probes (payload length encodes probe details)")
 	flag.BoolVarP(&args.ForceIPv4, "ipv4", "4", false, "Force IPv4")
 	flag.BoolVarP(&args.ForceIPv6, "ipv6", "6", false, "Force IPv6")
-	flag.UintVarP(&args.DestinationPort, "dest-port", "p", 443, "Destination port")
+	flag.UintVarP(&args.DestinationPort, "dest-port", "p", 443, "Destination port (for UDP, try 33434 - the IANA allocated traceroute port)")
 	flag.UintVarP(&args.SourcePort, "source-port", "s", 33434, "Base source port")
 
 	flag.UintVarP(&args.NumProbes, "count", "c", 0, "Number of probe iterations (0 = infinite)")
