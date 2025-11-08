@@ -194,8 +194,8 @@ func TestParseArgs_Defaults(t *testing.T) {
 	if args.DestinationPort != 443 {
 		t.Errorf("Default destination port = %v, want 443", args.DestinationPort)
 	}
-	if args.SourcePort != 33434 {
-		t.Errorf("Default source port = %v, want 33434", args.SourcePort)
+	if args.SourcePort != 50000 {
+		t.Errorf("Default source port = %v, want 50000", args.SourcePort)
 	}
 	if args.NumProbes != 0 {
 		t.Errorf("Default probe count = %v, want 0 (infinite)", args.NumProbes)
@@ -223,5 +223,33 @@ func TestParseArgs_Defaults(t *testing.T) {
 	}
 	if args.Destination != "example.com" {
 		t.Errorf("Destination = %v, want example.com", args.Destination)
+	}
+}
+
+func TestParseArgs_UDPDefaults(t *testing.T) {
+	// Reset flag package
+	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+
+	oldArgs := os.Args
+	os.Args = []string{"cmd", "--udp", "example.com"}
+	defer func() { os.Args = oldArgs }()
+
+	args, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs() unexpected error: %v", err)
+	}
+
+	// Check UDP-specific defaults
+	if args.TCP {
+		t.Error("TCP should be false when UDP is specified")
+	}
+	if !args.UDP {
+		t.Error("UDP should be true")
+	}
+	if args.DestinationPort != 33434 {
+		t.Errorf("Default destination port for UDP = %v, want 33434", args.DestinationPort)
+	}
+	if args.SourcePort != 50000 {
+		t.Errorf("Default source port = %v, want 50000", args.SourcePort)
 	}
 }

@@ -25,17 +25,17 @@ To check your system's ephemeral port range:
 ## Examples
 
 ```bash
-# Basic request from source port 33434
-go run request.go -p 33434 https://example.com
+# Basic request from source port 50000
+go run request.go -p 50000 https://example.com
 
 # Verbose output with IPv4 forced
-go run request.go -p 33434 -4 -v https://example.com
+go run request.go -p 50000 -4 -v https://example.com
 
 # IPv6 request with custom timeout
-go run request.go -p 33434 -6 -t 10s -v https://example.com
+go run request.go -p 50000 -6 -t 10s -v https://example.com
 
 # Save response to file
-go run request.go -p 33434 https://example.com > response.html
+go run request.go -p 50000 https://example.com > response.html
 ```
 
 ## Use Case: Testing ECMP Paths
@@ -50,7 +50,7 @@ etr -P 10 -j paths.json example.com
 jq -r '.source_port' paths.json | sort -u
 
 # 3. Test HTTP requests using the same source port
-go run request.go -p 33434 -v https://example.com
+go run request.go -p 50000 -v https://example.com
 ```
 
 This ensures your HTTP traffic follows the same network path that ETR discovered, useful for:
