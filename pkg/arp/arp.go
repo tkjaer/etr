@@ -1,4 +1,4 @@
-//go:build linux || darwin || freebsd
+//go:build linux || darwin || dragonfly || freebsd || netbsd || openbsd
 
 // This should work on netbsd and openbsd as well (but not tested).
 
@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"runtime"
 	"time"
 
 	"github.com/google/gopacket"
@@ -74,12 +73,9 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 
 // CheckARPTable checks if IP is in the kernel ARP table for the provided interface
 // and returns the corresponding MAC address if found.
-// It supports Linux, Darwin (macOS) and FreeBSD platforms.
+// It supports Linux, Darwin (macOS), Dragonfly BSD, FreeBSD, NetBSD, and OpenBSD platforms.
 func CheckARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "freebsd" {
-		return checkARPTable(ip, iface)
-	}
-	return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	return checkARPTable(ip, iface)
 }
 
 // RecvARPRequest listens for ARP requests on the provided handle and sends the MAC address to the channel

@@ -1,15 +1,13 @@
-//go:build linux || darwin || freebsd
+//go:build linux || darwin || dragonfly || freebsd || netbsd || openbsd
 
 package ndp
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
-	"runtime"
 	"time"
 
 	"github.com/mdlayher/ndp"
@@ -103,10 +101,7 @@ func PerformNeighborDiscovery(targetIP net.IP, iface *net.Interface, timeout tim
 }
 
 func CheckNeighbourTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "freebsd" {
-		return checkNeighbourTable(ip, iface)
-	}
-	return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	return checkNeighbourTable(ip, iface)
 }
 
 // Get checks both the kernel neighbor cache and performs active discovery if
