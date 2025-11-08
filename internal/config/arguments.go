@@ -53,6 +53,9 @@ func ParseArgs() (Args, error) {
 		println()
 		println("Options:")
 		flag.PrintDefaults()
+		println()
+		println("Documentation: https://github.com/tkjaer/etr")
+		println("Report issues: https://github.com/tkjaer/etr/issues")
 	}
 
 	flag.BoolVarP(&showVersion, "version", "v", false, "Show version information")
