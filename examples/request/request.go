@@ -25,9 +25,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  %s -p 33434 -v https://example.com\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -p 33434 -4 https://example.com  # Force IPv4\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -p 33434 -6 https://example.com  # Force IPv6\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -p 50000 -v https://example.com\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -p 50000 -4 https://example.com  # Force IPv4\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -p 50000 -6 https://example.com  # Force IPv6\n", os.Args[0])
 	}
 	flag.Parse()
 

@@ -170,7 +170,8 @@ etr -p 80 -c 1000 -d 5s target.example.com
 **Common options**:
 - `-T/-U`: TCP (default) or UDP probes
 - `-P <n>`: Number of parallel probes (default: 5)
-- `-p <port>`: Destination port (default: 443)
+- `-p <port>`: Destination port (default: 443 for TCP, 33434 for UDP)
+- `-s <port>`: Base source port (default: 50000)
 - `-c <n>`: Probe iterations (default: unlimited)
 - `-j <file>`: JSON output to file (keeps TUI)
 - `-J`: JSON output to stdout (disables TUI)
@@ -198,7 +199,7 @@ Each probe iteration outputs one line of JSON (newline-delimited):
   "probe_num": 1,
   "path_hash": "a3f5c2d1",
   "source_ip": "198.51.100.1",
-  "source_port": 33434,
+  "source_port": 50000,
   "destination_ip": "203.0.113.1",
   "destination_port": 443,
   "destination_ptr": "example.com",

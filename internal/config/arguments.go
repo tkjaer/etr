@@ -53,6 +53,9 @@ func ParseArgs() (Args, error) {
 		println()
 		println("Options:")
 		flag.PrintDefaults()
+		println()
+		println("Documentation: https://github.com/tkjaer/etr")
+		println("Report issues: https://github.com/tkjaer/etr/issues")
 	}
 
 	flag.BoolVarP(&showVersion, "version", "v", false, "Show version information")
@@ -60,8 +63,8 @@ func ParseArgs() (Args, error) {
 	flag.BoolVarP(&args.UDP, "udp", "U", false, "Use UDP probes (payload length encodes probe details)")
 	flag.BoolVarP(&args.ForceIPv4, "ipv4", "4", false, "Force IPv4")
 	flag.BoolVarP(&args.ForceIPv6, "ipv6", "6", false, "Force IPv6")
-	flag.UintVarP(&args.DestinationPort, "dest-port", "p", 443, "Destination port (for UDP, try 33434 - the IANA allocated traceroute port)")
-	flag.UintVarP(&args.SourcePort, "source-port", "s", 33434, "Base source port")
+	flag.UintVarP(&args.DestinationPort, "dest-port", "p", 0, "Destination port (default: 443 for TCP, 33434 for UDP)")
+	flag.UintVarP(&args.SourcePort, "source-port", "s", 50000, "Base source port")
 
 	flag.UintVarP(&args.NumProbes, "count", "c", 0, "Number of probe iterations (0 = infinite)")
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL hops")
@@ -106,6 +109,15 @@ func ParseArgs() (Args, error) {
 		return args, errors.New("maximum TTL must be between 0 and 255")
 	case args.Timeout >= 20*args.InterProbeDelay:
 		return args, errors.New("timeout must be less than 20 times inter-probe delay to prevent probe number wrapping issues")
+	}
+
+	// Set protocol-specific default destination port if not specified
+	if args.DestinationPort == 0 {
+		if args.UDP {
+			args.DestinationPort = 33434 // IANA allocated traceroute port
+		} else {
+			args.DestinationPort = 443 // HTTPS port
+		}
 	}
 
 	return args, nil

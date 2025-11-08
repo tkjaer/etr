@@ -9,10 +9,10 @@ encoded_value = (TTL × 20) + (probe_number % 20)
 ```
 
 This encoding:
-- Supports 20 parallel probes (0-19)
+- Supports 20 in-flight probe iterations (0-19) per probe run
 - Supports TTL up to 255
 - Keeps UDP packets under 1500 byte MTU
-- Allows manual decoding (e.g., value 45 = TTL 2, probe 5)
+- Allows manual decoding (e.g., value 45 = TTL 2, probe iteration 5)
 
 ## TCP Encoding
 
@@ -153,13 +153,22 @@ We must encode TTL and probe number in bits 32-63 to identify which probe trigge
 
 The encoding scheme's constraints are chosen to balance practical network needs with protocol limitations.
 
-**Probe Count:** 20 probes (0-19)
+**Probe Iteration Count:** 20 iterations (0-19)
 
-20 was chosen as the maximum number of parallel probes because:
-- It's sufficient for discovering ECMP paths in most networks (typical ECMP implementations use 2-16 paths)
+The probe number field tracks which iteration of a probe run is currently in-flight, not the number of parallel probes. Here's how it works:
+
+- Each probe run sends packets with TTL 1-30 (or up to max-ttl)
+- Multiple iterations of the same run happen sequentially as time passes
+- The probe number cycles 0-19, wrapping around every 20 iterations
+- With a 1-second timeout, the probe number resets approximately every 20 seconds
+- **Parallel probes** (for ECMP path discovery) are differentiated by **source port**, not probe number
+
+20 was chosen as the iteration limit because:
+- It provides sufficient temporal resolution to track in-flight probes across multiple timeouts
 - It keeps the encoding arithmetic simple and human-readable (multiples of 20)
 - It allows the sequence number to fit comfortably in UDP's 16-bit length field even at higher TTLs
-- The modulo-20 operation makes manual decoding straightforward (e.g., value 45 = TTL 2, probe 5)
+- The modulo-20 operation makes manual decoding straightforward (e.g., value 45 = TTL 2, iteration 5)
+- With typical 1-second timeouts, cycling every 20 seconds is more than adequate
 
 **TTL Range:** 0-255
 - TCP: No practical limit (32-bit sequence number field provides ample space)
@@ -169,7 +178,7 @@ The encoding scheme's constraints are chosen to balance practical network needs 
   - Practical limit with TTL 64: 1288 bytes
 
 The TTL multiplier of 20 was selected because:
-- It matches our probe count, making the encoding formula symmetric and intuitive
+- It matches our iteration count, making the encoding formula symmetric and intuitive
 - It ensures UDP packets remain valid (length field represents actual packet size)
 - It keeps packets well under the standard 1500-byte Ethernet MTU, even at maximum practical TTL
 - RFC 1812 recommends a default TTL of 64, and our encoding handles this comfortably with room to spare
@@ -183,4 +192,4 @@ UDP Payload: 1280 bytes (for TTL 64, probe 0)
 Total:       1308 bytes (well under 1500)
 ```
 
-This design ensures compatibility across diverse network environments while providing sufficient probe capacity for practical ECMP path discovery.
+This design ensures compatibility across diverse network environments while providing sufficient temporal resolution for tracking in-flight probes. The actual number of ECMP paths that can be discovered is determined by the number of parallel probes (configured via the `-P` flag), which use different source ports to trigger different ECMP hash calculations.
