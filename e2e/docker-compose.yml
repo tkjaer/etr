@@ -144,7 +144,7 @@ services:
       tc qdisc add dev eth2 root netem delay 10ms 5ms &&
       ip route add 10.1.0.0/16 nexthop via 10.3.1.101 nexthop via 10.3.2.102 &&
       ip route add 10.2.0.0/16 nexthop via 10.3.1.101 nexthop via 10.3.2.102 &&
-      echo "Hop3a ready" &&
+      echo "Hop3-rtr ready" &&
       tail -f /dev/null
       '
   destination:
