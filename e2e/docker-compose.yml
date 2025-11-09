@@ -50,11 +50,6 @@ services:
       - NET_ADMIN
     sysctls:
       - net.ipv4.fib_multipath_hash_policy=1
-      - net.ipv4.fib_multipath_hash_policy=1
-      - net.core.rmem_default=262144
-      - net.core.wmem_default=262144
-      - net.core.rmem_max=4194304
-      - net.core.wmem_max=4194304
     depends_on:
       - hop2a
       - hop2b
@@ -84,8 +79,6 @@ services:
     container_name: hop2a
     cap_add:
       - NET_ADMIN
-    sysctls:
-      - net.ipv4.fib_multipath_hash_policy=1
     depends_on:
       - hop3-rtr
     networks:
@@ -132,6 +125,8 @@ services:
     container_name: hop3-rtr
     cap_add:
       - NET_ADMIN
+    sysctls:
+      - net.ipv4.fib_multipath_hash_policy=1
     networks:
       internet:
       net_hop3a:
