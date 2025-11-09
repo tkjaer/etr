@@ -29,9 +29,6 @@ jobs:
         sleep 10
         docker ps -a
 
-    - name: Install jq for test parsing
-      run: sudo apt-get install -y jq
-
     - name: Run path discovery test
       run: |
         cd e2e
