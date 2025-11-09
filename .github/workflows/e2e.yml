@@ -44,8 +44,30 @@ jobs:
     - name: Verify network connectivity
       run: |
         echo "Testing basic connectivity..."
-        docker exec probe ping -c 2 10.1.1.102 || echo "Warning: Cannot reach hop1-gw"
-        docker exec probe ping -c 2 10.4.1.102 || echo "Warning: Cannot reach destination"
+        # Retry ping to hop1-gw
+        for i in {1..10}; do
+          if docker exec probe ping -c 2 10.1.1.102 &>/dev/null; then
+            echo "✓ Can reach hop1-gw (10.1.1.102)"
+            break
+          fi
+          if [ $i -eq 10 ]; then
+            echo "ERROR: Cannot reach hop1-gw after 10 attempts"
+            exit 1
+          fi
+          sleep 1
+        done
+        # Retry ping to destination
+        for i in {1..10}; do
+          if docker exec probe ping -c 2 10.4.1.102 &>/dev/null; then
+            echo "✓ Can reach destination (10.4.1.102)"
+            break
+          fi
+          if [ $i -eq 10 ]; then
+            echo "ERROR: Cannot reach destination after 10 attempts"
+            exit 1
+          fi
+          sleep 1
+        done
 
     - name: Run path discovery test
       run: |
