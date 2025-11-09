@@ -20,8 +20,8 @@ jobs:
     - name: Start Docker Compose topology
       run: |
         cd e2e
-        docker-compose build
-        docker-compose up -d
+        docker compose build
+        docker compose up -d
 
     - name: Wait for topology to be ready
       run: |
@@ -39,10 +39,10 @@ jobs:
 
     - name: Show Docker logs (on failure)
       if: failure()
-      run: docker-compose -f e2e/docker-compose.yml logs
+      run: docker compose -f e2e/docker-compose.yml logs
 
     - name: Cleanup
       if: always()
       run: |
         cd e2e
-        docker-compose down -v
+        docker compose down -v
