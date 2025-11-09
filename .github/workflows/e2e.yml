@@ -23,11 +23,29 @@ jobs:
         docker compose build
         docker compose up -d
 
-    - name: Wait for topology to be ready
+    - name: Wait for containers to be ready
       run: |
-        echo "Waiting for containers to initialize..."
-        sleep 10
+        echo "Waiting for containers to start..."
         docker ps -a
+        echo "Waiting for probe container to be ready..."
+        for i in {1..30}; do
+          if docker exec probe etr --version &>/dev/null; then
+            echo "✓ Probe container ready"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "ERROR: Probe container not ready after 30 seconds"
+            docker logs probe
+            exit 1
+          fi
+          sleep 1
+        done
+
+    - name: Verify network connectivity
+      run: |
+        echo "Testing basic connectivity..."
+        docker exec probe ping -c 2 10.1.1.102 || echo "Warning: Cannot reach hop1-gw"
+        docker exec probe ping -c 2 10.4.1.102 || echo "Warning: Cannot reach destination"
 
     - name: Run path discovery test
       run: |
