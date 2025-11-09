@@ -54,7 +54,7 @@ jobs:
             echo "ERROR: Cannot reach hop1-gw after 10 attempts"
             exit 1
           fi
-          sleep 1
+          sleep 2
         done
         # Retry ping to destination
         for i in {1..10}; do
@@ -66,7 +66,7 @@ jobs:
             echo "ERROR: Cannot reach destination after 10 attempts"
             exit 1
           fi
-          sleep 1
+          sleep 2
         done
 
     - name: Run path discovery test
@@ -77,9 +77,3 @@ jobs:
     - name: Show Docker logs (on failure)
       if: failure()
       run: docker compose -f e2e/docker-compose.yml logs
-
-    - name: Cleanup
-      if: always()
-      run: |
-        cd e2e
-        docker compose down -v
