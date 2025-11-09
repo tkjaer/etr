@@ -1,0 +1,48 @@
+# E2E tests using Docker Compose topology
+name: E2E Tests
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Start Docker Compose topology
+      run: |
+        cd e2e
+        docker-compose build
+        docker-compose up -d
+
+    - name: Wait for topology to be ready
+      run: |
+        echo "Waiting for containers to initialize..."
+        sleep 10
+        docker ps -a
+
+    - name: Install jq for test parsing
+      run: sudo apt-get install -y jq
+
+    - name: Run path discovery test
+      run: |
+        cd e2e
+        ./test_paths.sh
+
+    - name: Show Docker logs (on failure)
+      if: failure()
+      run: docker-compose -f e2e/docker-compose.yml logs
+
+    - name: Cleanup
+      if: always()
+      run: |
+        cd e2e
+        docker-compose down -v
