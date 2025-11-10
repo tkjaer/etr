@@ -51,7 +51,6 @@ services:
     sysctls:
       - net.ipv4.fib_multipath_hash_policy=1
       - net.ipv4.icmp_ratelimit=0
-      - net.ipv4.icmp_msgs_per_sec=10000
     depends_on:
       - hop2a
       - hop2b
@@ -83,7 +82,6 @@ services:
       - NET_ADMIN
     sysctls:
       - net.ipv4.icmp_ratelimit=0
-      - net.ipv4.icmp_msgs_per_sec=10000
     depends_on:
       - hop3-rtr
     networks:
@@ -109,7 +107,6 @@ services:
       - NET_ADMIN
     sysctls:
       - net.ipv4.icmp_ratelimit=0
-      - net.ipv4.icmp_msgs_per_sec=10000
     depends_on:
       - hop3-rtr
     networks:
@@ -136,7 +133,6 @@ services:
     sysctls:
       - net.ipv4.fib_multipath_hash_policy=1
       - net.ipv4.icmp_ratelimit=0
-      - net.ipv4.icmp_msgs_per_sec=10000
     networks:
       internet:
       net_hop3a:
@@ -164,7 +160,6 @@ services:
       - NET_ADMIN
     sysctls:
       - net.ipv4.icmp_ratelimit=0
-      - net.ipv4.icmp_msgs_per_sec=10000
     networks:
       internet:
       net_hop4:
