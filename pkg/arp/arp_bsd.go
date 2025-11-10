@@ -6,6 +6,7 @@ package arp
 
 import (
 	"errors"
+	"log/slog"
 	"net"
 
 	"github.com/juruen/goarp/arp"
@@ -26,14 +27,19 @@ func checkARPTable(ip net.IP, _ *net.Interface) (net.HardwareAddr, error) {
 	// On Darwin, we can use the ARP package to check the ARP table
 	// but it doesn't support checking for a specific interface.
 	// Instead, we can use the system ARP table and filter by interface.
+	slog.Debug("Checking ARP table for IP", "target_ip", ip.String())
 	entries, err := getARPTable()
 	if err != nil {
 		return nil, err
 	}
+	slog.Debug("Retrieved ARP table entries", "entries", entries)
 	for _, entry := range entries {
+		slog.Debug("Checking ARP entry", "entry", entry)
 		if isARPEntryMatch(entry, ip) {
+			slog.Debug("Found matching ARP entry", "entry", entry)
 			return entry.HwAddr, nil
 		}
 	}
+	slog.Debug("No matching ARP entry found", "target_ip", ip.String())
 	return nil, errors.New("no ARP entry found")
 }
