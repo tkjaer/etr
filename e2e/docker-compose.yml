@@ -36,7 +36,7 @@ services:
     command: |
       sh -c '
       apk add --no-cache iproute2 tcpdump curl &&
-      tc qdisc add dev eth1 root netem delay 1ms &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
       ip route add 10.2.0.0/16 nexthop via 10.1.1.102 &&
       ip route add 10.3.0.0/16 nexthop via 10.1.1.102 &&
       ip route add 10.4.0.0/16 nexthop via 10.1.1.102 &&
@@ -69,9 +69,9 @@ services:
       apk add --no-cache iproute2 &&
       ifconfig -a &&
       echo "Adding ECMP routes..." &&
-      tc qdisc add dev eth1 root netem delay 1ms &&
-      tc qdisc add dev eth2 root netem delay 1ms &&
-      tc qdisc add dev eth3 root netem delay 1ms &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth2 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth3 root netem delay 5ms 3ms &&
       ip route add 10.3.0.0/16 nexthop via 10.2.1.102 nexthop via 10.2.2.102 &&
       ip route add 10.4.0.0/16 nexthop via 10.2.1.102 nexthop via 10.2.2.102 &&
       echo "Hop1 Gateway ready" &&
@@ -97,8 +97,8 @@ services:
     command: |
       sh -c '
       apk add --no-cache iproute2 &&
-      tc qdisc add dev eth1 root netem delay 1ms &&
-      tc qdisc add dev eth2 root netem delay 1ms &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth2 root netem delay 5ms 3ms &&
       ip route add 10.1.0.0/16 nexthop via 10.2.1.101 &&
       ip route add 10.4.0.0/16 nexthop via 10.3.1.102 &&
       echo "Hop2a ready" &&
@@ -124,8 +124,8 @@ services:
     command: |
       sh -c '
       apk add --no-cache iproute2 &&
-      tc qdisc add dev eth1 root netem delay 1ms &&
-      tc qdisc add dev eth2 root netem delay 1ms &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth2 root netem delay 5ms 3ms &&
       ip route add 10.1.0.0/16 nexthop via 10.2.2.101 &&
       ip route add 10.4.0.0/16 nexthop via 10.3.2.102 &&
       echo "Hop2b ready" &&
@@ -154,8 +154,8 @@ services:
     command: |
       sh -c '
       apk add --no-cache iproute2 &&
-      tc qdisc add dev eth1 root netem delay 1ms &&
-      tc qdisc add dev eth2 root netem delay 1ms &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth2 root netem delay 5ms 3ms &&
       ip route add 10.1.0.0/16 nexthop via 10.3.1.101 nexthop via 10.3.2.101 &&
       ip route add 10.2.0.0/16 nexthop via 10.3.1.101 nexthop via 10.3.2.101 &&
       echo "Hop3-rtr ready" &&
@@ -177,7 +177,7 @@ services:
     command: |
       sh -c '
       apk add --no-cache iproute2 &&
-      tc qdisc add dev eth1 root netem delay 1ms &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
       ip route add 10.1.0.0/16 nexthop via 10.4.1.101 &&
       ip route add 10.2.0.0/16 nexthop via 10.4.1.101 &&
       ip route add 10.3.0.0/16 nexthop via 10.4.1.101 &&
