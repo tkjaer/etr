@@ -17,16 +17,21 @@ import (
 // Get retrieves the MAC address for a given IP address.
 // It first checks the kernel ARP table and if not found, sends an ARP request.
 func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) {
+	slog.Debug("ARP Get called", "target_ip", ip.String(), "interface", iface.Name, "source_ip", src.String())
+
 	// Check if the IP is in the kernel ARP table
 	mac, err := CheckARPTable(ip, iface)
 
 	// If the IP is not in the ARP table, send an ARP request and wait for a response
 	if err != nil {
+		slog.Debug("IP not in ARP table, sending ARP request", "target_ip", ip.String(), "error", err)
 		handle, err := pcap.OpenLive(iface.Name, 65536, false, pcap.BlockForever)
 		if err != nil {
+			slog.Error("Failed to open pcap for ARP", "interface", iface.Name, "error", err)
 			return nil, err
 		}
 		defer handle.Close()
+		slog.Debug("Opened pcap handle for ARP", "interface", iface.Name)
 
 		stop := make(chan struct{})
 		arpChan := make(chan net.HardwareAddr)
@@ -37,21 +42,31 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 				slog.Error("ARP receiver error", "error", err)
 			}
 		}()
+		slog.Debug("Started ARP receiver goroutine", "target_ip", ip.String())
 
 		// Wait for a short time to allow the receiver to start
 		time.Sleep(1 * time.Millisecond)
 
-		// Send ARP request in a separate goroutine
+		// Send ARP request in a separate goroutine with retries
 		go func(handle *pcap.Handle, srcMAC net.HardwareAddr, src, dstIP net.IP, stop chan struct{}) {
-			select {
-			case <-stop:
-				return
-			default:
-				if err := SendARPRequest(handle, srcMAC, src, dstIP); err != nil {
-					slog.Error("ARP send error", "error", err)
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+
+			// Send initial request immediately
+			if err := SendARPRequest(handle, srcMAC, src, dstIP); err != nil {
+				slog.Error("ARP send error", "error", err)
+			}
+
+			// Then retry every 100ms until stopped
+			for {
+				select {
+				case <-stop:
+					return
+				case <-ticker.C:
+					if err := SendARPRequest(handle, srcMAC, src, dstIP); err != nil {
+						slog.Error("ARP send error", "error", err)
+					}
 				}
-				// Use a short 0.1s retry interval
-				time.Sleep(100 * time.Millisecond)
 			}
 		}(handle, iface.HardwareAddr, src, ip, stop)
 
@@ -63,6 +78,7 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 				close(stop)
 				return mac, nil
 			case <-time.After(2 * time.Second):
+				slog.Debug("ARP request timed out", "target_ip", ip.String())
 				return nil, fmt.Errorf("timeout waiting for ARP response for %s", ip)
 			}
 		}
