@@ -1,10 +1,20 @@
-# ETR Pre-commit Setup
+# Developing ETR
+
+Guidelines and help for developing ETR.
+
+## End-to-End Tests
+
+Simple end-to-end tests using Docker Compose are available in the `e2e` directory.
+
+They're primarily intended for verifying functionality in CI but can be operated locally as well.
+
+## ETR Pre-commit Setup
 
 This project uses [pre-commit](https://pre-commit.com/) to run automated checks before commits.
 
-## Installation
+### Installation
 
-### Install pre-commit
+#### Install pre-commit
 
 ```bash
 # macOS
@@ -14,14 +24,14 @@ brew install pre-commit
 pip install pre-commit
 ```
 
-### Install the git hooks
+#### Install the git hooks
 
 ```bash
 cd etr
 pre-commit install
 ```
 
-## What gets checked
+### What gets checked
 
 - **golangci-lint**: Comprehensive Go linter
 - **go test**: Runs all tests
@@ -34,7 +44,7 @@ pre-commit install
 - **check-merge-conflict**: Detects merge conflict markers
 - **detect-private-key**: Prevents committing private keys
 
-## Manual run
+### Manual run
 
 To run all hooks manually:
 
@@ -48,7 +58,7 @@ To run a specific hook:
 pre-commit run go-test
 ```
 
-## Skipping hooks
+### Skipping hooks
 
 If you need to skip hooks (not recommended):
 

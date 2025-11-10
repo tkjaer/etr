@@ -1,0 +1,215 @@
+#--- IGNORE ----
+# version: '3.8'
+# This docker-compose file sets up a network topology with multiple hops and paths
+# for end-to-end testing of the ETR (Edge Traffic Router) system.
+#
+# Topology:
+#
+#                          probe
+#                            |
+#                         hop1-gw
+#                        /       \
+#                    hop2a        hop2b
+#                         \      /
+#                         hop3-rtr
+#                            |
+#                       destination
+#
+---
+services:
+  probe:
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile.probe
+    container_name: probe
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    depends_on:
+      - hop1-gw
+    networks:
+      internet:
+      net_hop1:
+        ipv4_address: 10.1.1.101
+    volumes:
+      - ./data:/data
+    command: |
+      sh -c '
+      apk add --no-cache iproute2 tcpdump curl &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      ip route add 10.2.0.0/16 nexthop via 10.1.1.102 &&
+      ip route add 10.3.0.0/16 nexthop via 10.1.1.102 &&
+      ip route add 10.4.0.0/16 nexthop via 10.1.1.102 &&
+      echo "Probe ready" &&
+      tail -f /dev/null
+      '
+  hop1-gw:
+    image: alpine:latest
+    container_name: hop1-gw
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.fib_multipath_hash_policy=1
+      - net.ipv4.icmp_ratelimit=0
+    depends_on:
+      - hop2a
+      - hop2b
+    networks:
+      internet:
+      net_hop1:
+        ipv4_address: 10.1.1.102
+      net_hop2a:
+        ipv4_address: 10.2.1.101
+      net_hop2b:
+        ipv4_address: 10.2.2.101
+    command: |
+      sh -c '
+      apk add --no-cache iproute2 &&
+      ifconfig -a &&
+      echo "Adding ECMP routes..." &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth2 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth3 root netem delay 5ms 3ms &&
+      ip route add 10.3.0.0/16 nexthop via 10.2.1.102 nexthop via 10.2.2.102 &&
+      ip route add 10.4.0.0/16 nexthop via 10.2.1.102 nexthop via 10.2.2.102 &&
+      echo "Hop1 Gateway ready" &&
+      tail -f /dev/null
+      '
+  hop2a:
+    image: alpine:latest
+    container_name: hop2a
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.icmp_ratelimit=0
+    depends_on:
+      - hop3-rtr
+    networks:
+      internet:
+      net_hop2a:
+        ipv4_address: 10.2.1.102
+      net_hop3a:
+        ipv4_address: 10.3.1.101
+    command: |
+      sh -c '
+      apk add --no-cache iproute2 &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth2 root netem delay 5ms 3ms &&
+      ip route add 10.1.0.0/16 nexthop via 10.2.1.101 &&
+      ip route add 10.4.0.0/16 nexthop via 10.3.1.102 &&
+      echo "Hop2a ready" &&
+      tail -f /dev/null
+      '
+  hop2b:
+    image: alpine:latest
+    container_name: hop2b
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.icmp_ratelimit=0
+    depends_on:
+      - hop3-rtr
+    networks:
+      internet:
+      net_hop2b:
+        ipv4_address: 10.2.2.102
+      net_hop3b:
+        ipv4_address: 10.3.2.101
+    command: |
+      sh -c '
+      apk add --no-cache iproute2 &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth2 root netem delay 5ms 3ms &&
+      ip route add 10.1.0.0/16 nexthop via 10.2.2.101 &&
+      ip route add 10.4.0.0/16 nexthop via 10.3.2.102 &&
+      echo "Hop2b ready" &&
+      tail -f /dev/null
+      '
+  hop3-rtr:
+    image: alpine:latest
+    container_name: hop3-rtr
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.fib_multipath_hash_policy=1
+      - net.ipv4.icmp_ratelimit=0
+    networks:
+      internet:
+      net_hop3a:
+        ipv4_address: 10.3.1.102
+      net_hop3b:
+        ipv4_address: 10.3.2.102
+      net_hop4:
+        ipv4_address: 10.4.1.101
+    depends_on:
+      - destination
+    command: |
+      sh -c '
+      apk add --no-cache iproute2 &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      tc qdisc add dev eth2 root netem delay 5ms 3ms &&
+      ip route add 10.1.0.0/16 nexthop via 10.3.1.101 nexthop via 10.3.2.101 &&
+      ip route add 10.2.0.0/16 nexthop via 10.3.1.101 nexthop via 10.3.2.101 &&
+      echo "Hop3-rtr ready" &&
+      tail -f /dev/null
+      '
+  destination:
+    image: alpine:latest
+    container_name: destination
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.icmp_ratelimit=0
+    networks:
+      internet:
+      net_hop4:
+        ipv4_address: 10.4.1.102
+    command: |
+      sh -c '
+      apk add --no-cache iproute2 &&
+      tc qdisc add dev eth1 root netem delay 5ms 3ms &&
+      ip route add 10.1.0.0/16 nexthop via 10.4.1.101 &&
+      ip route add 10.2.0.0/16 nexthop via 10.4.1.101 &&
+      ip route add 10.3.0.0/16 nexthop via 10.4.1.101 &&
+      echo "Destination ready" &&
+      tail -f /dev/null
+      '
+
+networks:
+  internet:
+    driver: bridge
+  # hop1
+  net_hop1: &hop
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.1.1.0/24
+  # hop2
+  net_hop2a:
+    <<: *hop
+    ipam:
+      config:
+        - subnet: 10.2.1.0/24
+  net_hop2b:
+    <<: *hop
+    ipam:
+      config:
+        - subnet: 10.2.2.0/24
+  # hop3
+  net_hop3a:
+    <<: *hop
+    ipam:
+      config:
+        - subnet: 10.3.1.0/24
+  net_hop3b:
+    <<: *hop
+    ipam:
+      config:
+        - subnet: 10.3.2.0/24
+  # hop4
+  net_hop4:
+    <<: *hop
+    ipam:
+      config:
+        - subnet: 10.4.1.0/24
