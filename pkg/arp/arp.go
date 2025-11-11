@@ -18,8 +18,6 @@ import (
 // Get retrieves the MAC address for a given IP address.
 // It first checks the kernel ARP table and if not found, sends an ARP request.
 func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) {
-	slog.Debug("ARP Get called", "target_ip", ip.String(), "interface", iface.Name, "source_ip", src.String())
-
 	// Check if the IP is in the kernel ARP table
 	mac, err := CheckARPTable(ip, iface)
 
@@ -28,7 +26,6 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 		slog.Debug("Sending ARP request", "target_ip", ip.String())
 		handle, err := pcap.OpenLive(iface.Name, 65536, false, 100*time.Millisecond)
 		if err != nil {
-			slog.Error("Failed to open pcap for ARP", "interface", iface.Name, "error", err)
 			return nil, err
 		}
 		defer handle.Close()
@@ -46,26 +43,17 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 		// Wait for a short time to allow the receiver to start
 		time.Sleep(1 * time.Millisecond)
 
-		// Send ARP request in a separate goroutine with retries
+		// Send ARP request in a separate goroutine
 		go func(handle *pcap.Handle, srcMAC net.HardwareAddr, src, dstIP net.IP, stop chan struct{}) {
-			ticker := time.NewTicker(100 * time.Millisecond)
-			defer ticker.Stop()
-
-			// Send initial request immediately
-			if err := SendARPRequest(handle, srcMAC, src, dstIP); err != nil {
-				slog.Error("ARP send error", "error", err)
-			}
-
-			// Then retry every 100ms until stopped
-			for {
-				select {
-				case <-stop:
-					return
-				case <-ticker.C:
-					if err := SendARPRequest(handle, srcMAC, src, dstIP); err != nil {
-						slog.Error("ARP send error", "error", err)
-					}
+			select {
+			case <-stop:
+				return
+			default:
+				if err := SendARPRequest(handle, srcMAC, src, dstIP); err != nil {
+					slog.Error("ARP send error", "error", err)
 				}
+				// Use a short 0.1s retry interval
+				time.Sleep(100 * time.Millisecond)
 			}
 		}(handle, iface.HardwareAddr, src, ip, stop)
 

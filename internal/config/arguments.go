@@ -30,7 +30,6 @@ type Args struct {
 	LogLevel        string // log level: debug, info, warn, error
 	Destination     string
 	ParallelProbes  uint
-	ProbeStagger    time.Duration // delay between starting parallel probes
 }
 
 func ParseArgs() (Args, error) {
@@ -70,7 +69,6 @@ func ParseArgs() (Args, error) {
 	flag.UintVarP(&args.NumProbes, "count", "c", 0, "Number of probe iterations (0 = infinite)")
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL hops")
 	flag.UintVarP(&args.ParallelProbes, "parallel-probes", "P", 5, "Number of parallel probes")
-	flag.DurationVar(&args.ProbeStagger, "probe-stagger", 5*time.Millisecond, "Delay between starting each parallel probe")
 	flag.DurationVarP(&args.InterTTLDelay, "inter-ttl-delay", "i", 100*time.Millisecond, "Delay between each TTL hop in a probe")
 	flag.DurationVarP(&args.InterProbeDelay, "inter-probe-delay", "d", 2*time.Second, "Delay between probe iterations")
 	flag.DurationVarP(&args.Timeout, "timeout", "t", 1*time.Second, "Response timeout")
