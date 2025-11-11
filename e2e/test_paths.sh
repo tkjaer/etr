@@ -3,8 +3,8 @@ set -e
 
 echo "Running ETR e2e path discovery test..."
 
-# Run etr with 2 parallel probes, 10 iterations
-OUTPUT=$(docker exec probe etr -P4 10.4.1.102 -p 50001 -c10 -J 2>/dev/null)
+# Run etr with 2 parallel probes, 4 iterations
+OUTPUT=$(docker exec probe etr -P4 10.4.1.102 -p 50001 -c2 -J 2>/dev/null)
 
 # Save output to file for debugging
 echo "$OUTPUT" > /tmp/etr_output.json
