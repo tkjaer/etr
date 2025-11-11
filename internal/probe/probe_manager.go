@@ -85,12 +85,10 @@ type ProbeManager struct {
 	handle       *pcap.Handle
 	outputChan   chan outputMsg
 	transmitChan chan TransmitEvent
-	responseChan chan ResponseEvent
 	ptrManager   *ptr.PtrManager
 
 	// Probe Configuration
 	parallelProbes uint16
-	probeStagger   time.Duration
 	probeConfig    ProbeConfig
 	probeTracker   ProbeTracker
 
@@ -114,7 +112,6 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 		statsChan:    make(chan ProbeEvent, 100),
 		outputChan:   make(chan outputMsg, 100),
 		transmitChan: make(chan TransmitEvent, 100),
-		responseChan: make(chan ResponseEvent, 100),
 		ptrManager:   ptr.NewPtrManager(),
 
 		probeTracker: ProbeTracker{
@@ -124,7 +121,6 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 
 		// Probe Configuration
 		parallelProbes: uint16(a.ParallelProbes),
-		probeStagger:   a.ProbeStagger,
 		probeConfig: ProbeConfig{
 			destination:     a.Destination,
 			numProbes:       uint(a.NumProbes),
@@ -156,108 +152,71 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 func (pm *ProbeManager) init(a config.Args) error {
 	var err error
 
-	slog.Debug("Initializing ProbeManager")
-
 	probeConfig := &pm.probeConfig
 	protocolConfig := &probeConfig.protocolConfig
 
 	// Populate route struct
-	slog.Debug("Resolving destination IP", "destination", a.Destination)
 	d, err := getDestinationIP(a)
 	if err != nil {
-		slog.Error("Failed to resolve destination IP", "error", err)
 		return err
 	}
-	slog.Debug("Resolved destination", "ip", d.String())
-
-	slog.Debug("Looking up route to destination")
 	probeConfig.route, err = route.Get(d)
 	if err != nil {
-		slog.Error("Failed to get route", "error", err)
 		return err
 	}
-	slog.Debug("Route found",
-		"interface", probeConfig.route.Interface.Name,
-		"source", probeConfig.route.Source.String(),
-		"destination", probeConfig.route.Destination.String(),
-		"gateway", probeConfig.route.Gateway.String())
 
 	// Set protocol configuration (etherType, inet, transport)
 	if probeConfig.route.Destination.Is4() {
 		protocolConfig.etherType = layers.EthernetTypeIPv4
 		protocolConfig.inet = layers.IPProtocolIPv4
-		slog.Debug("Using IPv4 protocol")
 	} else if probeConfig.route.Destination.Is6() {
 		protocolConfig.etherType = layers.EthernetTypeIPv6
 		protocolConfig.inet = layers.IPProtocolIPv6
-		slog.Debug("Using IPv6 protocol")
 	}
 	if a.TCP {
 		protocolConfig.transport = layers.IPProtocolTCP
-		slog.Debug("Using TCP transport", "dest_port", a.DestinationPort)
 	} else if a.UDP {
 		protocolConfig.transport = layers.IPProtocolUDP
-		slog.Debug("Using UDP transport", "dest_port", a.DestinationPort)
 	}
 
 	// Resolve gateway MAC address
 	// if gw is empty, this is a directly connected route, so use dst IP
 	if probeConfig.route.Gateway == (netip.Addr{}) {
-		slog.Debug("Gateway is empty, using destination IP as gateway")
 		probeConfig.route.Gateway = probeConfig.route.Destination
 	}
-
-	slog.Debug("Resolving MAC address for gateway", "gateway", probeConfig.route.Gateway.String())
-
 	// Use the ARP package to resolve MAC for IPv4 neighbors
 	switch pm.probeConfig.protocolConfig.inet {
 	case layers.IPProtocolIPv4:
 		probeConfig.dstMAC, err = arp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface, probeConfig.route.Source.AsSlice())
 		if err != nil {
-			slog.Error("Failed to resolve MAC via ARP", "gateway", probeConfig.route.Gateway.String(), "error", err)
 			return err
 		}
-		slog.Debug("Resolved gateway MAC via ARP", "mac", probeConfig.dstMAC.String())
 	case layers.IPProtocolIPv6:
 		probeConfig.dstMAC, err = ndp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface)
 		if err != nil {
-			slog.Error("Failed to resolve MAC via NDP", "gateway", probeConfig.route.Gateway.String(), "error", err)
 			return err
 		}
-		slog.Debug("Resolved gateway MAC via NDP", "mac", probeConfig.dstMAC.String())
 	}
 
 	// Initialize pcap handle and set BPF filter
-	slog.Debug("Opening pcap handle", "interface", probeConfig.route.Interface.Name)
 	pm.handle, err = pcap.OpenLive(probeConfig.route.Interface.Name, 65536, true, pcap.BlockForever)
 	if err != nil {
-		slog.Error("Failed to open pcap handle", "interface", probeConfig.route.Interface.Name, "error", err)
 		return err
 	}
-	slog.Debug("Pcap handle opened successfully")
-
-	slog.Debug("Setting BPF filter")
 	err = pm.setBPFFilter()
 	if err != nil {
-		slog.Error("Failed to set BPF filter", "error", err)
 		return err
 	}
-	slog.Debug("BPF filter set successfully")
 
 	// Add all probes
-	slog.Debug("Initializing probes", "count", pm.parallelProbes)
 	for i := range pm.parallelProbes {
-		slog.Debug("Adding probe", "probe_id", i)
 		err := pm.addProbe(i)
 		if err != nil {
-			slog.Error("Failed to add probe", "probe_id", i, "error", err)
 			return err
 		}
 	}
-	slog.Debug("All probes initialized successfully")
 
 	// Start stats processor
-	slog.Debug("Starting stats processor")
 	pm.wg.Add(1)
 	go func() {
 		defer pm.wg.Done()
@@ -265,14 +224,12 @@ func (pm *ProbeManager) init(a config.Args) error {
 	}()
 
 	// Start receiving routine
-	slog.Debug("Starting receive routine")
 	pm.wg.Add(1)
 	go func() {
 		defer pm.wg.Done()
 		pm.recvProbes(pm.stop)
 	}()
 
-	slog.Debug("ProbeManager initialization complete")
 	return nil
 }
 
@@ -282,7 +239,7 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	p.probeID = probeIndex
 	p.config = &pm.probeConfig
 	p.transmitChan = pm.transmitChan
-	p.responseChan = pm.responseChan
+	p.responseChan = make(chan ResponseEvent, 100)
 	p.statsChan = pm.statsChan
 	p.stop = pm.stop
 	p.wg = &pm.wg
@@ -319,19 +276,15 @@ func (pm *ProbeManager) Run() error {
 	// Track just the probe goroutines separately
 	var probesWg sync.WaitGroup
 
-	// Start all probes with slight stagger to avoid burst congestion
-	for i, p := range pm.probeTracker.probes {
+	// Start all probes
+	for _, p := range pm.probeTracker.probes {
 		pm.wg.Add(1)
 		probesWg.Add(1)
-		go func(probeIndex uint16, p *Probe) {
-			// Stagger probe starts to spread packet bursts
-			if probeIndex > 0 {
-				time.Sleep(time.Duration(probeIndex) * pm.probeStagger)
-			}
+		go func(p *Probe) {
 			defer pm.wg.Done()
 			defer probesWg.Done()
 			p.Run()
-		}(i, p)
+		}(p)
 	}
 
 	// Create a channel that signals when probes are done (not all goroutines)

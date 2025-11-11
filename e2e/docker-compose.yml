@@ -35,7 +35,7 @@ services:
       - ./data:/data
     command: |
       sh -c '
-      apk add --no-cache iproute2 tcpdump curl &&
+      apk add --no-cache iproute2 tcpdump curl jq &&
       tc qdisc add dev eth1 root netem delay 5ms 3ms &&
       ip route add 10.2.0.0/16 nexthop via 10.1.1.102 &&
       ip route add 10.3.0.0/16 nexthop via 10.1.1.102 &&
