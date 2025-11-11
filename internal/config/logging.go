@@ -62,6 +62,9 @@ func SetupLogging(args Args) (*os.File, error) {
 	opts := &slog.HandlerOptions{
 		Level: logLevel,
 	}
+	if opts.Level == slog.LevelDebug {
+		opts.AddSource = true
+	}
 
 	if mode == "json" {
 		// JSON mode gets JSON-formatted logs
