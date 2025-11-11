@@ -23,7 +23,8 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 
 	// If the IP is not in the ARP table, send an ARP request and wait for a response
 	if err != nil {
-		handle, err := pcap.OpenLive(iface.Name, 65536, false, pcap.BlockForever)
+		slog.Debug("Sending ARP request", "target_ip", ip.String())
+		handle, err := pcap.OpenLive(iface.Name, 65536, false, 100*time.Millisecond)
 		if err != nil {
 			return nil, err
 		}
@@ -57,15 +58,15 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 		}(handle, iface.HardwareAddr, src, ip, stop)
 
 		// Wait for the ARP response or timeout
-		for {
-			select {
-			case mac = <-arpChan:
-				// Stop the receiver goroutine and return the MAC address
-				close(stop)
-				return mac, nil
-			case <-time.After(2 * time.Second):
-				return nil, fmt.Errorf("timeout waiting for ARP response for %s", ip)
-			}
+		select {
+		case mac = <-arpChan:
+			slog.Debug("Resolved MAC via ARP", "target_ip", ip.String(), "mac", mac.String())
+			close(stop)
+			return mac, nil
+		case <-time.After(2 * time.Second):
+			slog.Debug("ARP request timed out", "target_ip", ip.String())
+			close(stop)
+			return nil, fmt.Errorf("timeout waiting for ARP response for %s", ip)
 		}
 	}
 
@@ -91,13 +92,17 @@ func RecvARPRequest(handle *pcap.Handle, arpChan chan net.HardwareAddr, ip net.I
 	in := gopacket.NewPacketSource(handle, handle.LinkType()).Packets()
 	for {
 		select {
-		case packet := <-in:
-			if mac, ok := IsARPReplyFor(packet, ip); ok {
-				arpChan <- mac
-				return nil
-			}
 		case <-stop:
 			return nil
+		case packet := <-in:
+			if mac, ok := IsARPReplyFor(packet, ip); ok {
+				select {
+				case arpChan <- mac:
+					return nil
+				case <-stop:
+					return nil
+				}
+			}
 		}
 	}
 }

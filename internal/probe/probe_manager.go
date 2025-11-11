@@ -85,7 +85,6 @@ type ProbeManager struct {
 	handle       *pcap.Handle
 	outputChan   chan outputMsg
 	transmitChan chan TransmitEvent
-	responseChan chan ResponseEvent
 	ptrManager   *ptr.PtrManager
 
 	// Probe Configuration
@@ -113,7 +112,6 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 		statsChan:    make(chan ProbeEvent, 100),
 		outputChan:   make(chan outputMsg, 100),
 		transmitChan: make(chan TransmitEvent, 100),
-		responseChan: make(chan ResponseEvent, 100),
 		ptrManager:   ptr.NewPtrManager(),
 
 		probeTracker: ProbeTracker{
@@ -241,7 +239,7 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	p.probeID = probeIndex
 	p.config = &pm.probeConfig
 	p.transmitChan = pm.transmitChan
-	p.responseChan = pm.responseChan
+	p.responseChan = make(chan ResponseEvent, 100)
 	p.statsChan = pm.statsChan
 	p.stop = pm.stop
 	p.wg = &pm.wg

@@ -1,0 +1,69 @@
+# E2E tests using Docker Compose topology
+name: E2E Tests
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Start Docker Compose topology
+      run: |
+        cd e2e
+        docker compose build
+        docker compose up -d
+
+    - name: Wait for containers to be ready
+      run: |
+        echo "Waiting for containers to start..."
+        docker ps -a
+        echo "Waiting for probe container to be ready..."
+        for i in {1..30}; do
+          if docker exec probe etr --version &>/dev/null; then
+            echo "✓ Probe container ready"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "ERROR: Probe container not ready after 30 seconds"
+            docker logs probe
+            exit 1
+          fi
+          sleep 1
+        done
+
+    - name: Verify network connectivity
+      run: |
+        echo "Testing basic connectivity..."
+        # Check hop1-gw
+        if timeout 5 docker exec probe ping -c 2 10.1.1.102 &>/dev/null; then
+          echo "✓ Can reach hop1-gw (10.1.1.102)"
+        else
+          echo "⚠ Cannot reach hop1-gw (10.1.1.102)"
+        fi
+        # Check destination
+        if timeout 5 docker exec probe ping -c 2 10.4.1.102 &>/dev/null; then
+          echo "✓ Can reach destination (10.4.1.102)"
+        else
+          echo "⚠ Cannot reach destination (10.4.1.102)"
+        fi
+        echo "Route table:"
+        docker exec probe ip route
+
+    - name: Run path discovery test
+      run: |
+        cd e2e
+        ./test_paths.sh
+
+    - name: Show Docker logs (on failure)
+      if: failure()
+      run: docker compose -f e2e/docker-compose.yml logs
