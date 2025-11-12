@@ -15,11 +15,13 @@ import (
 // getARPTable is a variable holding the function to retrieve ARP table entries.
 // This allows for easy mocking in tests.
 var getARPTable = func() ([]arp.Entry, error) {
+	slog.Debug("Retrieving ARP table using goarp package")
 	return arp.DumpArpTable()
 }
 
 // isARPEntryMatch checks if the given ARP entry matches the provided IP address.
 func isARPEntryMatch(entry arp.Entry, ip net.IP) bool {
+	slog.Debug("Comparing ARP entry IP with target IP", "entry_ip", entry.IPAddr.String(), "target_ip", ip.String())
 	return entry.IPAddr.Equal(ip)
 }
 
@@ -30,6 +32,7 @@ func checkARPTable(ip net.IP, _ *net.Interface) (net.HardwareAddr, error) {
 	slog.Debug("Checking ARP table for IP", "target_ip", ip.String())
 	entries, err := getARPTable()
 	if err != nil {
+		slog.Debug("Error retrieving ARP table", "error", err)
 		return nil, err
 	}
 	slog.Debug("Retrieved ARP table entries", "entries", entries)
