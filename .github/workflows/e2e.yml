@@ -59,10 +59,15 @@ jobs:
         echo "Route table:"
         docker exec probe ip route
 
-    - name: Run path discovery test
+    - name: Run IPv4 path discovery test
       run: |
         cd e2e
-        ./test_paths.sh
+        ./test_paths.sh 10.4.1.102 10.2.1.102 10.2.2.102
+
+    - name: Run IPv6 path discovery test
+      run: |
+        cd e2e
+        ./test_paths.sh fd16:24b7:6fcd:41::102 fd16:24b7:6fcd:21::102 fd16:24b7:6fcd:22::102
 
     - name: Show Docker logs (on failure)
       if: failure()

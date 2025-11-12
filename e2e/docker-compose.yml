@@ -31,6 +31,7 @@ services:
       internet:
       net_hop1:
         ipv4_address: 10.1.1.101
+        ipv6_address: fd16:24b7:6fcd:11::101
     volumes:
       - ./data:/data
     command: |
@@ -40,6 +41,11 @@ services:
       ip route add 10.2.0.0/16 nexthop via 10.1.1.102 &&
       ip route add 10.3.0.0/16 nexthop via 10.1.1.102 &&
       ip route add 10.4.0.0/16 nexthop via 10.1.1.102 &&
+      ip -6 route add fd16:24b7:6fcd:21::/64 via fd16:24b7:6fcd:11::102 &&
+      ip -6 route add fd16:24b7:6fcd:22::/64 via fd16:24b7:6fcd:11::102 &&
+      ip -6 route add fd16:24b7:6fcd:31::/64 via fd16:24b7:6fcd:11::102 &&
+      ip -6 route add fd16:24b7:6fcd:32::/64 via fd16:24b7:6fcd:11::102 &&
+      ip -6 route add fd16:24b7:6fcd:41::/64 via fd16:24b7:6fcd:11::102 &&
       echo "Probe ready" &&
       tail -f /dev/null
       '
@@ -51,6 +57,8 @@ services:
     sysctls:
       - net.ipv4.fib_multipath_hash_policy=1
       - net.ipv4.icmp_ratelimit=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.fib_multipath_hash_policy=1
     depends_on:
       - hop2a
       - hop2b
@@ -58,10 +66,13 @@ services:
       internet:
       net_hop1:
         ipv4_address: 10.1.1.102
+        ipv6_address: fd16:24b7:6fcd:11::102
       net_hop2a:
         ipv4_address: 10.2.1.101
+        ipv6_address: fd16:24b7:6fcd:21::101
       net_hop2b:
         ipv4_address: 10.2.2.101
+        ipv6_address: fd16:24b7:6fcd:22::101
     command: |
       sh -c '
       apk add --no-cache iproute2 &&
@@ -72,6 +83,7 @@ services:
       tc qdisc add dev eth3 root netem delay 5ms 3ms &&
       ip route add 10.3.0.0/16 nexthop via 10.2.1.102 nexthop via 10.2.2.102 &&
       ip route add 10.4.0.0/16 nexthop via 10.2.1.102 nexthop via 10.2.2.102 &&
+      ip -6 route add fd16:24b7:6fcd:41::/64 nexthop via fd16:24b7:6fcd:21::102 nexthop via fd16:24b7:6fcd:22::102 &&
       echo "Hop1 Gateway ready" &&
       tail -f /dev/null
       '
@@ -82,14 +94,17 @@ services:
       - NET_ADMIN
     sysctls:
       - net.ipv4.icmp_ratelimit=0
+      - net.ipv6.conf.all.forwarding=1
     depends_on:
       - hop3-rtr
     networks:
       internet:
       net_hop2a:
         ipv4_address: 10.2.1.102
+        ipv6_address: fd16:24b7:6fcd:21::102
       net_hop3a:
         ipv4_address: 10.3.1.101
+        ipv6_address: fd16:24b7:6fcd:31::101
     command: |
       sh -c '
       apk add --no-cache iproute2 &&
@@ -97,6 +112,8 @@ services:
       tc qdisc add dev eth2 root netem delay 5ms 3ms &&
       ip route add 10.1.0.0/16 nexthop via 10.2.1.101 &&
       ip route add 10.4.0.0/16 nexthop via 10.3.1.102 &&
+      ip -6 route add fd16:24b7:6fcd:11::/64 via fd16:24b7:6fcd:21::101 &&
+      ip -6 route add fd16:24b7:6fcd:41::/64 via fd16:24b7:6fcd:31::102 &&
       echo "Hop2a ready" &&
       tail -f /dev/null
       '
@@ -107,14 +124,17 @@ services:
       - NET_ADMIN
     sysctls:
       - net.ipv4.icmp_ratelimit=0
+      - net.ipv6.conf.all.forwarding=1
     depends_on:
       - hop3-rtr
     networks:
       internet:
       net_hop2b:
         ipv4_address: 10.2.2.102
+        ipv6_address: fd16:24b7:6fcd:22::102
       net_hop3b:
         ipv4_address: 10.3.2.101
+        ipv6_address: fd16:24b7:6fcd:32::101
     command: |
       sh -c '
       apk add --no-cache iproute2 &&
@@ -122,6 +142,8 @@ services:
       tc qdisc add dev eth2 root netem delay 5ms 3ms &&
       ip route add 10.1.0.0/16 nexthop via 10.2.2.101 &&
       ip route add 10.4.0.0/16 nexthop via 10.3.2.102 &&
+      ip -6 route add fd16:24b7:6fcd:11::/64 via fd16:24b7:6fcd:22::101 &&
+      ip -6 route add fd16:24b7:6fcd:41::/64 via fd16:24b7:6fcd:32::102 &&
       echo "Hop2b ready" &&
       tail -f /dev/null
       '
@@ -133,14 +155,19 @@ services:
     sysctls:
       - net.ipv4.fib_multipath_hash_policy=1
       - net.ipv4.icmp_ratelimit=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.fib_multipath_hash_policy=1
     networks:
       internet:
       net_hop3a:
         ipv4_address: 10.3.1.102
+        ipv6_address: fd16:24b7:6fcd:31::102
       net_hop3b:
         ipv4_address: 10.3.2.102
+        ipv6_address: fd16:24b7:6fcd:32::102
       net_hop4:
         ipv4_address: 10.4.1.101
+        ipv6_address: fd16:24b7:6fcd:41::101
     depends_on:
       - destination
     command: |
@@ -150,6 +177,7 @@ services:
       tc qdisc add dev eth2 root netem delay 5ms 3ms &&
       ip route add 10.1.0.0/16 nexthop via 10.3.1.101 nexthop via 10.3.2.101 &&
       ip route add 10.2.0.0/16 nexthop via 10.3.1.101 nexthop via 10.3.2.101 &&
+      ip -6 route add fd16:24b7:6fcd:11::/64 nexthop via fd16:24b7:6fcd:31::101 nexthop via fd16:24b7:6fcd:32::101 &&
       echo "Hop3-rtr ready" &&
       tail -f /dev/null
       '
@@ -164,6 +192,7 @@ services:
       internet:
       net_hop4:
         ipv4_address: 10.4.1.102
+        ipv6_address: fd16:24b7:6fcd:41::102
     command: |
       sh -c '
       apk add --no-cache iproute2 &&
@@ -171,10 +200,12 @@ services:
       ip route add 10.1.0.0/16 nexthop via 10.4.1.101 &&
       ip route add 10.2.0.0/16 nexthop via 10.4.1.101 &&
       ip route add 10.3.0.0/16 nexthop via 10.4.1.101 &&
+      ip -6 route add fd16:24b7:6fcd:11::/64 via fd16:24b7:6fcd:41::101 &&
       echo "Destination ready" &&
       tail -f /dev/null
       '
 
+# ipv6 network: fd16:24b7:6fcd::/48
 networks:
   internet:
     driver: bridge
@@ -182,34 +213,41 @@ networks:
   net_hop1: &hop
     driver: bridge
     internal: true
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 10.1.1.0/24
+        - subnet: fd16:24b7:6fcd:11::/64
   # hop2
   net_hop2a:
     <<: *hop
     ipam:
       config:
         - subnet: 10.2.1.0/24
+        - subnet: fd16:24b7:6fcd:21::/64
   net_hop2b:
     <<: *hop
     ipam:
       config:
         - subnet: 10.2.2.0/24
+        - subnet: fd16:24b7:6fcd:22::/64
   # hop3
   net_hop3a:
     <<: *hop
     ipam:
       config:
         - subnet: 10.3.1.0/24
+        - subnet: fd16:24b7:6fcd:31::/64
   net_hop3b:
     <<: *hop
     ipam:
       config:
         - subnet: 10.3.2.0/24
+        - subnet: fd16:24b7:6fcd:32::/64
   # hop4
   net_hop4:
     <<: *hop
     ipam:
       config:
         - subnet: 10.4.1.0/24
+        - subnet: fd16:24b7:6fcd:41::/64
