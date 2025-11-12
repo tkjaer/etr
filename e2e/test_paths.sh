@@ -22,7 +22,7 @@ echo "Destination: $DESTINATION_IP"
 echo "Expected hop2 IPs: $HOP2A_IP, $HOP2B_IP"
 
 # Run etr with 4 parallel probes, 2 iterations
-OUTPUT=$(docker exec probe etr -P4 "$DESTINATION_IP" -p 50001 -c2 -J 2>/dev/null)
+OUTPUT=$(docker exec probe etr -P4 "$DESTINATION_IP" -c2 -J 2>/dev/null)
 
 # Save output to file for debugging
 echo "$OUTPUT" > /tmp/etr_output.json
