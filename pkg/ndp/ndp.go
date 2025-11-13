@@ -129,5 +129,5 @@ func Get(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
 		return mac, nil
 	}
 
-	return nil, errors.New("neighbor not found in cache or via discovery")
+	return nil, fmt.Errorf("IPv6 nexthop for %s not found in cache or via discovery", ip.String())
 }
