@@ -1,4 +1,4 @@
-//go:build darwin || freebsd
+//go:build darwin || dragonfly || freebsd || netbsd || openbsd
 
 package route
 
