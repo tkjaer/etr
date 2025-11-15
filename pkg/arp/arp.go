@@ -34,6 +34,7 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 
 		// Listen for ARP response in a goroutine
 		go func() {
+			slog.Debug("Starting ARP receiver loop", "target_ip", ip.String())
 			if err := RecvARPRequest(handle, arpChan, ip, stop); err != nil {
 				slog.Error("ARP receiver error", "error", err)
 			}
@@ -44,6 +45,7 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 
 		// Send ARP request in a separate goroutine
 		go func(handle *pcap.Handle, srcMAC net.HardwareAddr, src, dstIP net.IP, stop chan struct{}) {
+			slog.Debug("Starting ARP request sender loop", "target_ip", dstIP.String())
 			select {
 			case <-stop:
 				return
@@ -91,6 +93,7 @@ func RecvARPRequest(handle *pcap.Handle, arpChan chan net.HardwareAddr, ip net.I
 		case <-stop:
 			return nil
 		case packet := <-in:
+			slog.Debug("Received ARP packet", "target_ip", ip.String())
 			if mac, ok := IsARPReplyFor(packet, ip); ok {
 				select {
 				case arpChan <- mac:
