@@ -26,15 +26,16 @@ var fetchRIBMessages = func() ([]route.Message, error) {
 }
 
 // getGlobalUnicastIPv6 returns a global unicast IPv6 address from the given interface.
-// Link-local addresses (fe80::/10) are skipped.
-// If routeSubnet is provided, it prefers an address within that subnet.
-func getGlobalUnicastIPv6(iface *net.Interface, routeSubnet netip.Prefix) (netip.Addr, error) {
+// If nextHop is provided and is not link-local, it prefers an address within
+// the same subnet as the next hop.
+func getGlobalUnicastIPv6(iface *net.Interface, nextHop netip.Addr) (netip.Addr,
+	error) {
 	addrs, err := iface.Addrs()
 	if err != nil {
 		return netip.Addr{}, err
 	}
 
-	var fallbackAddr netip.Addr
+	var fallback netip.Addr
 
 	for _, addr := range addrs {
 		ipNet, ok := addr.(*net.IPNet)
@@ -53,25 +54,34 @@ func getGlobalUnicastIPv6(iface *net.Interface, routeSubnet netip.Prefix) (netip
 		if ip.IsLinkLocalUnicast() {
 			continue
 		}
+		// Skip IPv4-mapped IPv6 addresses
+		if ip.Is4In6() {
+			continue
+		}
 		// Check if it's a global unicast address
 		if ip.IsGlobalUnicast() {
-			// If we have a route subnet, prefer addresses in that subnet
-			if routeSubnet.IsValid() && routeSubnet.Contains(ip) {
-				return ip, nil
+			// If we have a non-link-local next hop, prefer addresses in the same subnet
+			if nextHop.IsValid() && !nextHop.IsLinkLocalUnicast() {
+				// Get the prefix for this address
+				ones, _ := ipNet.Mask.Size()
+				prefix := netip.PrefixFrom(ip, ones)
+				// Check if the next hop is in this subnet
+				if prefix.Contains(nextHop) {
+					return ip, nil
+				}
 			}
-			// Keep the first global unicast as fallback
-			if !fallbackAddr.IsValid() {
-				fallbackAddr = ip
+			// Keep first global address as fallback
+			if !fallback.IsValid() {
+				fallback = ip
 			}
 		}
 	}
 
-	// Return fallback if we found any global unicast address
-	if fallbackAddr.IsValid() {
-		return fallbackAddr, nil
+	if fallback.IsValid() {
+		return fallback, nil
 	}
 
-	return netip.Addr{}, fmt.Errorf("no global unicast IPv6 address found on interface %s", iface.Name)
+	return netip.Addr{}, fmt.Errorf("interface has no global unicast IPv6 address")
 }
 
 // getMostSpecificRoute finds the most specific route for a given IP address from the routing messages.
@@ -160,11 +170,13 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 					return Route{}, err
 				}
 				// If source is link-local, try to find a global unicast address
-				// For host routes, we don't have a meaningful subnet, so pass invalid prefix
+				// Pass the gateway to prefer addresses in the same subnet
 				if s.IsLinkLocalUnicast() {
-					if globalSrc, err := getGlobalUnicastIPv6(intf, netip.Prefix{}); err == nil {
-						s = globalSrc
+					globalSrc, err := getGlobalUnicastIPv6(intf, g)
+					if err != nil {
+						return Route{}, fmt.Errorf("no global unicast IPv6 source address found on interface %s for destination %s: %w", intf.Name, ip, err)
 					}
+					s = globalSrc
 				}
 				return Route{
 					Destination: ip,
@@ -185,11 +197,13 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 					}
 					if bitLen > mostSpecificMaskLength || (bitLen == mostSpecificMaskLength && !routeFound) {
 						// If source is link-local, try to find a global unicast address
-						// Pass the route's subnet to prefer matching addresses
+						// Pass the gateway to prefer addresses in the same subnet
 						if s.IsLinkLocalUnicast() {
-							if globalSrc, err := getGlobalUnicastIPv6(intf, subnet); err == nil {
-								s = globalSrc
+							globalSrc, err := getGlobalUnicastIPv6(intf, g)
+							if err != nil {
+								return Route{}, fmt.Errorf("no global unicast IPv6 source address found on interface %s for destination %s: %w", intf.Name, ip, err)
 							}
+							s = globalSrc
 						}
 						mostSpecific = Route{
 							Destination: ip,

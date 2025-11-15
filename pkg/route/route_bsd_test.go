@@ -205,8 +205,8 @@ func Test_getGlobalUnicastIPv6_Darwin(t *testing.T) {
 	}
 
 	for _, iface := range ifaces {
-		// Test without subnet preference
-		addr, err := getGlobalUnicastIPv6(&iface, netip.Prefix{})
+		// Test without next hop (should return any global address)
+		addr, err := getGlobalUnicastIPv6(&iface, netip.Addr{})
 		if err == nil {
 			// If we found an address, verify it's actually global unicast
 			if !addr.IsGlobalUnicast() {
