@@ -2,6 +2,8 @@ package probe
 
 import (
 	"fmt"
+	"log/slog"
+	"runtime"
 
 	"github.com/google/gopacket/layers"
 )
@@ -27,10 +29,25 @@ func (pm *ProbeManager) setBPFFilter() error {
 		ttl_exceeded = "icmp6 and icmp6[0] == 3 and icmp6[1] == 0"
 		dest_unreachable = "icmp6 and icmp6[0] == 1 and icmp6[1] == 4"
 	}
-	srcPortRange := fmt.Sprintf(
-		"portrange %d-%d",
-		pm.probeConfig.srcPort,
-		pm.probeConfig.srcPort+pm.parallelProbes-1)
+	srcPortRange := ""
+	// libpcap on OpenBSD does not support "portrange" syntax
+	if runtime.GOOS == "openbsd" {
+		srcPortRange = "("
+		for i := range pm.parallelProbes {
+			if i > 0 {
+				srcPortRange += " or "
+			}
+			srcPortRange += fmt.Sprintf("src port %d", pm.probeConfig.srcPort+i)
+		}
+		srcPortRange += ")"
+		slog.Debug("Using OpenBSD src port range", "src_port_range", srcPortRange)
+	} else {
+		srcPortRange = fmt.Sprintf(
+			"portrange %d-%d",
+			pm.probeConfig.srcPort,
+			pm.probeConfig.srcPort+pm.parallelProbes-1)
+		slog.Debug("Using portrange src port range", "src_port_range", srcPortRange)
+	}
 
 	// Note:
 	// UDP is tricky as we don't know if/how the destination will respond.
