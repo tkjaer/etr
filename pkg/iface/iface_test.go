@@ -21,48 +21,36 @@ func TestIsEthernetInterface(t *testing.T) {
 		{
 			name: "interface without hardware address",
 			iface: &net.Interface{
-				Name:         "tun0",
+				Name:         "any0",
 				HardwareAddr: nil,
+				Flags:        net.FlagUp | net.FlagRunning,
 			},
 			expected: false,
 		},
 		{
-			name: "utun interface (macOS VPN)",
+			name: "point-to-point interface (VPN/tunnel)",
 			iface: &net.Interface{
 				Name:         "utun0",
 				HardwareAddr: nil,
+				Flags:        net.FlagUp | net.FlagRunning | net.FlagPointToPoint,
 			},
 			expected: false,
 		},
 		{
-			name: "utun interface with MAC (should still be non-Ethernet)",
-			iface: &net.Interface{
-				Name:         "utun1",
-				HardwareAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
-			},
-			expected: false,
-		},
-		{
-			name: "tun interface",
-			iface: &net.Interface{
-				Name:         "tun0",
-				HardwareAddr: nil,
-			},
-			expected: false,
-		},
-		{
-			name: "ppp interface",
+			name: "point-to-point interface with MAC (should still be non-Ethernet)",
 			iface: &net.Interface{
 				Name:         "ppp0",
-				HardwareAddr: nil,
+				HardwareAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+				Flags:        net.FlagUp | net.FlagRunning | net.FlagPointToPoint,
 			},
 			expected: false,
 		},
 		{
-			name: "wg interface (WireGuard)",
+			name: "loopback interface",
 			iface: &net.Interface{
-				Name:         "wg0",
+				Name:         "lo0",
 				HardwareAddr: nil,
+				Flags:        net.FlagUp | net.FlagLoopback,
 			},
 			expected: false,
 		},
@@ -71,6 +59,7 @@ func TestIsEthernetInterface(t *testing.T) {
 			iface: &net.Interface{
 				Name:         "en0",
 				HardwareAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+				Flags:        net.FlagUp | net.FlagRunning | net.FlagBroadcast | net.FlagMulticast,
 			},
 			expected: true,
 		},
@@ -79,6 +68,7 @@ func TestIsEthernetInterface(t *testing.T) {
 			iface: &net.Interface{
 				Name:         "wlan0",
 				HardwareAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+				Flags:        net.FlagUp | net.FlagRunning | net.FlagBroadcast,
 			},
 			expected: true,
 		},
@@ -87,8 +77,27 @@ func TestIsEthernetInterface(t *testing.T) {
 			iface: &net.Interface{
 				Name:         "eth0",
 				HardwareAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+				Flags:        net.FlagUp | net.FlagBroadcast,
 			},
 			expected: true,
+		},
+		{
+			name: "bridge interface with MAC",
+			iface: &net.Interface{
+				Name:         "br0",
+				HardwareAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+				Flags:        net.FlagUp | net.FlagRunning | net.FlagBroadcast,
+			},
+			expected: true,
+		},
+		{
+			name: "WireGuard interface (point-to-point, no MAC)",
+			iface: &net.Interface{
+				Name:         "wg0",
+				HardwareAddr: nil,
+				Flags:        net.FlagUp | net.FlagRunning | net.FlagPointToPoint,
+			},
+			expected: false,
 		},
 	}
 
@@ -96,7 +105,7 @@ func TestIsEthernetInterface(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := IsEthernetInterface(tt.iface)
 			if result != tt.expected {
-				t.Errorf("IsEthernetInterface() = %v, want %v for interface %v",
+				t.Errorf("IsEthernetInterface() = %v, want %v for interface %+v",
 					result, tt.expected, tt.iface)
 			}
 		})
