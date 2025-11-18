@@ -12,7 +12,6 @@ import (
 // This function uses multiple heuristics:
 // 1. Point-to-point interfaces (IFF_POINTOPOINT flag) don't use Ethernet framing
 // 2. Interfaces without hardware addresses are typically not Ethernet
-// 3. Platform-specific checks for interface type (when available)
 func IsEthernetInterface(iface *net.Interface) bool {
 	if iface == nil {
 		return false
@@ -34,9 +33,6 @@ func IsEthernetInterface(iface *net.Interface) bool {
 	if len(iface.HardwareAddr) == 0 {
 		return false
 	}
-
-	// Additional platform-specific checks could be added here if needed
-	// For now, the flags check is sufficient and more reliable than name matching
 
 	return true
 }
