@@ -9,6 +9,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/tkjaer/etr/pkg/arp"
+	"github.com/tkjaer/etr/pkg/iface"
 	"github.com/tkjaer/etr/pkg/ndp"
 	"github.com/tkjaer/etr/pkg/ptr"
 	"github.com/tkjaer/etr/pkg/route"
@@ -179,23 +180,32 @@ func (pm *ProbeManager) init(a config.Args) error {
 		protocolConfig.transport = layers.IPProtocolUDP
 	}
 
-	// Resolve gateway MAC address
+	// Resolve gateway MAC address for Ethernet interfaces
 	// if gw is empty, this is a directly connected route, so use dst IP
 	if probeConfig.route.Gateway == (netip.Addr{}) {
 		probeConfig.route.Gateway = probeConfig.route.Destination
 	}
-	// Use the ARP package to resolve MAC for IPv4 neighbors
-	switch pm.probeConfig.protocolConfig.inet {
-	case layers.IPProtocolIPv4:
-		probeConfig.dstMAC, err = arp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface, probeConfig.route.Source.AsSlice())
-		if err != nil {
-			return err
+
+	// Only resolve MAC addresses for Ethernet interfaces
+	// VPN/tunnel interfaces (utun, tun, etc.) don't use MAC addresses
+	if iface.IsEthernetInterface(probeConfig.route.Interface) {
+		// Use the ARP package to resolve MAC for IPv4 neighbors
+		switch pm.probeConfig.protocolConfig.inet {
+		case layers.IPProtocolIPv4:
+			probeConfig.dstMAC, err = arp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface, probeConfig.route.Source.AsSlice())
+			if err != nil {
+				return err
+			}
+		case layers.IPProtocolIPv6:
+			probeConfig.dstMAC, err = ndp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface)
+			if err != nil {
+				return err
+			}
 		}
-	case layers.IPProtocolIPv6:
-		probeConfig.dstMAC, err = ndp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface)
-		if err != nil {
-			return err
-		}
+	} else {
+		slog.Info("Skipping MAC resolution for non-Ethernet interface", "interface", probeConfig.route.Interface.Name)
+		// For non-Ethernet interfaces, leave dstMAC as nil
+		// The packet construction will handle this case
 	}
 
 	// Initialize pcap handle and set BPF filter

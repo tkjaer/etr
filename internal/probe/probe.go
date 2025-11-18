@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/tkjaer/etr/pkg/iface"
 	"github.com/tkjaer/etr/pkg/route"
 )
 
@@ -133,6 +134,17 @@ func generateTimestampOption() []byte {
 	return data
 }
 
+// serializeLayers serializes network layers, optionally including Ethernet layer
+func serializeLayers(buf gopacket.SerializeBuffer, opts gopacket.SerializeOptions, eth *layers.Ethernet, otherLayers ...gopacket.SerializableLayer) error {
+	if eth != nil {
+		// Ethernet interface - include Ethernet layer
+		allLayers := append([]gopacket.SerializableLayer{eth}, otherLayers...)
+		return gopacket.SerializeLayers(buf, opts, allLayers...)
+	}
+	// Non-Ethernet interface (e.g., VPN/tunnel) - just IP and above
+	return gopacket.SerializeLayers(buf, opts, otherLayers...)
+}
+
 // newProbe holds configuration for a single probe instance
 type Probe struct {
 	probeID      uint16
@@ -153,10 +165,18 @@ func (p *Probe) Run() {
 		FixLengths:       true,
 		ComputeChecksums: true,
 	}
-	eth := layers.Ethernet{
-		SrcMAC:       probeConfig.route.Interface.HardwareAddr,
-		DstMAC:       probeConfig.dstMAC,
-		EthernetType: protocolConfig.etherType,
+
+	// Check if this is an Ethernet interface
+	isEthernet := iface.IsEthernetInterface(probeConfig.route.Interface)
+
+	// Only create Ethernet layer for Ethernet interfaces
+	var eth *layers.Ethernet
+	if isEthernet {
+		eth = &layers.Ethernet{
+			SrcMAC:       probeConfig.route.Interface.HardwareAddr,
+			DstMAC:       probeConfig.dstMAC,
+			EthernetType: protocolConfig.etherType,
+		}
 	}
 
 	var lastProbeStart time.Time
@@ -241,7 +261,7 @@ func (p *Probe) Run() {
 						if err := tcp.SetNetworkLayerForChecksum(&ip); err != nil {
 							slog.Error("Failed to set network layer for checksum", "error", err)
 						}
-						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
+						err := serializeLayers(buf, opts, eth, &ip, &tcp)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
@@ -262,7 +282,7 @@ func (p *Probe) Run() {
 						if err := udp.SetNetworkLayerForChecksum(&ip); err != nil {
 							slog.Error("Failed to set network layer for checksum", "error", err)
 						}
-						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp, &payload)
+						err := serializeLayers(buf, opts, eth, &ip, &udp, &payload)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
@@ -294,7 +314,7 @@ func (p *Probe) Run() {
 						if err := tcp.SetNetworkLayerForChecksum(&ip); err != nil {
 							slog.Error("Failed to set network layer for checksum", "error", err)
 						}
-						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &tcp)
+						err := serializeLayers(buf, opts, eth, &ip, &tcp)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
@@ -315,7 +335,7 @@ func (p *Probe) Run() {
 						if err := udp.SetNetworkLayerForChecksum(&ip); err != nil {
 							slog.Error("Failed to set network layer for checksum", "error", err)
 						}
-						err := gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp, &payload)
+						err := serializeLayers(buf, opts, eth, &ip, &udp, &payload)
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
