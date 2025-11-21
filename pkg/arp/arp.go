@@ -79,7 +79,7 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 // and returns the corresponding MAC address if found.
 // It supports Linux, Darwin (macOS), Dragonfly BSD, FreeBSD, NetBSD, and OpenBSD platforms.
 func CheckARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
-	if runtime.GOOS == "openbsd" {
+	if runtime.GOOS == "openbsd" || runtime.GOOS == "netbsd" {
 		return nil, fmt.Errorf("ARP table retrieval not implemented for OpenBSD")
 	}
 	return checkARPTable(ip, iface)
