@@ -2,6 +2,7 @@ package probe
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/google/gopacket/layers"
 )
@@ -27,10 +28,24 @@ func (pm *ProbeManager) setBPFFilter() error {
 		ttl_exceeded = "icmp6 and icmp6[0] == 3 and icmp6[1] == 0"
 		dest_unreachable = "icmp6 and icmp6[0] == 1 and icmp6[1] == 4"
 	}
-	srcPortRange := fmt.Sprintf(
-		"portrange %d-%d",
-		pm.probeConfig.srcPort,
-		pm.probeConfig.srcPort+pm.parallelProbes-1)
+	portRange := ""
+	// libpcap on OpenBSD does not support "portrange" syntax
+	if runtime.GOOS == "openbsd" {
+		portRange = "("
+		for i := range pm.parallelProbes {
+			if i > 0 {
+				portRange += " or "
+			}
+			portRange += fmt.Sprintf("dst port %d", pm.probeConfig.srcPort+i)
+		}
+		portRange += ")"
+
+	} else {
+		portRange = fmt.Sprintf(
+			"dst portrange %d-%d",
+			pm.probeConfig.srcPort,
+			pm.probeConfig.srcPort+pm.parallelProbes-1)
+	}
 
 	// Note:
 	// UDP is tricky as we don't know if/how the destination will respond.
@@ -42,12 +57,12 @@ func (pm *ProbeManager) setBPFFilter() error {
 	// Note: We match on src/dst IP and ports reversed, since we are capturing
 	// the returning packets.
 	destinationAnswers := fmt.Sprintf(
-		"%v and src host %v and dst host %v and src port %v and dst %v",
+		"%v and src host %v and dst host %v and src port %v and %v",
 		proto,
 		pm.probeConfig.route.Destination,
 		pm.probeConfig.route.Source,
 		pm.probeConfig.dstPort,
-		srcPortRange)
+		portRange)
 
 	// Match packets that are TTL exceeded messages from intermediate routers
 	ttlExceededAnswers := fmt.Sprintf("dst host %v and %v", pm.probeConfig.route.Source, ttl_exceeded)
