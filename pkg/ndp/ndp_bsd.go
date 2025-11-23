@@ -1,4 +1,4 @@
-//go:build darwin || dragonfly || freebsd || netbsd || openbsd
+//go:build darwin || freebsd || netbsd || openbsd
 
 // This should work on netbsd and openbsd as well (but not tested).
 

@@ -1,4 +1,4 @@
-//go:build linux || darwin || dragonfly || freebsd || netbsd || openbsd
+//go:build linux || darwin || freebsd || netbsd || openbsd
 
 package arp
 

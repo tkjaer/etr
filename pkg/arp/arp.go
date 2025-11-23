@@ -1,4 +1,4 @@
-//go:build linux || darwin || dragonfly || freebsd || netbsd || openbsd
+//go:build linux || darwin || freebsd || netbsd || openbsd
 
 // This should work on netbsd and openbsd as well (but not tested).
 
@@ -77,10 +77,10 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 
 // CheckARPTable checks if IP is in the kernel ARP table for the provided interface
 // and returns the corresponding MAC address if found.
-// It supports Linux, Darwin (macOS), Dragonfly BSD, FreeBSD, NetBSD, and OpenBSD platforms.
+// It supports Linux, Darwin (macOS) and FreeBSD platforms.
 func CheckARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
 	if runtime.GOOS == "openbsd" || runtime.GOOS == "netbsd" {
-		return nil, fmt.Errorf("ARP table retrieval not implemented for OpenBSD")
+		return nil, fmt.Errorf("ARP table retrieval not implemented for %s", runtime.GOOS)
 	}
 	return checkARPTable(ip, iface)
 }
