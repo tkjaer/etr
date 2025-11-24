@@ -100,7 +100,7 @@ A brew formula will be added if/when the [self-submitted criteria](https://docs.
 
 ### BSD Systems
 
-ETR supports FreeBSD. OpenBSD and NetBSD are not yet tested ([help appreciated!](https://github.com/tkjaer/etr/issues/41)).
+ETR supports FreeBSD, OpenBSD and NetBSD.
 
 Pre-built binaries are not currently provided for BSD systems. Build from source by first installing dependencies:
 
