@@ -1,4 +1,4 @@
-//go:build linux || darwin || freebsd
+//go:build linux || darwin || freebsd || netbsd || openbsd
 
 // This should work on netbsd and openbsd as well (but not tested).
 
@@ -35,6 +35,7 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 
 		// Listen for ARP response in a goroutine
 		go func() {
+			slog.Debug("Starting ARP receiver loop", "target_ip", ip.String())
 			if err := RecvARPRequest(handle, arpChan, ip, stop); err != nil {
 				slog.Error("ARP receiver error", "error", err)
 			}
@@ -45,6 +46,7 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 
 		// Send ARP request in a separate goroutine
 		go func(handle *pcap.Handle, srcMAC net.HardwareAddr, src, dstIP net.IP, stop chan struct{}) {
+			slog.Debug("Starting ARP request sender loop", "target_ip", dstIP.String())
 			select {
 			case <-stop:
 				return
@@ -77,10 +79,10 @@ func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) 
 // and returns the corresponding MAC address if found.
 // It supports Linux, Darwin (macOS) and FreeBSD platforms.
 func CheckARPTable(ip net.IP, iface *net.Interface) (net.HardwareAddr, error) {
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "freebsd" {
-		return checkARPTable(ip, iface)
+	if runtime.GOOS == "openbsd" || runtime.GOOS == "netbsd" {
+		return nil, fmt.Errorf("ARP table retrieval not implemented for %s", runtime.GOOS)
 	}
-	return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	return checkARPTable(ip, iface)
 }
 
 // RecvARPRequest listens for ARP requests on the provided handle and sends the MAC address to the channel
@@ -95,6 +97,7 @@ func RecvARPRequest(handle *pcap.Handle, arpChan chan net.HardwareAddr, ip net.I
 		case <-stop:
 			return nil
 		case packet := <-in:
+			slog.Debug("Received ARP packet", "target_ip", ip.String())
 			if mac, ok := IsARPReplyFor(packet, ip); ok {
 				select {
 				case arpChan <- mac:
