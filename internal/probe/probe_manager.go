@@ -204,9 +204,9 @@ func (pm *ProbeManager) init(a config.Args) error {
 			}
 		}
 	} else {
-		slog.Info("Skipping MAC resolution for non-Ethernet interface", "interface", probeConfig.route.Interface.Name)
+		slog.Debug("Skipping MAC resolution for non-Ethernet interface", "interface", probeConfig.route.Interface.Name)
 		// For non-Ethernet interfaces, leave dstMAC as nil
-		// The packet construction will handle this Debug
+		// The packet construction will handle this case
 	}
 
 	// Initialize pcap handle and set BPF filter
