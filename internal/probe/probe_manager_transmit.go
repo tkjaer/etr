@@ -13,8 +13,8 @@ func (pm *ProbeManager) transmitRoutine() error {
 		select {
 		case event := <-pm.transmitChan:
 			want_to_send := time.Now()
-			err := pm.handle.WritePacketData(event.Buffer.Bytes())
 			sent := time.Now()
+			err := pm.handle.WritePacketData(event.Buffer.Bytes())
 			if err != nil {
 				slog.Error("Error sending packet", "error", err)
 				return err
