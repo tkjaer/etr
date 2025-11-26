@@ -12,7 +12,6 @@ func (pm *ProbeManager) transmitRoutine() error {
 	for {
 		select {
 		case event := <-pm.transmitChan:
-			want_to_send := time.Now()
 			sent := time.Now()
 			err := pm.handle.WritePacketData(event.Buffer.Bytes())
 			if err != nil {
@@ -29,12 +28,6 @@ func (pm *ProbeManager) transmitRoutine() error {
 						Timestamp: sent,
 					},
 				}
-				slog.Debug("Sent packet",
-					"probe_id", event.ProbeID,
-					"probe_num", event.ProbeNum,
-					"ttl", event.TTL,
-					"time_to_send", sent.Sub(want_to_send),
-				)
 			}
 		case <-pm.stop:
 			slog.Debug("Stopping transmit routine")
