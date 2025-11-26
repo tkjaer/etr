@@ -134,6 +134,7 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 			interTTLDelay:   a.InterTTLDelay,
 			timeout:         a.Timeout,
 		},
+
 		outputConfig: outputConfig{
 			jsonOutput:    a.Json,
 			jsonFile:      a.JsonFile,
