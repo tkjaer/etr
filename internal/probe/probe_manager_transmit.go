@@ -12,7 +12,9 @@ func (pm *ProbeManager) transmitRoutine() error {
 	for {
 		select {
 		case event := <-pm.transmitChan:
+			want_to_send := time.Now()
 			err := pm.handle.WritePacketData(event.Buffer.Bytes())
+			sent := time.Now()
 			if err != nil {
 				slog.Error("Error sending packet", "error", err)
 				return err
@@ -24,9 +26,15 @@ func (pm *ProbeManager) transmitRoutine() error {
 					Data: &ProbeEventDataSent{
 						ProbeNum:  event.ProbeNum,
 						TTL:       event.TTL,
-						Timestamp: time.Now(),
+						Timestamp: sent,
 					},
 				}
+				slog.Debug("Sent packet",
+					"probe_id", event.ProbeID,
+					"probe_num", event.ProbeNum,
+					"ttl", event.TTL,
+					"time_to_send", sent.Sub(want_to_send),
+				)
 			}
 		case <-pm.stop:
 			slog.Debug("Stopping transmit routine")

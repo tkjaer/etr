@@ -134,6 +134,7 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 			interTTLDelay:   a.InterTTLDelay,
 			timeout:         a.Timeout,
 		},
+
 		outputConfig: outputConfig{
 			jsonOutput:    a.Json,
 			jsonFile:      a.JsonFile,
@@ -203,9 +204,9 @@ func (pm *ProbeManager) init(a config.Args) error {
 			}
 		}
 	} else {
-		slog.Debug("Skipping MAC resolution for non-Ethernet interface", "interface", probeConfig.route.Interface.Name)
+		slog.Info("Skipping MAC resolution for non-Ethernet interface", "interface", probeConfig.route.Interface.Name)
 		// For non-Ethernet interfaces, leave dstMAC as nil
-		// The packet construction will handle this case
+		// The packet construction will handle this Debug
 	}
 
 	// Initialize pcap handle and set BPF filter
