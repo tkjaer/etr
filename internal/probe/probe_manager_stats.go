@@ -62,7 +62,9 @@ func (pm *ProbeManager) statsProcessor() {
 	go pm.stats.TTLCache.Start()
 
 	// Request PTR lookup for destination IP early
-	go pm.ptrManager.RequestPTR(pm.probeConfig.route.Destination.String())
+	if !pm.probeConfig.NoResolve {
+		go pm.ptrManager.RequestPTR(pm.probeConfig.route.Destination.String())
+	}
 	defer pm.stats.TTLCache.Stop()
 
 	for {
@@ -238,11 +240,13 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 		}
 		hopStats.IPs[data.IP] = ipStats
 		// Request PTR lookup for new IP
-		go pm.ptrManager.RequestPTR(data.IP)
+		if !pm.probeConfig.NoResolve {
+			go pm.ptrManager.RequestPTR(data.IP)
+		}
 	}
 
 	// Update PTR if missing in probe, and available in manager
-	if ipStats.PTR == "" {
+	if ipStats.PTR == "" && !pm.probeConfig.NoResolve {
 		if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
 			ipStats.PTR = ptr
 		}
@@ -265,10 +269,13 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 
 	// Get the latest PTR from the manager
 	ptrValue := ipStats.PTR
-	if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
-		ptrValue = ptr
-		// Update ipStats.PTR as well for consistency
-		ipStats.PTR = ptr
+
+	if !pm.probeConfig.NoResolve {
+		if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
+			ptrValue = ptr
+			// Update ipStats.PTR as well for consistency
+			ipStats.PTR = ptr
+		}
 	}
 
 	// Update ProbeRun for this iteration
@@ -394,8 +401,10 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 			if ok {
 				// Get the latest PTR from the manager
 				ptrValue := ipStats.PTR
-				if ptr, found := pm.ptrManager.GetPTR(hopStats.CurrentIP); found && ptr != "" {
-					ptrValue = ptr
+				if !pm.probeConfig.NoResolve {
+					if ptr, found := pm.ptrManager.GetPTR(hopStats.CurrentIP); found && ptr != "" {
+						ptrValue = ptr
+					}
 				}
 				hopsMap[ttl] = &shared.HopRun{
 					TTL:      ttl,

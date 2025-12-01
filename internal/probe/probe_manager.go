@@ -133,6 +133,7 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 			interProbeDelay: a.InterProbeDelay,
 			interTTLDelay:   a.InterTTLDelay,
 			timeout:         a.Timeout,
+			NoResolve:       a.NoResolve,
 		},
 
 		outputConfig: outputConfig{
