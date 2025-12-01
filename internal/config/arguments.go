@@ -11,25 +11,35 @@ import (
 )
 
 type Args struct {
+	Destination    string
+	ParallelProbes uint
+	NumProbes      uint
+	MaxTTL         uint
+	NoResolve      bool
+
+	// Protocol and ports
 	TCP             bool
 	UDP             bool
 	ForceIPv4       bool
 	ForceIPv6       bool
 	DestinationPort uint
 	SourcePort      uint
-	NumProbes       uint
-	MaxTTL          uint
-	// FIXME: Clean this up
+
+	// Timing
 	InterProbeDelay time.Duration
 	InterTTLDelay   time.Duration
 	Timeout         time.Duration
-	Json            bool   // output json to stdout
-	JsonFile        string // output json to file while showing TUI
-	HashAlgorithm   string // hash algorithm: crc32, sha256
-	Log             string // log file path, empty means no logging
-	LogLevel        string // log level: debug, info, warn, error
-	Destination     string
-	ParallelProbes  uint
+
+	// Output
+	Json     bool   // output json to stdout
+	JsonFile string // output json to file while showing TUI
+
+	// Path hashing
+	HashAlgorithm string // hash algorithm: crc32, sha256
+
+	// Logging
+	Log      string // log file path, empty means no logging
+	LogLevel string // log level: debug, info, warn, error
 }
 
 func ParseArgs() (Args, error) {
@@ -68,6 +78,7 @@ func ParseArgs() (Args, error) {
 
 	flag.UintVarP(&args.NumProbes, "count", "c", 0, "Number of probe iterations (0 = infinite)")
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL hops")
+	flag.BoolVarP(&args.NoResolve, "no-resolve", "n", false, "Do not resolve IP addresses to hostnames")
 	flag.UintVarP(&args.ParallelProbes, "parallel-probes", "P", 5, "Number of parallel probes")
 	flag.DurationVarP(&args.InterTTLDelay, "inter-ttl-delay", "i", 100*time.Millisecond, "Delay between each TTL hop in a probe")
 	flag.DurationVarP(&args.InterProbeDelay, "inter-probe-delay", "d", 2*time.Second, "Delay between probe iterations")

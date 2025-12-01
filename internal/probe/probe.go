@@ -23,6 +23,7 @@ type ProbeConfig struct {
 	dstPort         uint16
 	dstMAC          net.HardwareAddr
 	maxTTL          uint8
+	NoResolve       bool
 	interProbeDelay time.Duration
 	interTTLDelay   time.Duration
 	timeout         time.Duration
