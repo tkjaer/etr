@@ -9,7 +9,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/tkjaer/etr/pkg/arp"
-	"github.com/tkjaer/etr/pkg/iface"
 	"github.com/tkjaer/etr/pkg/ndp"
 	"github.com/tkjaer/etr/pkg/ptr"
 	"github.com/tkjaer/etr/pkg/route"
@@ -188,9 +187,17 @@ func (pm *ProbeManager) init(a config.Args) error {
 		probeConfig.route.Gateway = probeConfig.route.Destination
 	}
 
+	// Initialize pcap handle first so we can determine link type
+	pm.handle, err = pcap.OpenLive(probeConfig.route.Interface.Name, 65536, true, pcap.BlockForever)
+	if err != nil {
+		return err
+	}
+	slog.Debug("Opened pcap handle", "interface", probeConfig.route.Interface.Name)
+	probeConfig.useEthernet = pm.handle.LinkType() == layers.LinkTypeEthernet
+
 	// Only resolve MAC addresses for Ethernet interfaces
 	// VPN/tunnel interfaces (utun, tun, etc.) don't use MAC addresses
-	if iface.IsEthernetInterface(probeConfig.route.Interface) {
+	if probeConfig.useEthernet {
 		// Use the ARP package to resolve MAC for IPv4 neighbors
 		switch pm.probeConfig.protocolConfig.inet {
 		case layers.IPProtocolIPv4:
@@ -210,11 +217,7 @@ func (pm *ProbeManager) init(a config.Args) error {
 		// The packet construction will handle this case
 	}
 
-	// Initialize pcap handle and set BPF filter
-	pm.handle, err = pcap.OpenLive(probeConfig.route.Interface.Name, 65536, true, pcap.BlockForever)
-	if err != nil {
-		return err
-	}
+	// Set BPF filter after configuring the handle
 	err = pm.setBPFFilter()
 	if err != nil {
 		return err

@@ -5,12 +5,17 @@ package arp
 import (
 	"errors"
 	"net"
+	"runtime"
 	"testing"
 
 	"github.com/juruen/goarp/arp"
 )
 
 func Test_isARPEntryMatch_Darwin(t *testing.T) {
+	if runtime.GOOS == "netbsd" || runtime.GOOS == "openbsd" {
+		t.Skip("Test is only applicable on Darwin or FreeBSD")
+	}
+
 	tests := []struct {
 		entryIP net.IP
 		testIP  net.IP
