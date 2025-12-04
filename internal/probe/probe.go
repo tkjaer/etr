@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/tkjaer/etr/pkg/iface"
 	"github.com/tkjaer/etr/pkg/route"
 )
 
@@ -23,6 +22,7 @@ type ProbeConfig struct {
 	dstPort         uint16
 	dstMAC          net.HardwareAddr
 	maxTTL          uint8
+	useEthernet     bool
 	NoResolve       bool
 	interProbeDelay time.Duration
 	interTTLDelay   time.Duration
@@ -167,12 +167,9 @@ func (p *Probe) Run() {
 		ComputeChecksums: true,
 	}
 
-	// Check if this is an Ethernet interface
-	isEthernet := iface.IsEthernetInterface(probeConfig.route.Interface)
-
 	// Only create Ethernet layer for Ethernet interfaces
 	var eth *layers.Ethernet
-	if isEthernet {
+	if probeConfig.useEthernet {
 		eth = &layers.Ethernet{
 			SrcMAC:       probeConfig.route.Interface.HardwareAddr,
 			DstMAC:       probeConfig.dstMAC,
