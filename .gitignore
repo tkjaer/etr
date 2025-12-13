@@ -22,3 +22,6 @@ go.work
 
 # Compiled binaries
 ^etr
+
+# Temporary files suggested by the project
+^examples/monitoring/data

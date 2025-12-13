@@ -10,6 +10,9 @@ Simple end-to-end tests using Docker Compose to verify ETR functionality in CI.
 # Start the topology
 docker-compose up -d
 
+# Relaunch probe container with a rebuilt etr
+docker-compose build --no-cache probe && docker-compose up -d probe
+
 # Run ETR from the probe container
 docker exec -it probe etr 10.4.1.102
 
@@ -28,7 +31,11 @@ docker-compose down -v
 The `test_paths.sh` script validates basic ECMP path discovery:
 
 ```bash
-./test_paths.sh
+# ipv4
+./test_paths.sh 10.4.1.102 10.2.1.102 10.2.2.102
+
+# ipv6
+./test_paths.sh fd16:24b7:6fcd:41::102 fd16:24b7:6fcd:21::102 fd16:24b7:6fcd:22::102
 ```
 
 This runs automatically in GitHub Actions on every push/PR.
