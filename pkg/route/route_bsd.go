@@ -91,7 +91,10 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 	routeFound := false
 
 	for _, msg := range msgs {
-		rm := msg.(*route.RouteMessage)
+		rm, ok := msg.(*route.RouteMessage)
+		if !ok {
+			continue
+		}
 
 		destination := rm.Addrs[0]
 		gateway := rm.Addrs[1]
