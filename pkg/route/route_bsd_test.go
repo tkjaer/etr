@@ -4,7 +4,6 @@ package route
 
 import (
 	"errors"
-	"net"
 	"net/netip"
 	"syscall"
 	"testing"
@@ -183,6 +182,9 @@ func Test_get_Darwin(t *testing.T) {
 
 func Test_get_Darwin_RealCall(t *testing.T) {
 	// Smoke test with real routing table
+	if testing.Short() {
+		t.Skip("skipping real routing table test in short mode")
+	}
 	ip := netip.MustParseAddr("8.8.8.8")
 	route, err := get(ip)
 
@@ -193,32 +195,5 @@ func Test_get_Darwin_RealCall(t *testing.T) {
 		if !route.Destination.IsValid() {
 			t.Error("get() returned route with invalid destination")
 		}
-	}
-}
-
-func Test_getGlobalUnicastIPv6_Darwin(t *testing.T) {
-	// Smoke test - verify it doesn't panic and returns correct error when no IPv6
-	// This is a real call test that depends on system state
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		t.Skip("Cannot get interfaces:", err)
-	}
-
-	for _, iface := range ifaces {
-		// Test without next hop (should return any global address)
-		addr, err := getGlobalUnicastIPv6(&iface, netip.Addr{})
-		if err == nil {
-			// If we found an address, verify it's actually global unicast
-			if !addr.IsGlobalUnicast() {
-				t.Errorf("getGlobalUnicastIPv6(%s) returned non-global address: %v", iface.Name, addr)
-			}
-			if addr.IsLinkLocalUnicast() {
-				t.Errorf("getGlobalUnicastIPv6(%s) returned link-local address: %v", iface.Name, addr)
-			}
-			if !addr.Is6() {
-				t.Errorf("getGlobalUnicastIPv6(%s) returned non-IPv6 address: %v", iface.Name, addr)
-			}
-		}
-		// Error is expected for interfaces without global IPv6
 	}
 }

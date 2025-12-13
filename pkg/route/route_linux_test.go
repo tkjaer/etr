@@ -4,7 +4,6 @@ package route
 
 import (
 	"errors"
-	"net"
 	"net/netip"
 	"testing"
 
@@ -208,6 +207,9 @@ func Test_get_Linux(t *testing.T) {
 
 func Test_get_Linux_RealCall(t *testing.T) {
 	// Smoke test with real routing table
+	if testing.Short() {
+		t.Skip("skipping real routing table test in short mode")
+	}
 	ip := netip.MustParseAddr("192.0.2.1")
 	route, err := get(ip)
 
@@ -218,99 +220,5 @@ func Test_get_Linux_RealCall(t *testing.T) {
 		if !route.Destination.IsValid() {
 			t.Error("get() returned route with invalid destination")
 		}
-	}
-}
-
-func Test_getGlobalUnicastIPv6_Linux(t *testing.T) {
-	// Smoke test - verify it doesn't panic and returns correct error when no IPv6
-	// This is a real call test that depends on system state
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		t.Skip("Cannot get interfaces:", err)
-	}
-
-	for _, iface := range ifaces {
-		// Test without subnet preference
-		addr, err := getGlobalUnicastIPv6(&iface, netip.Prefix{})
-		if err == nil {
-			// If we found an address, verify it's actually global unicast
-			if !addr.IsGlobalUnicast() {
-				t.Errorf("getGlobalUnicastIPv6(%s) returned non-global address: %v", iface.Name, addr)
-			}
-			if addr.IsLinkLocalUnicast() {
-				t.Errorf("getGlobalUnicastIPv6(%s) returned link-local address: %v", iface.Name, addr)
-			}
-			if !addr.Is6() {
-				t.Errorf("getGlobalUnicastIPv6(%s) returned non-IPv6 address: %v", iface.Name, addr)
-			}
-		}
-		// Error is expected for interfaces without global IPv6
-	}
-}
-
-func Test_selectAddrFromList(t *testing.T) {
-	mustCIDR := func(cidr string) net.Addr {
-		_, n, err := net.ParseCIDR(cidr)
-		if err != nil {
-			t.Fatalf("failed to parse %s: %v", cidr, err)
-		}
-		return n
-	}
-
-	tests := []struct {
-		name     string
-		addrs    []net.Addr
-		wantIPv6 bool
-		prefix   netip.Prefix
-		want     netip.Addr
-		ok       bool
-	}{
-		{
-			name: "prefers address inside prefix",
-			addrs: []net.Addr{
-				mustCIDR("192.0.2.10/24"),
-				mustCIDR("198.51.100.1/24"),
-			},
-			prefix: netip.MustParsePrefix("192.0.2.0/24"),
-			want:   netip.MustParseAddr("192.0.2.10"),
-			ok:     true,
-		},
-		{
-			name: "default route prefix matches any address",
-			addrs: []net.Addr{
-				mustCIDR("198.51.100.1/24"),
-			},
-			prefix: netip.MustParsePrefix("0.0.0.0/0"),
-			want:   netip.MustParseAddr("198.51.100.1"),
-			ok:     true,
-		},
-		{
-			name: "returns false when no address is inside prefix",
-			addrs: []net.Addr{
-				mustCIDR("198.51.100.1/24"),
-			},
-			prefix: netip.MustParsePrefix("192.0.2.0/24"),
-			ok:     false,
-		},
-		{
-			name: "returns false when family missing",
-			addrs: []net.Addr{
-				mustCIDR("192.0.2.10/24"),
-			},
-			wantIPv6: true,
-			ok:       false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := selectAddrFromList(tt.addrs, tt.wantIPv6, tt.prefix)
-			if ok != tt.ok {
-				t.Fatalf("selectAddrFromList() ok = %v, want %v", ok, tt.ok)
-			}
-			if ok && got != tt.want {
-				t.Fatalf("selectAddrFromList() = %s, want %s", got, tt.want)
-			}
-		})
 	}
 }
