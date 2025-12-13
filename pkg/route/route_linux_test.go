@@ -107,6 +107,12 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name:    "no routes returned",
+			ip:      ipv4,
+			msgs:    nil,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

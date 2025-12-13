@@ -94,6 +94,9 @@ func getGlobalUnicastIPv6(iface *net.Interface, routeSubnet netip.Prefix) (netip
 // getMostSpecificRoute returns the most specific route for the given IP address.
 func getMostSpecificRoute(ip netip.Addr, msgs []rtnetlink.RouteMessage) (Route, error) {
 	// RTM_GETROUTE on Linux by default returns the most specific route
+	if len(msgs) == 0 {
+		return Route{}, fmt.Errorf("no route returned for %s", ip)
+	}
 	if len(msgs) > 1 {
 		// This shouldn't happen
 		return Route{}, fmt.Errorf("multiple routes found for %s", ip)
