@@ -79,8 +79,6 @@ type ProbeManager struct {
 	stopOnce sync.Once
 
 	// Statistics aggregation
-	// aggregatedStats map[string]probeStats
-	// statsMutex      sync.RWMutex
 	statsChan chan ProbeEvent
 
 	// Shared resources
