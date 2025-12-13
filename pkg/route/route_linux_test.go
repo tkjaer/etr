@@ -109,6 +109,22 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "invalid gateway",
+			ip:   ipv4,
+			msgs: []rtnetlink.RouteMessage{
+				{
+					Family: unix.AF_INET,
+					Attributes: rtnetlink.RouteAttributes{
+						Dst:      ipv4.AsSlice(),
+						Src:      ipv4.AsSlice(),
+						Gateway:  []byte{}, // Invalid
+						OutIface: 1,
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name:    "no routes returned",
 			ip:      ipv4,
 			msgs:    nil,

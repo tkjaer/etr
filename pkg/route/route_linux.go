@@ -125,8 +125,12 @@ func getMostSpecificRoute(ip netip.Addr, msgs []rtnetlink.RouteMessage) (Route, 
 		prefix = netip.PrefixFrom(dst, int(m.DstLength))
 	}
 	gw := netip.Addr{}
-	if _, ok := netip.AddrFromSlice(m.Attributes.Gateway); ok {
-		gw, _ = netip.AddrFromSlice(m.Attributes.Gateway)
+	if len(m.Attributes.Gateway) > 0 {
+		var ok bool
+		gw, ok = netip.AddrFromSlice(m.Attributes.Gateway)
+		if !ok {
+			return Route{}, fmt.Errorf("failed to parse gateway address: %v", m.Attributes.Gateway)
+		}
 	}
 	src, ok := netip.AddrFromSlice(m.Attributes.Src)
 	if !ok {
