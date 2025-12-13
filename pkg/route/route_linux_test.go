@@ -248,7 +248,7 @@ func Test_getGlobalUnicastIPv6_Linux(t *testing.T) {
 	}
 }
 
-func Test_pickSourceAddr(t *testing.T) {
+func Test_selectAddrFromList(t *testing.T) {
 	mustCIDR := func(cidr string) net.Addr {
 		_, n, err := net.ParseCIDR(cidr)
 		if err != nil {
@@ -304,12 +304,12 @@ func Test_pickSourceAddr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := pickSourceAddr(tt.addrs, tt.wantIPv6, tt.prefix)
+			got, ok := selectAddrFromList(tt.addrs, tt.wantIPv6, tt.prefix)
 			if ok != tt.ok {
-				t.Fatalf("pickSourceAddr() ok = %v, want %v", ok, tt.ok)
+				t.Fatalf("selectAddrFromList() ok = %v, want %v", ok, tt.ok)
 			}
 			if ok && got != tt.want {
-				t.Fatalf("pickSourceAddr() = %s, want %s", got, tt.want)
+				t.Fatalf("selectAddrFromList() = %s, want %s", got, tt.want)
 			}
 		})
 	}

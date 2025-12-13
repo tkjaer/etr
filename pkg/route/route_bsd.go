@@ -158,6 +158,13 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 				if err != nil {
 					return Route{}, err
 				}
+				if !s.IsValid() {
+					srcAddr, err := selectInterfaceAddr(intf, true, netip.PrefixFrom(ip, 32))
+					if err != nil {
+						return Route{}, fmt.Errorf("failed to determine IPv4 source on %s: %w", intf.Name, err)
+					}
+					s = srcAddr
+				}
 				return Route{
 					Destination: ip,
 					Gateway:     g,
@@ -174,6 +181,13 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 					intf, err := net.InterfaceByIndex(rm.Index)
 					if err != nil {
 						return Route{}, err
+					}
+					if !s.IsValid() {
+						srcAddr, err := selectInterfaceAddr(intf, false, subnet)
+						if err != nil {
+							return Route{}, fmt.Errorf("failed to determine IPv4 source on %s: %w", intf.Name, err)
+						}
+						s = srcAddr
 					}
 					if bitLen > mostSpecificMaskLength || (bitLen == mostSpecificMaskLength && !routeFound) {
 						mostSpecific = Route{
@@ -209,6 +223,13 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 				if err != nil {
 					return Route{}, err
 				}
+				if !s.IsValid() {
+					srcAddr, err := selectInterfaceAddr(intf, true, netip.PrefixFrom(ip, 128))
+					if err != nil {
+						return Route{}, fmt.Errorf("failed to determine IPv6 source on %s: %w", intf.Name, err)
+					}
+					s = srcAddr
+				}
 				// If source is link-local, try to find a global unicast address
 				// Pass the gateway to prefer addresses in the same subnet
 				if s.IsLinkLocalUnicast() {
@@ -234,6 +255,13 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 					intf, err := net.InterfaceByIndex(rm.Index)
 					if err != nil {
 						return Route{}, err
+					}
+					if !s.IsValid() {
+						srcAddr, err := selectInterfaceAddr(intf, false, subnet)
+						if err != nil {
+							return Route{}, fmt.Errorf("failed to determine IPv6 source on %s: %w", intf.Name, err)
+						}
+						s = srcAddr
 					}
 					if bitLen > mostSpecificMaskLength || (bitLen == mostSpecificMaskLength && !routeFound) {
 						// If source is link-local, try to find a global unicast address
