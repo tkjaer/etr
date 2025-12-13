@@ -170,11 +170,13 @@ etr -p 80 -c 1000 -d 5s target.example.com
 ```
 
 **Common options**:
+- `-4/-6`: Force IPv4 or IPv6 routing
 - `-T/-U`: TCP (default) or UDP probes
+- `-n`: Skip DNS lookups (show IPs only)
+- `-c <n>`: Probe iterations (default: unlimited)
 - `-P <n>`: Number of parallel probes (default: 5)
 - `-p <port>`: Destination port (default: 443 for TCP, 33434 for UDP)
 - `-s <port>`: Base source port (default: 50000)
-- `-c <n>`: Probe iterations (default: unlimited)
 - `-j <file>`: JSON output to file (keeps TUI)
 - `-J`: JSON output to stdout (disables TUI)
 - `--help`: Full option list
