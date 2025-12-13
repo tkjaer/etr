@@ -11,6 +11,36 @@ import (
 	"golang.org/x/net/route"
 )
 
+const (
+	rtaxDst = iota
+	rtaxGateway
+	rtaxNetmask
+	rtaxGenmask
+	rtaxIfp
+	rtaxIfa
+)
+
+func getRouteAddrs(rm *route.RouteMessage) (destination, gateway, mask, source route.Addr, err error) {
+	addrs := rm.Addrs
+
+	if len(addrs) <= rtaxDst {
+		return nil, nil, nil, nil, fmt.Errorf("missing destination address")
+	}
+	destination = addrs[rtaxDst]
+
+	if len(addrs) > rtaxGateway {
+		gateway = addrs[rtaxGateway]
+	}
+	if len(addrs) > rtaxNetmask {
+		mask = addrs[rtaxNetmask]
+	}
+	if len(addrs) > rtaxIfa {
+		source = addrs[rtaxIfa]
+	}
+
+	return destination, gateway, mask, source, nil
+}
+
 // fetchRIBMessages retrieves the routing information base (RIB) messages from the kernel.
 // Variable for mocking in tests.
 var fetchRIBMessages = func() ([]route.Message, error) {
@@ -96,13 +126,8 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 			continue
 		}
 
-		destination := rm.Addrs[0]
-		gateway := rm.Addrs[1]
-		mask := rm.Addrs[2]
-		source := rm.Addrs[5]
-
-		if mask == nil {
-			// Skip routes without a mask
+		destination, gateway, mask, source, err := getRouteAddrs(rm)
+		if err != nil {
 			continue
 		}
 
@@ -113,13 +138,19 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 
 		switch destination.(type) {
 		case *route.Inet4Addr:
+			if mask == nil {
+				continue
+			}
 			a := netip.AddrFrom4(destination.(*route.Inet4Addr).IP)
 			// Support routes without a gateway (i.e., directly connected)
 			g := netip.Addr{}
-			if _, ok := gateway.(*route.Inet4Addr); ok {
-				g = netip.AddrFrom4(gateway.(*route.Inet4Addr).IP)
+			if gw4, ok := gateway.(*route.Inet4Addr); ok {
+				g = netip.AddrFrom4(gw4.IP)
 			}
-			s := netip.AddrFrom4(source.(*route.Inet4Addr).IP)
+			s := netip.Addr{}
+			if src4, ok := source.(*route.Inet4Addr); ok {
+				s = netip.AddrFrom4(src4.IP)
+			}
 
 			// Check if the destination is a host route and matches the IP
 			if ip.Is4() && rm.Flags&syscall.RTF_HOST != 0 && a == ip {
@@ -158,13 +189,19 @@ func getMostSpecificRoute(ip netip.Addr, msgs []route.Message) (Route, error) {
 			}
 
 		case *route.Inet6Addr:
+			if mask == nil {
+				continue
+			}
 			a := netip.AddrFrom16(destination.(*route.Inet6Addr).IP)
 			// Support routes without a gateway (i.e., directly connected)
 			g := netip.Addr{}
-			if _, ok := gateway.(*route.Inet6Addr); ok {
-				g = netip.AddrFrom16(gateway.(*route.Inet6Addr).IP)
+			if gw6, ok := gateway.(*route.Inet6Addr); ok {
+				g = netip.AddrFrom16(gw6.IP)
 			}
-			s := netip.AddrFrom16(source.(*route.Inet6Addr).IP)
+			s := netip.Addr{}
+			if src6, ok := source.(*route.Inet6Addr); ok {
+				s = netip.AddrFrom16(src6.IP)
+			}
 
 			// Check if the destination is a host route and matches the IP
 			if ip.Is6() && rm.Flags&syscall.RTF_HOST != 0 && a == ip {
