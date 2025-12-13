@@ -152,7 +152,7 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 			_, err := getMostSpecificRoute(tt.ip, tt.msgs)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("getMostSpecificRoute() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("getMostSpecificRoute() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -245,5 +245,72 @@ func Test_getGlobalUnicastIPv6_Linux(t *testing.T) {
 			}
 		}
 		// Error is expected for interfaces without global IPv6
+	}
+}
+
+func Test_pickSourceAddr(t *testing.T) {
+	mustCIDR := func(cidr string) net.Addr {
+		_, n, err := net.ParseCIDR(cidr)
+		if err != nil {
+			t.Fatalf("failed to parse %s: %v", cidr, err)
+		}
+		return n
+	}
+
+	tests := []struct {
+		name     string
+		addrs    []net.Addr
+		wantIPv6 bool
+		prefix   netip.Prefix
+		want     netip.Addr
+		ok       bool
+	}{
+		{
+			name: "prefers address inside prefix",
+			addrs: []net.Addr{
+				mustCIDR("192.0.2.10/24"),
+				mustCIDR("198.51.100.1/24"),
+			},
+			prefix: netip.MustParsePrefix("192.0.2.0/24"),
+			want:   netip.MustParseAddr("192.0.2.10"),
+			ok:     true,
+		},
+		{
+			name: "default route prefix matches any address",
+			addrs: []net.Addr{
+				mustCIDR("198.51.100.1/24"),
+			},
+			prefix: netip.MustParsePrefix("0.0.0.0/0"),
+			want:   netip.MustParseAddr("198.51.100.1"),
+			ok:     true,
+		},
+		{
+			name: "returns false when no address is inside prefix",
+			addrs: []net.Addr{
+				mustCIDR("198.51.100.1/24"),
+			},
+			prefix: netip.MustParsePrefix("192.0.2.0/24"),
+			ok:     false,
+		},
+		{
+			name: "returns false when family missing",
+			addrs: []net.Addr{
+				mustCIDR("192.0.2.10/24"),
+			},
+			wantIPv6: true,
+			ok:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := pickSourceAddr(tt.addrs, tt.wantIPv6, tt.prefix)
+			if ok != tt.ok {
+				t.Fatalf("pickSourceAddr() ok = %v, want %v", ok, tt.ok)
+			}
+			if ok && got != tt.want {
+				t.Fatalf("pickSourceAddr() = %s, want %s", got, tt.want)
+			}
+		})
 	}
 }
