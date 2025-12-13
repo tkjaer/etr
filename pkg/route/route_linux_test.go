@@ -82,9 +82,10 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 			ip:   ipv4,
 			msgs: []rtnetlink.RouteMessage{
 				{
-					Family: unix.AF_INET,
+					Family:    unix.AF_INET,
+					DstLength: 24,
 					Attributes: rtnetlink.RouteAttributes{
-						Dst:      []byte{}, // Invalid
+						Dst:      []byte{0xde, 0xad}, // Invalid length
 						Src:      ipv4.AsSlice(),
 						OutIface: 1,
 					},
@@ -112,6 +113,21 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 			ip:      ipv4,
 			msgs:    nil,
 			wantErr: true,
+		},
+		{
+			name: "default route matches",
+			ip:   ipv4,
+			msgs: []rtnetlink.RouteMessage{
+				{
+					Family:    unix.AF_INET,
+					DstLength: 0,
+					Attributes: rtnetlink.RouteAttributes{
+						Src:      netip.MustParseAddr("192.0.2.10").AsSlice(),
+						OutIface: 1,
+					},
+				},
+			},
+			wantErr: false,
 		},
 	}
 
