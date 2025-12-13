@@ -396,7 +396,10 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 	pm.stats.Mutex.RLock()
 	for ttl, hopStats := range probeStats.Hops {
 		if hopStats.CurrentIP != "" {
-			// Find the IP stats for this hop
+			// Find the IP stats for this hop. Reconstructed runs are built after the
+			// loop completes, so we reuse the iteration-complete timestamp instead of
+			// the original per-hop receive time; good enough for display/export, but
+			// not the precise wire timestamp. TTL, loss, and RTT stats remain accurate.
 			ipStats, ok := hopStats.IPs[hopStats.CurrentIP]
 			if ok {
 				// Get the latest PTR from the manager

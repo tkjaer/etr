@@ -183,7 +183,7 @@ func (p *Probe) Run() {
 	// Handle infinite probes (numProbes == 0)
 	probeCount := p.config.numProbes
 	if probeCount == 0 {
-		probeCount = 1<<63 - 1 // effectively infinite
+		probeCount = (1 << 63) - 1 // effectively infinite
 	}
 
 	for n := range probeCount {

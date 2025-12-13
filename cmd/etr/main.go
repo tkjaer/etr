@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,18 +12,27 @@ import (
 	"github.com/tkjaer/etr/internal/probe"
 )
 
+var errForcedExit = errors.New("second interrupt received")
+
 func main() {
-	args, err := config.ParseArgs()
-	if err != nil {
+	if err := run(); err != nil {
+		if errors.Is(err, errForcedExit) {
+			os.Exit(1)
+		}
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
 
-	// Setup logging
+func run() error {
+	args, err := config.ParseArgs()
+	if err != nil {
+		return err
+	}
+
 	logFile, err := config.SetupLogging(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to setup logging: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to setup logging: %w", err)
 	}
 	if logFile != nil {
 		defer func() {
@@ -40,38 +50,43 @@ func main() {
 
 	pm, err := probe.NewProbeManager(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create probe manager: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to create probe manager: %w", err)
 	}
 
-	// Set up signal handling for Ctrl+C
-	sigChan := make(chan os.Signal, 1)
+	sigChan := make(chan os.Signal, 2)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
 
-	// Run in a goroutine so we can handle signals
-	done := make(chan error)
+	done := make(chan error, 1)
 	go func() {
 		done <- pm.Run()
 	}()
 
-	// Wait for either completion or interrupt
+	return waitForCompletion(pm, done, sigChan)
+}
+
+func waitForCompletion(pm *probe.ProbeManager, done <-chan error, sigChan <-chan os.Signal) error {
 	select {
-	case err = <-done:
-		// Probes completed naturally
-		if err != nil {
-			slog.Error("Probe manager error", "error", err)
-			os.Exit(1)
-		}
+	case err := <-done:
+		return finalize(err)
 	case <-sigChan:
-		// User pressed Ctrl+C
 		slog.Debug("Received interrupt signal, stopping...")
 		pm.Stop()
-		// Wait for Run() to finish cleanup
-		if err = <-done; err != nil {
-			slog.Error("Error during shutdown", "error", err)
-			os.Exit(1)
+		select {
+		case err := <-done:
+			return finalize(err)
+		case <-sigChan:
+			slog.Warn("Second interrupt received, exiting immediately")
+			return errForcedExit
 		}
 	}
+}
 
-	slog.Debug("ECMP traceroute completed")
+func finalize(err error) error {
+	if err == nil {
+		slog.Debug("ECMP traceroute completed")
+		return nil
+	}
+	slog.Error("Probe manager error", "error", err)
+	return err
 }

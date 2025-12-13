@@ -57,7 +57,7 @@ func ParseArgs() (Args, error) {
 		println()
 		println("Examples:")
 		println("  etr <destination>                    # Basic TCP traceroute")
-		println("  etr --udp <destination>              # UDP traceroute")
+		println("  etr -U <destination>                 # UDP traceroute")
 		println("  etr -c 10 -J <destination>           # 10 probes, JSON to stdout")
 		println("  etr -j results.json <destination>    # Save JSON while showing TUI")
 		println()
@@ -69,25 +69,34 @@ func ParseArgs() (Args, error) {
 	}
 
 	flag.BoolVarP(&showVersion, "version", "v", false, "Show version information")
+
+	// Protocol selection, ports and addressing
 	flag.BoolVarP(&args.TCP, "tcp", "T", false, "Use TCP probes (default)")
 	flag.BoolVarP(&args.UDP, "udp", "U", false, "Use UDP probes (payload length encodes probe details)")
 	flag.BoolVarP(&args.ForceIPv4, "ipv4", "4", false, "Force IPv4")
 	flag.BoolVarP(&args.ForceIPv6, "ipv6", "6", false, "Force IPv6")
+	flag.BoolVarP(&args.NoResolve, "no-resolve", "n", false, "Do not resolve IP addresses to hostnames")
 	flag.UintVarP(&args.DestinationPort, "dest-port", "p", 0, "Destination port (default: 443 for TCP, 33434 for UDP)")
 	flag.UintVarP(&args.SourcePort, "source-port", "s", 50000, "Base source port")
 
+	// Probe counts and concurrency
+	flag.UintVarP(&args.ParallelProbes, "parallel-probes", "P", 5, "Number of parallel probes")
 	flag.UintVarP(&args.NumProbes, "count", "c", 0, "Number of probe iterations (0 = infinite)")
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL hops")
-	flag.BoolVarP(&args.NoResolve, "no-resolve", "n", false, "Do not resolve IP addresses to hostnames")
-	flag.UintVarP(&args.ParallelProbes, "parallel-probes", "P", 5, "Number of parallel probes")
+
+	// Timing controls
 	flag.DurationVarP(&args.InterTTLDelay, "inter-ttl-delay", "i", 100*time.Millisecond, "Delay between each TTL hop in a probe")
 	flag.DurationVarP(&args.InterProbeDelay, "inter-probe-delay", "d", 2*time.Second, "Delay between probe iterations")
 	flag.DurationVarP(&args.Timeout, "timeout", "t", 1*time.Second, "Response timeout")
-	flag.StringVarP(&args.JsonFile, "json-file", "j", "", "Write JSON output to file (keeps TUI)")
+
+	// Output and logging
 	flag.BoolVarP(&args.Json, "json", "J", false, "Write JSON output to stdout (disables TUI)")
-	flag.StringVar(&args.HashAlgorithm, "hash-algorithm", "crc32", "Path hash algorithm: crc32 or sha256")
-	flag.StringVarP(&args.Log, "log", "l", "", "Diagnostic log file (empty = no logging)")
+	flag.StringVarP(&args.JsonFile, "json-file", "j", "", "Write JSON output to file (keeps TUI)")
 	flag.StringVar(&args.LogLevel, "log-level", "error", "Log level: debug, info, warn, error")
+	flag.StringVarP(&args.Log, "log", "l", "", "Diagnostic log file (empty = no logging)")
+	flag.StringVar(&args.HashAlgorithm, "hash-algorithm", "crc32", "Path hash algorithm: crc32 or sha256")
+	// Disable alphabetical sorting of flags
+	// flag.CommandLine.SortFlags = false
 	flag.Parse()
 
 	// Handle version flag

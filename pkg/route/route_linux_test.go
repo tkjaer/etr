@@ -4,7 +4,6 @@ package route
 
 import (
 	"errors"
-	"net"
 	"net/netip"
 	"testing"
 
@@ -82,9 +81,10 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 			ip:   ipv4,
 			msgs: []rtnetlink.RouteMessage{
 				{
-					Family: unix.AF_INET,
+					Family:    unix.AF_INET,
+					DstLength: 24,
 					Attributes: rtnetlink.RouteAttributes{
-						Dst:      []byte{}, // Invalid
+						Dst:      []byte{0xde, 0xad}, // Invalid length
 						Src:      ipv4.AsSlice(),
 						OutIface: 1,
 					},
@@ -100,12 +100,49 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 					Family: unix.AF_INET,
 					Attributes: rtnetlink.RouteAttributes{
 						Dst:      ipv4.AsSlice(),
-						Src:      []byte{}, // Invalid
+						Src:      []byte{0xde}, // Invalid length to force parse failure
 						OutIface: 1,
 					},
 				},
 			},
 			wantErr: true,
+		},
+		{
+			name: "invalid gateway",
+			ip:   ipv4,
+			msgs: []rtnetlink.RouteMessage{
+				{
+					Family: unix.AF_INET,
+					Attributes: rtnetlink.RouteAttributes{
+						Dst:      ipv4.AsSlice(),
+						Src:      ipv4.AsSlice(),
+						Gateway:  []byte{0xad}, // Invalid length to force parse failure
+						OutIface: 1,
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:    "no routes returned",
+			ip:      ipv4,
+			msgs:    nil,
+			wantErr: true,
+		},
+		{
+			name: "default route matches",
+			ip:   ipv4,
+			msgs: []rtnetlink.RouteMessage{
+				{
+					Family:    unix.AF_INET,
+					DstLength: 0,
+					Attributes: rtnetlink.RouteAttributes{
+						Src:      netip.MustParseAddr("192.0.2.10").AsSlice(),
+						OutIface: 1,
+					},
+				},
+			},
+			wantErr: false,
 		},
 	}
 
@@ -114,7 +151,7 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 			_, err := getMostSpecificRoute(tt.ip, tt.msgs)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("getMostSpecificRoute() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("getMostSpecificRoute() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -170,6 +207,9 @@ func Test_get_Linux(t *testing.T) {
 
 func Test_get_Linux_RealCall(t *testing.T) {
 	// Smoke test with real routing table
+	if testing.Short() {
+		t.Skip("skipping real routing table test in short mode")
+	}
 	ip := netip.MustParseAddr("192.0.2.1")
 	route, err := get(ip)
 
@@ -180,32 +220,5 @@ func Test_get_Linux_RealCall(t *testing.T) {
 		if !route.Destination.IsValid() {
 			t.Error("get() returned route with invalid destination")
 		}
-	}
-}
-
-func Test_getGlobalUnicastIPv6_Linux(t *testing.T) {
-	// Smoke test - verify it doesn't panic and returns correct error when no IPv6
-	// This is a real call test that depends on system state
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		t.Skip("Cannot get interfaces:", err)
-	}
-
-	for _, iface := range ifaces {
-		// Test without subnet preference
-		addr, err := getGlobalUnicastIPv6(&iface, netip.Prefix{})
-		if err == nil {
-			// If we found an address, verify it's actually global unicast
-			if !addr.IsGlobalUnicast() {
-				t.Errorf("getGlobalUnicastIPv6(%s) returned non-global address: %v", iface.Name, addr)
-			}
-			if addr.IsLinkLocalUnicast() {
-				t.Errorf("getGlobalUnicastIPv6(%s) returned link-local address: %v", iface.Name, addr)
-			}
-			if !addr.Is6() {
-				t.Errorf("getGlobalUnicastIPv6(%s) returned non-IPv6 address: %v", iface.Name, addr)
-			}
-		}
-		// Error is expected for interfaces without global IPv6
 	}
 }

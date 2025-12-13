@@ -42,74 +42,58 @@ var fetchRIBMessagesForIP = func(ip netip.Addr) ([]rtnetlink.RouteMessage, error
 	return rx, nil
 }
 
-// getGlobalUnicastIPv6 returns a global unicast IPv6 address from the given interface.
-// Link-local addresses (fe80::/10) are skipped.
-// If routeSubnet is provided, it prefers an address within that subnet.
-func getGlobalUnicastIPv6(iface *net.Interface, routeSubnet netip.Prefix) (netip.Addr, error) {
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return netip.Addr{}, err
-	}
-
-	var fallbackAddr netip.Addr
-
-	for _, addr := range addrs {
-		ipNet, ok := addr.(*net.IPNet)
-		if !ok {
-			continue
-		}
-		ip, ok := netip.AddrFromSlice(ipNet.IP)
-		if !ok {
-			continue
-		}
-		// Skip if not IPv6
-		if !ip.Is6() {
-			continue
-		}
-		// Skip link-local addresses
-		if ip.IsLinkLocalUnicast() {
-			continue
-		}
-		// Check if it's a global unicast address
-		if ip.IsGlobalUnicast() {
-			// If we have a route subnet, prefer addresses in that subnet
-			if routeSubnet.IsValid() && routeSubnet.Contains(ip) {
-				return ip, nil
-			}
-			// Keep the first global unicast as fallback
-			if !fallbackAddr.IsValid() {
-				fallbackAddr = ip
-			}
-		}
-	}
-
-	// Return fallback if we found any global unicast address
-	if fallbackAddr.IsValid() {
-		return fallbackAddr, nil
-	}
-
-	return netip.Addr{}, fmt.Errorf("no global unicast IPv6 address found on interface %s", iface.Name)
-}
-
 // getMostSpecificRoute returns the most specific route for the given IP address.
 func getMostSpecificRoute(ip netip.Addr, msgs []rtnetlink.RouteMessage) (Route, error) {
 	// RTM_GETROUTE on Linux by default returns the most specific route
+	if len(msgs) == 0 {
+		return Route{}, fmt.Errorf("no route returned for %s", ip)
+	}
 	if len(msgs) > 1 {
 		// This shouldn't happen
 		return Route{}, fmt.Errorf("multiple routes found for %s", ip)
 	}
 	m := msgs[0]
-	dst, ok := netip.AddrFromSlice(m.Attributes.Dst)
-	if !ok {
-		return Route{}, fmt.Errorf("failed to parse destination address: %v", m.Attributes.Dst)
+	var (
+		prefix netip.Prefix
+		dst    netip.Addr
+	)
+	if len(m.Attributes.Dst) == 0 {
+		if m.DstLength != 0 {
+			return Route{}, fmt.Errorf("missing destination address for prefix length %d", m.DstLength)
+		}
+		if ip.Is6() {
+			dst = netip.IPv6Unspecified()
+		} else {
+			dst = netip.IPv4Unspecified()
+		}
+		prefix = netip.PrefixFrom(dst, 0)
+	} else {
+		var ok bool
+		dst, ok = netip.AddrFromSlice(m.Attributes.Dst)
+		if !ok {
+			return Route{}, fmt.Errorf("failed to parse destination address: %v", m.Attributes.Dst)
+		}
+		prefix = netip.PrefixFrom(dst, int(m.DstLength))
 	}
 	gw := netip.Addr{}
-	if _, ok := netip.AddrFromSlice(m.Attributes.Gateway); ok {
-		gw, _ = netip.AddrFromSlice(m.Attributes.Gateway)
+	if len(m.Attributes.Gateway) > 0 {
+		var ok bool
+		gw, ok = netip.AddrFromSlice(m.Attributes.Gateway)
+		if !ok {
+			return Route{}, fmt.Errorf("failed to parse gateway address: %v", m.Attributes.Gateway)
+		}
 	}
-	src, ok := netip.AddrFromSlice(m.Attributes.Src)
-	if !ok {
-		return Route{}, fmt.Errorf("failed to parse source address: %v", m.Attributes.Src)
+	var (
+		src         netip.Addr
+		srcProvided bool
+	)
+	if len(m.Attributes.Src) > 0 {
+		var ok bool
+		src, ok = netip.AddrFromSlice(m.Attributes.Src)
+		if !ok {
+			return Route{}, fmt.Errorf("failed to parse source address: %v", m.Attributes.Src)
+		}
+		srcProvided = true
 	}
 	intf, err := net.InterfaceByIndex(int(m.Attributes.OutIface))
 	if err != nil {
@@ -119,17 +103,29 @@ func getMostSpecificRoute(ip netip.Addr, msgs []rtnetlink.RouteMessage) (Route, 
 	if intf.Flags&unix.IFF_UP == 0 {
 		return Route{}, fmt.Errorf("interface %s is down", intf.Name)
 	}
+	if !srcProvided {
+		wantIPv6 := prefix.Addr().Is6()
+		selected, err := selectInterfaceAddr(intf, wantIPv6, prefix)
+		if err != nil {
+			family := "IPv4"
+			if wantIPv6 {
+				family = "IPv6"
+			}
+			return Route{}, fmt.Errorf("failed to determine %s source on %s: %w", family, intf.Name, err)
+		}
+		src = selected
+	}
 	// If source is link-local IPv6, try to find a global unicast address
 	if src.Is6() && src.IsLinkLocalUnicast() {
 		// Construct subnet from destination and prefix length for better source selection
-		subnet := netip.PrefixFrom(dst, int(m.DstLength))
-		if globalSrc, err := getGlobalUnicastIPv6(intf, subnet); err == nil {
+		subnet := prefix
+		if globalSrc, err := getGlobalUnicastIPv6(intf, subnet, netip.Addr{}); err == nil {
 			src = globalSrc
 		}
 	}
-	if dst == ip {
+	if prefix.Contains(ip) {
 		return Route{
-			Destination: dst,
+			Destination: prefix.Addr(),
 			Gateway:     gw,
 			Source:      src,
 			Interface:   intf,

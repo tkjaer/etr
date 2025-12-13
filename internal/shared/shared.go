@@ -35,6 +35,7 @@ type HopStats struct {
 	LossPct   float64                `json:"loss_pct"`   // Percentage loss at this TTL
 }
 
+// Holds general output information
 type OutputInfo struct {
 	Destination    string
 	Protocol       string

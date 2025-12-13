@@ -16,16 +16,16 @@ func (pm *ProbeManager) setBPFFilter() error {
 	case layers.IPProtocolUDP:
 		proto = "udp"
 	}
-	var ttl_exceeded string
+	var ttlExceeded string
 	var dest_unreachable string
 	switch pm.probeConfig.protocolConfig.inet {
 	case layers.IPProtocolIPv4:
 		// ICMP type 11 (TTL exceeded), code 0 (time to live exceeded in transit)
-		ttl_exceeded = "icmp and icmp[0] == 11 and icmp[1] == 0"
+		ttlExceeded = "icmp and icmp[0] == 11 and icmp[1] == 0"
 		// ICMP type 3 (dest unreachable), code 3 (port unreachable)
 		dest_unreachable = "icmp and icmp[0] == 3 and icmp[1] == 3"
 	case layers.IPProtocolIPv6:
-		ttl_exceeded = "icmp6 and icmp6[0] == 3 and icmp6[1] == 0"
+		ttlExceeded = "icmp6 and icmp6[0] == 3 and icmp6[1] == 0"
 		dest_unreachable = "icmp6 and icmp6[0] == 1 and icmp6[1] == 4"
 	}
 	portRange := ""
@@ -65,7 +65,7 @@ func (pm *ProbeManager) setBPFFilter() error {
 		portRange)
 
 	// Match packets that are TTL exceeded messages from intermediate routers
-	ttlExceededAnswers := fmt.Sprintf("dst host %v and %v", pm.probeConfig.route.Source, ttl_exceeded)
+	ttlExceededAnswers := fmt.Sprintf("dst host %v and %v", pm.probeConfig.route.Source, ttlExceeded)
 	destUnreachableAnswers := fmt.Sprintf("dst host %v and %v", pm.probeConfig.route.Source, dest_unreachable)
 
 	filter := fmt.Sprintf("(%v) or (%v) or (%v)", destinationAnswers, ttlExceededAnswers, destUnreachableAnswers)

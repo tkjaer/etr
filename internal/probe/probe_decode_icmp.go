@@ -2,7 +2,6 @@ package probe
 
 import (
 	"encoding/binary"
-	"log/slog"
 	"net"
 
 	"github.com/google/gopacket"
@@ -15,72 +14,59 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 	isTimeExceeded := icmp4Layer.TypeCode.Type() == layers.ICMPv4TypeTimeExceeded && icmp4Layer.TypeCode.Code() == layers.ICMPv4CodeTTLExceeded
 	isDestUnreachable := icmp4Layer.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable && icmp4Layer.TypeCode.Code() == layers.ICMPv4CodePort
 
-	if isTimeExceeded || isDestUnreachable {
-		if isTimeExceeded {
-			flag = "TTL"
-		} else if isDestUnreachable {
-			flag = "D"
-		}
-		if packet := gopacket.NewPacket(icmp4Layer.Payload, protoToLayerType(pm.probeConfig.protocolConfig.inet), gopacket.Default); packet != nil {
-			slog.Debug("Packet received", slog.Any("packet", packet))
-
-			inetLayer := packet.Layer(protoToLayerType(pm.probeConfig.protocolConfig.inet))
-			if inetLayer == nil {
-				return
-			}
-
-			// Verify source and destination IP addresses
-			switch pm.probeConfig.protocolConfig.inet {
-			case layers.IPProtocolIPv4:
-				if src := inetLayer.(*layers.IPv4).SrcIP; !src.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) {
-					return
-				} else if dst := inetLayer.(*layers.IPv4).DstIP; !dst.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice())) {
-					return
-				}
-			case layers.IPProtocolIPv6:
-				if src := inetLayer.(*layers.IPv6).SrcIP; !src.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) {
-					return
-				} else if dst := inetLayer.(*layers.IPv6).DstIP; !dst.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice())) {
-					return
-				}
-			}
-
-			// Verify source and destination ports.
-			//
-			// If we have an ErrorLayer, we're probably looking at a truncated TCP header, so we'll try
-			// to decode this before potentially checking a TCP layer that gopacket failed to decode.
-			if errorLayer := packet.Layer(gopacket.LayerTypeDecodeFailure); errorLayer != nil {
-				if srcPort := binary.BigEndian.Uint16(inetLayer.LayerPayload()[:2]); !pm.sourcePortWithinRange(srcPort) {
-					return
-				} else if dstPort := binary.BigEndian.Uint16(inetLayer.LayerPayload()[2:4]); dstPort != pm.probeConfig.dstPort {
-					return
-				} else {
-					ttl, probeNum = decodeTTLAndProbe(binary.BigEndian.Uint32(inetLayer.LayerPayload()[4:8]))
-					port = uint(srcPort)
-					return
-				}
-			}
-			if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
-				if srcPort := tcpLayer.(*layers.TCP).SrcPort; !pm.sourcePortWithinRange(uint16(srcPort)) {
-					return
-				} else if dstPort := tcpLayer.(*layers.TCP).DstPort; dstPort != layers.TCPPort(pm.probeConfig.dstPort) {
-					return
-				}
-				ttl, probeNum, port, _ = decodeTCPLayer(tcpLayer.(*layers.TCP))
-				// Keep the ICMP-level flag (TTL or D) rather than TCP flags
-				return
-			}
-			if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
-				if srcPort := udpLayer.(*layers.UDP).SrcPort; !pm.sourcePortWithinRange(uint16(srcPort)) {
-					return
-				} else if dstPort := udpLayer.(*layers.UDP).DstPort; dstPort != layers.UDPPort(pm.probeConfig.dstPort) {
-					return
-				}
-				ttl, probeNum, port = decodeUDPLayer(udpLayer.(*layers.UDP))
-				return
-			}
-		}
+	if !isTimeExceeded && !isDestUnreachable {
+		return
 	}
+	if isTimeExceeded {
+		flag = "TTL"
+	} else {
+		flag = "D"
+	}
+
+	expected := protoToLayerType(pm.probeConfig.protocolConfig.inet)
+	packet := gopacket.NewPacket(icmp4Layer.Payload, expected, gopacket.Default)
+	if packet == nil {
+		return
+	}
+	inetLayer := packet.Layer(expected)
+	if inetLayer == nil || !pm.innerIPsMatch(inetLayer) {
+		return
+	}
+	payload := inetLayer.LayerPayload()
+
+	// If we have an ErrorLayer, we're probably looking at a truncated IPv4/TCP
+	// header, so decode the raw bytes before relying on decoded layers.
+	if packet.Layer(gopacket.LayerTypeDecodeFailure) != nil {
+		if len(payload) < 8 {
+			return
+		}
+		srcPort := binary.BigEndian.Uint16(payload[:2])
+		dstPort := binary.BigEndian.Uint16(payload[2:4])
+		if !pm.sourcePortWithinRange(srcPort) || dstPort != pm.probeConfig.dstPort {
+			return
+		}
+		ttl, probeNum = decodeTTLAndProbe(binary.BigEndian.Uint32(payload[4:8]))
+		port = uint(srcPort)
+		return
+	}
+
+	if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
+		tcp := tcpLayer.(*layers.TCP)
+		if !pm.sourcePortWithinRange(uint16(tcp.SrcPort)) || tcp.DstPort != layers.TCPPort(pm.probeConfig.dstPort) {
+			return
+		}
+		ttl, probeNum, port, _ = decodeTCPLayer(tcp)
+		return
+	}
+
+	if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
+		udp := udpLayer.(*layers.UDP)
+		if !pm.sourcePortWithinRange(uint16(udp.SrcPort)) || udp.DstPort != layers.UDPPort(pm.probeConfig.dstPort) {
+			return
+		}
+		ttl, probeNum, port = decodeUDPLayer(udp)
+	}
+
 	return
 }
 
@@ -90,89 +76,71 @@ func (pm *ProbeManager) decodeICMPv6Layer(icmp6Layer *layers.ICMPv6) (ttl uint8,
 	isTimeExceeded := icmp6Layer.TypeCode.Type() == layers.ICMPv6TypeTimeExceeded && icmp6Layer.TypeCode.Code() == layers.ICMPv6CodeHopLimitExceeded
 	isDestUnreachable := icmp6Layer.TypeCode.Type() == layers.ICMPv6TypeDestinationUnreachable && icmp6Layer.TypeCode.Code() == 4 // Port unreachable
 
-	if isTimeExceeded || isDestUnreachable {
-		if isTimeExceeded {
-			flag = "TTL"
-		} else if isDestUnreachable {
-			flag = "D"
-		}
-		innerPayload := icmp6Layer.Payload
-		expectedLayer := protoToLayerType(pm.probeConfig.protocolConfig.inet)
+	if !isTimeExceeded && !isDestUnreachable {
+		return
+	}
+	if isTimeExceeded {
+		flag = "TTL"
+	} else {
+		flag = "D"
+	}
 
-		if pm.probeConfig.protocolConfig.inet == layers.IPProtocolIPv6 {
-			offset, ok := locateInnerIPv6Header(innerPayload)
-			if !ok {
-				return
-			}
-			innerPayload = innerPayload[offset:]
-		}
-
-		if len(innerPayload) == 0 {
+	innerPayload := icmp6Layer.Payload
+	expectedLayer := protoToLayerType(pm.probeConfig.protocolConfig.inet)
+	if pm.probeConfig.protocolConfig.inet == layers.IPProtocolIPv6 {
+		offset, ok := locateInnerIPv6Header(innerPayload)
+		if !ok {
 			return
 		}
-
-		if packet := gopacket.NewPacket(innerPayload, expectedLayer, gopacket.Default); packet != nil {
-			inetLayer := packet.Layer(expectedLayer)
-			if inetLayer == nil {
-				return
-			}
-
-			// Verify source and destination IP addresses
-			switch pm.probeConfig.protocolConfig.inet {
-			case layers.IPProtocolIPv4:
-				if src := inetLayer.(*layers.IPv4).SrcIP; !src.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) {
-					return
-				} else if dst := inetLayer.(*layers.IPv4).DstIP; !dst.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice())) {
-					return
-				}
-			case layers.IPProtocolIPv6:
-				if src := inetLayer.(*layers.IPv6).SrcIP; !src.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) {
-					return
-				} else if dst := inetLayer.(*layers.IPv6).DstIP; !dst.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice())) {
-					return
-				}
-			}
-
-			// Verify source and destination ports.
-			//
-			// If we have an ErrorLayer, we're probably looking at a truncated TCP header, so we'll try
-			// to decode this before potentially checking a TCP layer that gopacket failed to decode.
-			if errorLayer := packet.Layer(gopacket.LayerTypeDecodeFailure); errorLayer != nil {
-				payload := inetLayer.LayerPayload()
-				if len(payload) < 8 {
-					return
-				}
-				if srcPort := binary.BigEndian.Uint16(payload[:2]); !pm.sourcePortWithinRange(srcPort) {
-					return
-				} else if dstPort := binary.BigEndian.Uint16(payload[2:4]); dstPort != pm.probeConfig.dstPort {
-					return
-				} else {
-					ttl, probeNum = decodeTTLAndProbe(binary.BigEndian.Uint32(payload[4:8]))
-					port = uint(srcPort)
-					return
-				}
-			}
-			if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
-				if srcPort := tcpLayer.(*layers.TCP).SrcPort; !pm.sourcePortWithinRange(uint16(srcPort)) {
-					return
-				} else if dstPort := tcpLayer.(*layers.TCP).DstPort; dstPort != layers.TCPPort(pm.probeConfig.dstPort) {
-					return
-				}
-				ttl, probeNum, port, _ = decodeTCPLayer(tcpLayer.(*layers.TCP))
-				// Keep the ICMP-level flag (TTL or D) rather than TCP flags
-				return
-			}
-			if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
-				if srcPort := udpLayer.(*layers.UDP).SrcPort; !pm.sourcePortWithinRange(uint16(srcPort)) {
-					return
-				} else if dstPort := udpLayer.(*layers.UDP).DstPort; dstPort != layers.UDPPort(pm.probeConfig.dstPort) {
-					return
-				}
-				ttl, probeNum, port = decodeUDPLayer(udpLayer.(*layers.UDP))
-				return
-			}
-		}
+		innerPayload = innerPayload[offset:]
 	}
+	if len(innerPayload) == 0 {
+		return
+	}
+
+	packet := gopacket.NewPacket(innerPayload, expectedLayer, gopacket.Default)
+	if packet == nil {
+		return
+	}
+	inetLayer := packet.Layer(expectedLayer)
+	if inetLayer == nil || !pm.innerIPsMatch(inetLayer) {
+		return
+	}
+	payload := inetLayer.LayerPayload()
+
+	// If we have an ErrorLayer, we're probably looking at a truncated IPv6/TCP
+	// header, so decode the raw bytes before relying on decoded layers.
+	if packet.Layer(gopacket.LayerTypeDecodeFailure) != nil {
+		if len(payload) < 8 {
+			return
+		}
+		srcPort := binary.BigEndian.Uint16(payload[:2])
+		dstPort := binary.BigEndian.Uint16(payload[2:4])
+		if !pm.sourcePortWithinRange(srcPort) || dstPort != pm.probeConfig.dstPort {
+			return
+		}
+		ttl, probeNum = decodeTTLAndProbe(binary.BigEndian.Uint32(payload[4:8]))
+		port = uint(srcPort)
+		return
+	}
+
+	if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
+		tcp := tcpLayer.(*layers.TCP)
+		if !pm.sourcePortWithinRange(uint16(tcp.SrcPort)) || tcp.DstPort != layers.TCPPort(pm.probeConfig.dstPort) {
+			return
+		}
+		ttl, probeNum, port, _ = decodeTCPLayer(tcp)
+		return
+	}
+
+	if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
+		udp := udpLayer.(*layers.UDP)
+		if !pm.sourcePortWithinRange(uint16(udp.SrcPort)) || udp.DstPort != layers.UDPPort(pm.probeConfig.dstPort) {
+			return
+		}
+		ttl, probeNum, port = decodeUDPLayer(udp)
+	}
+
 	return
 }
 
@@ -223,5 +191,18 @@ func protoToLayerType(proto layers.IPProtocol) gopacket.LayerType {
 		return layers.LayerTypeUDP
 	default:
 		return layers.LayerTypeTCP
+	}
+}
+
+func (pm *ProbeManager) innerIPsMatch(layer gopacket.Layer) bool {
+	switch ipLayer := layer.(type) {
+	case *layers.IPv4:
+		return ipLayer.SrcIP.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) &&
+			ipLayer.DstIP.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice()))
+	case *layers.IPv6:
+		return ipLayer.SrcIP.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) &&
+			ipLayer.DstIP.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice()))
+	default:
+		return false
 	}
 }
