@@ -23,132 +23,11 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
 
 ## Installation
 
-### Pre-built Binaries
+- **Releases**: Download the latest macOS/Linux binary from the [releases page](https://github.com/tkjaer/etr/releases).
+- **Source**: `go install github.com/tkjaer/etr/cmd/etr@latest` (requires libpcap headers).
+- **BSD**: Supported via source builds (OpenBSD/NetBSD limited to Ethernet source interfaces).
 
-Download the latest release for macOS or Linux from the [releases page](https://github.com/tkjaer/etr/releases).
-
-#### macOS Gatekeeper Warning
-
-The macOS release binary is currently unsigned / un-notarized. If you see:
-
-“Apple cannot verify this app is free of malware”
-
-You can run it anyway:
-
-1. Easiest (Finder):
-   - Right‑click (or Control‑click) the binary → Open → then click “Open” in the dialog.
-2. Or use System Settings:
-   - System Settings → Privacy & Security → scroll to the bottom.
-   - You should see “etr-darwin-arm64 was blocked…” → click “Allow Anyway”, then run it again (macOS will prompt once more; choose Open).
-3. Or remove the quarantine flag (terminal):
-   ```bash
-   xattr -d com.apple.quarantine ./etr-darwin-arm64
-   ./etr-darwin-arm64 --version
-   ```
-
-(Optionally) verify checksum first (from the release checksums file):
-```bash
-shasum -a 256 etr-darwin-arm64
-```
-
-Once allowed/trusted, macOS won't prompt again unless you replace the file. You can also choose to install from source instead.
-
-### From Source
-
-**Prerequisites:**
-
-ETR requires libpcap development headers to compile:
-
-**Debian/Ubuntu:**
-```bash
-sudo apt-get update
-sudo apt-get install libpcap-dev
-```
-
-**RHEL/CentOS/Fedora:**
-```bash
-sudo dnf install libpcap-devel
-```
-
-**Arch Linux:**
-```bash
-sudo pacman -S libpcap
-```
-
-**macOS:**
-```bash
-brew install libpcap
-```
-
-**Install:**
-
-```bash
-go install github.com/tkjaer/etr/cmd/etr@latest
-```
-
-Or build from source:
-
-```bash
-git clone https://github.com/tkjaer/etr.git
-cd etr
-go build -o etr ./cmd/etr
-```
-
-### Homebrew
-
-A brew formula will be added if/when the [self-submitted criteria](https://docs.brew.sh/Acceptable-Formulae#niche-or-self-submitted-stuff) are fullfilled.
-
-### BSD Systems
-
-ETR supports FreeBSD, OpenBSD, and NetBSD.
-
-> **Note**: The OpenBSD and NetBSD support is limited to Ethernet-based source interfaces.
-
-Pre-built binaries are not currently provided for BSD systems. Build from source by first installing dependencies:
-
-**FreeBSD:**
-```bash
-pkg install go libpcap
-```
-
-**OpenBSD:**
-```bash
-pkg_add go libpcap
-```
-
-**NetBSD:**
-```bash
-pkgin install go libpcap
-```
-
-Then build:
-```bash
-go install github.com/tkjaer/etr/cmd/etr@latest
-```
-
-Or clone and build locally as shown above.
-
-### Permissions
-
-ETR requires raw socket access.
-
-- **macOS**: Run with `sudo` or add your user to the `access_bpf` group:
-   ```bash
-   sudo dseditgroup -o edit -a $USER -t user access_bpf
-   ```
-
-- **Linux**: Run with `sudo`, grant CAP_NET_RAW capability, or add your user to a capture group:
-  ```bash
-  # Option 1: Set capabilities on the binary
-  sudo setcap cap_net_raw+ep ./etr
-
-  # Option 2: Use wireshark group (if it exists on your system)
-  sudo usermod -a -G wireshark $USER
-  # Then re-login and set capabilities with group restriction:
-  sudo chgrp wireshark ./etr
-  sudo chmod 750 ./etr
-  sudo setcap cap_net_raw+ep ./etr
-  ```
+Detailed platform notes (Gatekeeper prompts, package installs, raw-socket permissions) now live in [docs/install.md](docs/install.md).
 
 ## Usage
 
@@ -233,3 +112,9 @@ Each probe iteration outputs one line of JSON (newline-delimited):
 ## License
 
 MIT License - see LICENSE file for details.
+
+## Further Reading
+
+- [Installation details](docs/install.md)
+- [Developing ETR](docs/developing.md)
+- [Probe encoding design](docs/probe-encoding-design.md)
