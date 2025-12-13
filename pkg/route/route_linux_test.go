@@ -100,7 +100,7 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 					Family: unix.AF_INET,
 					Attributes: rtnetlink.RouteAttributes{
 						Dst:      ipv4.AsSlice(),
-						Src:      []byte{}, // Invalid
+						Src:      []byte{0xde}, // Invalid length to force parse failure
 						OutIface: 1,
 					},
 				},
@@ -116,7 +116,7 @@ func TestGetMostSpecificRoute_Linux(t *testing.T) {
 					Attributes: rtnetlink.RouteAttributes{
 						Dst:      ipv4.AsSlice(),
 						Src:      ipv4.AsSlice(),
-						Gateway:  []byte{}, // Invalid
+						Gateway:  []byte{0xad}, // Invalid length to force parse failure
 						OutIface: 1,
 					},
 				},
