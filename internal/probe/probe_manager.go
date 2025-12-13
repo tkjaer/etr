@@ -363,16 +363,7 @@ func (pm *ProbeManager) Run() error {
 	slog.Debug("Waiting for output routine")
 	outputWg.Wait()
 
-	// Generate summary
-	pm.generateSummary()
-
 	return nil
-}
-
-// generateSummary creates a final summary of all probe results
-func (pm *ProbeManager) generateSummary() {
-	// FIXME:
-	// Implement summary generation
 }
 
 // Stop terminates all probes and cleans up resources
