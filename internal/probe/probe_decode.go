@@ -38,7 +38,13 @@ func (pm *ProbeManager) decodeRecvProbe(packet gopacket.Packet) (ttl uint8, prob
 			}
 		}
 	}
-	ip = packet.NetworkLayer().NetworkFlow().Src().Raw()
-	timestamp = packet.Metadata().Timestamp
+	nl := packet.NetworkLayer()
+	if nl != nil {
+		ip = packet.NetworkLayer().NetworkFlow().Src().Raw()
+	}
+	md := packet.Metadata()
+	if md != nil {
+		timestamp = packet.Metadata().Timestamp
+	}
 	return
 }
