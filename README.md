@@ -100,7 +100,9 @@ A brew formula will be added if/when the [self-submitted criteria](https://docs.
 
 ### BSD Systems
 
-ETR supports FreeBSD, OpenBSD and NetBSD.
+ETR supports FreeBSD, OpenBSD, and NetBSD.
+
+> **Note**: The OpenBSD and NetBSD support is limited to Ethernet-based source interfaces.
 
 Pre-built binaries are not currently provided for BSD systems. Build from source by first installing dependencies:
 

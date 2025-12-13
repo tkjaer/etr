@@ -1,8 +1,10 @@
 package probe
 
 import (
+	"errors"
 	"log/slog"
 	"net/netip"
+	"runtime"
 	"sync"
 	"time"
 
@@ -194,6 +196,16 @@ func (pm *ProbeManager) init(a config.Args) error {
 	}
 	slog.Debug("Opened pcap handle", "interface", probeConfig.route.Interface.Name)
 	probeConfig.useEthernet = pm.handle.LinkType() == layers.LinkTypeEthernet
+
+	// We currently do not support non-Ethernet interfaces on OpenBSD and NetBSD
+	if !probeConfig.useEthernet {
+		if runtime.GOOS == "openbsd" {
+			return errors.New("Non-Ethernet interfaces are not currently supported on OpenBSD")
+		}
+		if runtime.GOOS == "netbsd" {
+			return errors.New("Non-Ethernet interfaces are not currently supported on NetBSD")
+		}
+	}
 
 	// Only resolve MAC addresses for Ethernet interfaces
 	// VPN/tunnel interfaces (utun, tun, etc.) don't use MAC addresses
