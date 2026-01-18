@@ -3,6 +3,7 @@ package probe
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -86,6 +87,16 @@ func (pm *ProbeManager) statsProcessor() {
 			case "received":
 				if data, ok := event.Data.(*ProbeEventDataReceived); ok {
 					pm.updateReceivedStats(event.ProbeID, data)
+					if data.Flag != "TTL" {
+						deleted := pm.pruneHopsBeyondDestinationTTL(event.ProbeID, data.TTL)
+						if len(deleted) > 0 {
+							pm.outputChan <- outputMsg{
+								msgType:    "delete_hops",
+								probeNum:   uint(event.ProbeID),
+								deleteTTLs: deleted,
+							}
+						}
+					}
 					pm.notifyOutput(event.ProbeID, data.TTL)
 				}
 			case "timeout":
@@ -127,6 +138,16 @@ func (pm *ProbeManager) statsProcessor() {
 					case "received":
 						if data, ok := event.Data.(*ProbeEventDataReceived); ok {
 							pm.updateReceivedStats(event.ProbeID, data)
+							if data.Flag != "TTL" {
+								deleted := pm.pruneHopsBeyondDestinationTTL(event.ProbeID, data.TTL)
+								if len(deleted) > 0 {
+									pm.outputChan <- outputMsg{
+										msgType:    "delete_hops",
+										probeNum:   uint(event.ProbeID),
+										deleteTTLs: deleted,
+									}
+								}
+							}
 							pm.notifyOutput(event.ProbeID, data.TTL)
 						}
 					case "timeout":
@@ -368,6 +389,33 @@ func (pm *ProbeManager) getProbeStats(probeID uint16) (shared.ProbeStats, bool) 
 		exists = true
 	}
 	return stats, exists
+}
+
+// pruneHopsBeyondDestinationTTL removes hop stats with TTLs greater than the destination TTL for a probe.
+// Returns a sorted list of TTLs that were deleted.
+func (pm *ProbeManager) pruneHopsBeyondDestinationTTL(probeID uint16, destinationTTL uint8) []uint8 {
+	pm.stats.Mutex.Lock()
+	defer pm.stats.Mutex.Unlock()
+
+	probeStats, exists := pm.stats.Probes[probeID]
+	if !exists || probeStats == nil {
+		return nil
+	}
+
+	deleted := make([]uint8, 0)
+	for ttl := range probeStats.Hops {
+		if ttl > destinationTTL {
+			delete(probeStats.Hops, ttl)
+			deleted = append(deleted, ttl)
+		}
+	}
+
+	if len(deleted) == 0 {
+		return nil
+	}
+
+	slices.Sort(deleted)
+	return deleted
 }
 
 // Notifies the output system of a hop update for TUI
