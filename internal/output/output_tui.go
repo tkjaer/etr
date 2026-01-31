@@ -526,6 +526,7 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.help.Width = msg.Width
+		return m, tea.ClearScreen
 
 	case tuiUpdateMsg:
 		return m, waitForUpdate(m.updateCh)
