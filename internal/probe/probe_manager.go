@@ -61,6 +61,8 @@ type outputConfig struct {
 	jsonOutput    bool
 	jsonFile      string
 	hashAlgorithm string
+	tuiRefresh    time.Duration
+	noStyle       bool
 }
 
 type outputMsg struct {
@@ -139,6 +141,8 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 			jsonOutput:    a.Json,
 			jsonFile:      a.JsonFile,
 			hashAlgorithm: a.HashAlgorithm,
+			tuiRefresh:    a.TUIRefresh,
+			noStyle:       a.NoStyle,
 		},
 	}
 
@@ -278,7 +282,6 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 
 // Run initializes and executes all probes in parallel
 func (pm *ProbeManager) Run() error {
-
 	// Start transmit routine
 	pm.wg.Add(1)
 	go func() {
@@ -386,6 +389,8 @@ func (pm *ProbeManager) createOutputs() (*output.BubbleTUIOutput, *output.Output
 		DstPort:        pm.probeConfig.dstPort,
 		ParallelProbes: pm.parallelProbes,
 		HashAlgorithm:  pm.outputConfig.hashAlgorithm,
+		TUIRefresh:     pm.outputConfig.tuiRefresh,
+		NoStyle:        pm.outputConfig.noStyle,
 	}
 	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {
 		info.Protocol = "UDP"

@@ -27,7 +27,7 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
 - **Source**: `go install github.com/tkjaer/etr/cmd/etr@latest` (requires libpcap headers).
 - **BSD**: Supported via source builds (OpenBSD/NetBSD limited to Ethernet source interfaces).
 
-Detailed platform notes (Gatekeeper prompts, package installs, raw-socket permissions) now live in [docs/install.md](docs/install.md).
+Detailed platform notes (Gatekeeper prompts, package installs, raw-socket permissions) live in [docs/install.md](docs/install.md).
 
 ## Usage
 
@@ -61,6 +61,8 @@ etr -p 80 -c 1000 -d 5s target.example.com
 - `--help`: Full option list
 
 **TUI controls**: `↑/↓` scroll, `←/→` or `Tab` switch views, `q` quit
+
+**Styling**: set the `NO_COLOR` environment variable to disable ANSI styling in the TUI.
 
 ## Example: Finding ECMP Paths for iperf Testing
 
