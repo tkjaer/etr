@@ -43,6 +43,8 @@ type OutputInfo struct {
 	DstPort        uint16
 	ParallelProbes uint16
 	HashAlgorithm  string
+	TUIRefresh     time.Duration
+	NoStyle        bool
 }
 
 // Holds stats for a single probe instance

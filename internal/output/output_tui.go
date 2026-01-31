@@ -24,6 +24,10 @@ type BubbleTUIOutput struct {
 	updateCh chan tuiUpdateMsg
 	quitCh   chan struct{}
 	doneCh   chan struct{}
+
+	signalMu        sync.Mutex
+	lastSignal      time.Time
+	refreshInterval time.Duration
 }
 
 // tuiUpdateMsg is sent when hop stats are updated
@@ -35,14 +39,16 @@ type tickMsg time.Time
 // tuiModel holds the Bubble Tea model state
 type tuiModel struct {
 	// Data
-	probes        map[uint16]*shared.ProbeStats
-	mu            sync.RWMutex
-	destination   string
-	protocol      string
-	dstPort       uint16
-	srcPort       uint16
-	startTime     time.Time
-	hashAlgorithm string
+	probes          map[uint16]*shared.ProbeStats
+	mu              sync.RWMutex
+	destination     string
+	protocol        string
+	dstPort         uint16
+	srcPort         uint16
+	startTime       time.Time
+	hashAlgorithm   string
+	refreshInterval time.Duration
+	noStyle         bool
 
 	// UI state
 	width         int
@@ -193,6 +199,27 @@ func truncateToWidth(value string, width int) string {
 	return lipgloss.NewStyle().Width(width).Render(value)
 }
 
+func (m *tuiModel) render(style lipgloss.Style, value string) string {
+	if m.noStyle {
+		return value
+	}
+	return style.Render(value)
+}
+
+func (m *tuiModel) renderWidth(style lipgloss.Style, width int, value string) string {
+	if m.noStyle {
+		return truncateToWidth(value, width)
+	}
+	return style.Width(width).Render(value)
+}
+
+func (m *tuiModel) renderContainer(style lipgloss.Style, width int, value string) string {
+	if m.noStyle {
+		return value
+	}
+	return style.Width(width).Render(value)
+}
+
 func (m *tuiModel) changeSelectedProbe(delta int) {
 	m.mu.RLock()
 	numProbes := len(m.probes)
@@ -236,19 +263,21 @@ func NewBubbleTUIOutput(info shared.OutputInfo) *BubbleTUIOutput {
 	quitCh := make(chan struct{})
 
 	model := &tuiModel{
-		probes:        make(map[uint16]*shared.ProbeStats),
-		destination:   info.Destination,
-		protocol:      info.Protocol,
-		srcPort:       info.SrcPort,
-		dstPort:       info.DstPort,
-		startTime:     time.Now(),
-		hashAlgorithm: info.HashAlgorithm,
-		selectedProbe: 0,
-		focus:         focusSummary,
-		help:          help.New(),
-		keys:          keys,
-		updateCh:      updateCh,
-		quitCh:        quitCh,
+		probes:          make(map[uint16]*shared.ProbeStats),
+		destination:     info.Destination,
+		protocol:        info.Protocol,
+		srcPort:         info.SrcPort,
+		dstPort:         info.DstPort,
+		startTime:       time.Now(),
+		hashAlgorithm:   info.HashAlgorithm,
+		refreshInterval: info.TUIRefresh,
+		noStyle:         info.NoStyle,
+		selectedProbe:   0,
+		focus:           focusSummary,
+		help:            help.New(),
+		keys:            keys,
+		updateCh:        updateCh,
+		quitCh:          quitCh,
 	}
 
 	// Initialize all probe stats
@@ -262,10 +291,11 @@ func NewBubbleTUIOutput(info shared.OutputInfo) *BubbleTUIOutput {
 	model.probes = probes
 
 	tui := &BubbleTUIOutput{
-		model:    model,
-		updateCh: updateCh,
-		quitCh:   quitCh,
-		doneCh:   make(chan struct{}),
+		model:           model,
+		updateCh:        updateCh,
+		quitCh:          quitCh,
+		doneCh:          make(chan struct{}),
+		refreshInterval: info.TUIRefresh,
 	}
 
 	return tui
@@ -325,7 +355,7 @@ func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats shared.H
 	}
 	model.mu.Unlock()
 
-	if updateCh != nil {
+	if updateCh != nil && b.shouldSignal() {
 		select {
 		case updateCh <- tuiUpdateMsg{}:
 		default:
@@ -360,12 +390,26 @@ func (b *BubbleTUIOutput) DeleteHops(probeID uint16, ttls []uint8) {
 	}
 	model.mu.Unlock()
 
-	if updateCh != nil {
+	if updateCh != nil && b.shouldSignal() {
 		select {
 		case updateCh <- tuiUpdateMsg{}:
 		default:
 		}
 	}
+}
+
+func (b *BubbleTUIOutput) shouldSignal() bool {
+	if b.refreshInterval <= 0 {
+		return true
+	}
+	now := time.Now()
+	b.signalMu.Lock()
+	defer b.signalMu.Unlock()
+	if now.Sub(b.lastSignal) >= b.refreshInterval {
+		b.lastSignal = now
+		return true
+	}
+	return false
 }
 
 func (b *BubbleTUIOutput) CompleteProbeRun(run *shared.ProbeRun) {
@@ -416,7 +460,7 @@ func (b *BubbleTUIOutput) Close() error {
 // Init is the initial I/O for Bubble Tea
 func (m *tuiModel) Init() tea.Cmd {
 	return tea.Batch(
-		tickCmd(),
+		tickCmd(m.refreshInterval),
 		waitForUpdate(m.updateCh),
 	)
 }
@@ -473,7 +517,7 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, waitForUpdate(m.updateCh)
 
 	case tickMsg:
-		return m, tickCmd()
+		return m, tickCmd(m.refreshInterval)
 	}
 
 	return m, nil
@@ -491,7 +535,7 @@ func (m *tuiModel) View() string {
 	elapsed := time.Since(m.startTime)
 	title := fmt.Sprintf(" ECMP Traceroute to %s | Protocol: %s | Port: %d | Elapsed: %s ",
 		m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
-	b.WriteString(titleStyle.Width(m.width).Render(title))
+	b.WriteString(m.renderWidth(titleStyle, m.width, title))
 	b.WriteString("\n")
 
 	// Calculate available height for content
@@ -513,7 +557,7 @@ func (m *tuiModel) View() string {
 
 	// Help
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render(m.help.View(m.keys)))
+	b.WriteString(m.render(helpStyle, m.help.View(m.keys)))
 
 	return b.String()
 }
@@ -532,14 +576,14 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		uniquePaths[hash] = true
 	}
 
-	title := summaryTitleStyle.Render(fmt.Sprintf(" Summary (%d probes, %d unique paths) ", len(m.probes), len(uniquePaths)))
+	title := m.render(summaryTitleStyle, fmt.Sprintf(" Summary (%d probes, %d unique paths) ", len(m.probes), len(uniquePaths)))
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
 	// Header
 	header := fmt.Sprintf("  %-6s %7s %-9s %4s %8s %8s %8s %8s %8s",
 		"Probe", "SrcPort", " Path", "Hops", "Loss%", "Avg(ms)", "Min(ms)", "Max(ms)", "StdDev")
-	b.WriteString(headerStyle.Render(truncateToWidth(header, m.width-4)))
+	b.WriteString(m.render(headerStyle, truncateToWidth(header, m.width-4)))
 	b.WriteString("\n")
 
 	// Get sorted probe IDs
@@ -618,10 +662,10 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 			formatCell(fmt.Sprintf("%.2f", stats.StdDev), 8, alignRight),
 		}
 
-		cells[4] = lossStyle.Render(cells[4])
+		cells[4] = m.render(lossStyle, cells[4])
 		line := prefix + strings.Join(cells, " ")
 		line = truncateToWidth(line, contentWidth)
-		b.WriteString(style.Render(line))
+		b.WriteString(m.render(style, line))
 		b.WriteString("\n")
 	}
 
@@ -630,7 +674,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		summaryContainer = summaryContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
 
-	return summaryContainer.Width(m.width - 2).Render(b.String())
+	return m.renderContainer(summaryContainer, m.width-2, b.String())
 }
 
 // renderProbeDetails renders detailed hop-by-hop view for a specific probe
@@ -640,7 +684,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 
 	probe, exists := m.probes[probeID]
 	if !exists {
-		return borderStyle.Width(m.width - 4).Render("No data for probe")
+		return m.renderContainer(borderStyle, m.width-4, "No data for probe")
 	}
 
 	var b strings.Builder
@@ -650,7 +694,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 	if m.focus == focusDetails {
 		focusLabel = " [detail focus]"
 	}
-	title := probeTitleStyle.Render(fmt.Sprintf(" ► PROBE #%d ◄ - Source Port: %d%s ", probeID, srcPort, focusLabel))
+	title := m.render(probeTitleStyle, fmt.Sprintf(" ► PROBE #%d ◄ - Source Port: %d%s ", probeID, srcPort, focusLabel))
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
@@ -664,7 +708,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%8s %%6s %%8s %%8s %%8s %%8s %%8s", 3, hostWidth)
 	header := fmt.Sprintf(headerFmt,
 		"TTL", "Host", "Loss%", "Sent", "Last", "Avg", "Best", "Worst", "StDev")
-	b.WriteString(headerStyle.Render(truncateToWidth(header, contentWidth)))
+	b.WriteString(m.render(headerStyle, truncateToWidth(header, contentWidth)))
 	b.WriteString("\n")
 
 	ttls := make([]uint8, 0, len(probe.Hops))
@@ -727,15 +771,15 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 		}
 
 		if ip != "" && ip != "???" {
-			cells[1] = ipStyle.Render(cells[1])
+			cells[1] = m.render(ipStyle, cells[1])
 		} else {
-			cells[1] = ipStyle.Foreground(lipgloss.Color("#6B7280")).Render(cells[1])
+			cells[1] = m.render(ipStyle.Foreground(lipgloss.Color("#6B7280")), cells[1])
 		}
-		cells[2] = lossStyle.Render(cells[2])
+		cells[2] = m.render(lossStyle, cells[2])
 
 		line := strings.Join(cells, " ")
 		line = truncateToWidth(line, contentWidth)
-		bodyLines = append(bodyLines, hopStyle.Render(line))
+		bodyLines = append(bodyLines, m.render(hopStyle, line))
 
 		if len(hop.IPs) > 1 {
 			for altIP := range hop.IPs {
@@ -777,12 +821,12 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 					formatCell(fmt.Sprintf("%.2f", altStats.StdDev/1000.0), 8, alignRight),
 				}
 
-				cells[1] = ipStyle.Foreground(lipgloss.Color("#9CA3AF")).Render(cells[1])
-				cells[2] = altLossStyle.Render(cells[2])
+				cells[1] = m.render(ipStyle.Foreground(lipgloss.Color("#9CA3AF")), cells[1])
+				cells[2] = m.render(altLossStyle, cells[2])
 
 				line := strings.Join(cells, " ")
 				line = truncateToWidth(line, contentWidth)
-				bodyLines = append(bodyLines, hopStyle.Foreground(lipgloss.Color("#9CA3AF")).Render(line))
+				bodyLines = append(bodyLines, m.render(hopStyle.Foreground(lipgloss.Color("#9CA3AF")), line))
 			}
 		}
 	}
@@ -812,7 +856,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 		detailContainer = detailContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
 
-	return detailContainer.Width(m.width - 2).Render(b.String())
+	return m.renderContainer(detailContainer, m.width-2, b.String())
 }
 
 // Helper types for aggregate stats
@@ -903,8 +947,11 @@ func waitForUpdate(updateCh chan tuiUpdateMsg) tea.Cmd {
 }
 
 // tickCmd returns a command that sends a tick message periodically
-func tickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+func tickCmd(interval time.Duration) tea.Cmd {
+	if interval <= 0 {
+		return nil
+	}
+	return tea.Tick(interval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }

@@ -31,8 +31,10 @@ type Args struct {
 	Timeout         time.Duration
 
 	// Output
-	Json     bool   // output json to stdout
-	JsonFile string // output json to file while showing TUI
+	Json       bool          // output json to stdout
+	JsonFile   string        // output json to file while showing TUI
+	TUIRefresh time.Duration // TUI refresh interval
+	NoStyle    bool          // disable TUI styling
 
 	// Path hashing
 	HashAlgorithm string // hash algorithm: crc32, sha256
@@ -52,6 +54,9 @@ type Args struct {
 func ParseArgs() (Args, error) {
 	var args Args
 	var showVersion bool
+	if _, ok := os.LookupEnv("NO_COLOR"); ok {
+		args.NoStyle = true
+	}
 
 	// Set custom usage message
 	flag.Usage = func() {
@@ -99,6 +104,7 @@ func ParseArgs() (Args, error) {
 	// Output and logging
 	flag.BoolVarP(&args.Json, "json", "J", false, "Write JSON output to stdout (disables TUI)")
 	flag.StringVarP(&args.JsonFile, "json-file", "j", "", "Write JSON output to file (keeps TUI)")
+	flag.DurationVar(&args.TUIRefresh, "tui-refresh", 60*time.Millisecond, "TUI refresh interval (0 disables periodic refresh)")
 	flag.StringVar(&args.LogLevel, "log-level", "error", "Log level: debug, info, warn, error")
 	flag.StringVarP(&args.Log, "log", "l", "", "Diagnostic log file (empty = no logging)")
 	flag.StringVar(&args.HashAlgorithm, "hash-algorithm", "crc32", "Path hash algorithm: crc32 or sha256")
