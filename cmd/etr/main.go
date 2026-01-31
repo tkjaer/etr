@@ -4,12 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"runtime"
-	"runtime/pprof"
 	"syscall"
 
 	"github.com/tkjaer/etr/internal/config"
@@ -51,59 +47,6 @@ func run() error {
 		"protocol", args.ProtocolName(),
 		"parallel_probes", args.ParallelProbes,
 	)
-
-	if args.PprofAddr != "" {
-		go func(addr string) {
-			slog.Info("Starting pprof server", "addr", addr)
-			if err := http.ListenAndServe(addr, nil); err != nil {
-				slog.Error("pprof server error", "error", err)
-			}
-		}(args.PprofAddr)
-	}
-
-	var cpuProfileFile *os.File
-	if args.CPUProfile != "" {
-		cpuProfileFile, err = os.Create(args.CPUProfile)
-		if err != nil {
-			return fmt.Errorf("failed to create cpu profile: %w", err)
-		}
-		if err := pprof.StartCPUProfile(cpuProfileFile); err != nil {
-			_ = cpuProfileFile.Close()
-			return fmt.Errorf("failed to start cpu profile: %w", err)
-		}
-		defer func() {
-			pprof.StopCPUProfile()
-			if err := cpuProfileFile.Close(); err != nil {
-				slog.Error("Failed to close cpu profile", "error", err)
-			}
-		}()
-	}
-
-	if args.MemProfile != "" {
-		defer func(path string) {
-			f, err := os.Create(path)
-			if err != nil {
-				slog.Error("Failed to create mem profile", "error", err)
-				return
-			}
-			defer func() {
-				if err := f.Close(); err != nil {
-					slog.Error("Failed to close mem profile", "error", err)
-				}
-			}()
-			runtime.GC()
-			if err := pprof.WriteHeapProfile(f); err != nil {
-				slog.Error("Failed to write mem profile", "error", err)
-			}
-		}(args.MemProfile)
-	}
-
-	if args.MutexProfileFraction > 0 {
-		runtime.SetMutexProfileFraction(args.MutexProfileFraction)
-	}
-	if args.BlockProfileRate > 0 {
-		runtime.SetBlockProfileRate(args.BlockProfileRate)
-	}
 
 	pm, err := probe.NewProbeManager(args)
 	if err != nil {

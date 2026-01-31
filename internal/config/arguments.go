@@ -42,13 +42,6 @@ type Args struct {
 	// Logging
 	Log      string // log file path, empty means no logging
 	LogLevel string // log level: debug, info, warn, error
-
-	// Profiling
-	PprofAddr            string // HTTP listen address for net/http/pprof
-	CPUProfile           string // Path to CPU profile output file
-	MemProfile           string // Path to heap profile output file
-	MutexProfileFraction int    // Enable mutex profiling (set rate > 0)
-	BlockProfileRate     int    // Enable block profiling (nanoseconds)
 }
 
 func ParseArgs() (Args, error) {
@@ -108,11 +101,6 @@ func ParseArgs() (Args, error) {
 	flag.StringVar(&args.LogLevel, "log-level", "error", "Log level: debug, info, warn, error")
 	flag.StringVarP(&args.Log, "log", "l", "", "Diagnostic log file (empty = no logging)")
 	flag.StringVar(&args.HashAlgorithm, "hash-algorithm", "crc32", "Path hash algorithm: crc32 or sha256")
-	flag.StringVar(&args.PprofAddr, "pprof-addr", "", "Enable pprof HTTP server (e.g. 127.0.0.1:6060)")
-	flag.StringVar(&args.CPUProfile, "cpu-profile", "", "Write CPU profile to file")
-	flag.StringVar(&args.MemProfile, "mem-profile", "", "Write heap profile to file on exit")
-	flag.IntVar(&args.MutexProfileFraction, "mutex-profile", 0, "Enable mutex profiling (rate, e.g. 10) for /debug/pprof/mutex")
-	flag.IntVar(&args.BlockProfileRate, "block-profile", 0, "Enable block profiling (ns, e.g. 1000000) for /debug/pprof/block")
 	// Disable alphabetical sorting of flags
 	// flag.CommandLine.SortFlags = false
 	flag.Parse()
