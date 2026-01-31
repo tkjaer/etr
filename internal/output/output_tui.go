@@ -199,6 +199,20 @@ func truncateToWidth(value string, width int) string {
 	return lipgloss.NewStyle().Width(width).Render(value)
 }
 
+func padToWidth(value string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	lines := strings.Split(value, "\n")
+	for i, line := range lines {
+		lineWidth := lipgloss.Width(line)
+		if lineWidth < width {
+			lines[i] = line + strings.Repeat(" ", width-lineWidth)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m *tuiModel) render(style lipgloss.Style, value string) string {
 	if m.noStyle {
 		return value
@@ -208,14 +222,14 @@ func (m *tuiModel) render(style lipgloss.Style, value string) string {
 
 func (m *tuiModel) renderWidth(style lipgloss.Style, width int, value string) string {
 	if m.noStyle {
-		return truncateToWidth(value, width)
+		return padToWidth(truncateToWidth(value, width), width)
 	}
 	return style.Width(width).Render(value)
 }
 
 func (m *tuiModel) renderContainer(style lipgloss.Style, width int, value string) string {
 	if m.noStyle {
-		return value
+		return padToWidth(value, width)
 	}
 	return style.Width(width).Render(value)
 }
@@ -619,6 +633,9 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	}
 
 	contentWidth := m.width - 4
+	if m.noStyle {
+		contentWidth = m.width
+	}
 	contentWidth = max(contentWidth, 0)
 	start := m.summaryScroll
 	end := start + visibleRows
@@ -674,7 +691,11 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		summaryContainer = summaryContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
 
-	return m.renderContainer(summaryContainer, m.width-2, b.String())
+	containerWidth := m.width - 2
+	if m.noStyle {
+		containerWidth = m.width
+	}
+	return m.renderContainer(summaryContainer, containerWidth, b.String())
 }
 
 // renderProbeDetails renders detailed hop-by-hop view for a specific probe
@@ -684,7 +705,11 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 
 	probe, exists := m.probes[probeID]
 	if !exists {
-		return m.renderContainer(borderStyle, m.width-4, "No data for probe")
+		containerWidth := m.width - 4
+		if m.noStyle {
+			containerWidth = m.width
+		}
+		return m.renderContainer(borderStyle, containerWidth, "No data for probe")
 	}
 
 	var b strings.Builder
@@ -699,6 +724,9 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 	b.WriteString("\n\n")
 
 	contentWidth := m.width - 4
+	if m.noStyle {
+		contentWidth = m.width
+	}
 	contentWidth = max(contentWidth, 20)
 
 	fixedColumns := 65
@@ -856,7 +884,11 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 		detailContainer = detailContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
 
-	return m.renderContainer(detailContainer, m.width-2, b.String())
+	containerWidth := m.width - 2
+	if m.noStyle {
+		containerWidth = m.width
+	}
+	return m.renderContainer(detailContainer, containerWidth, b.String())
 }
 
 // Helper types for aggregate stats
