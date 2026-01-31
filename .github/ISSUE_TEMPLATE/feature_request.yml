@@ -1,0 +1,42 @@
+name: Feature request / idea
+description: Suggest an improvement or new feature
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: "Please see [CONTRIBUTING.md](../../CONTRIBUTING.md) for scope and expectations before filing a request."
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A clear and concise description of the idea.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve? Why is it useful?
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed approach (optional)
+      description: If you have a specific approach in mind, outline it here.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)
+      description: Other solutions or workarounds you’ve tried.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context (optional)
+      description: Anything else that helps evaluate the request.
+    validations:
+      required: false
