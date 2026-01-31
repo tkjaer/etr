@@ -4,7 +4,7 @@ description: Suggest an improvement or new feature
 labels: [enhancement]
 ---
 
-Please see CONTRIBUTING.md for scope and expectations before filing a request.
+Please see [CONTRIBUTING.md](https://github.com/tkjaer/etr/blob/main/CONTRIBUTING.md) for scope and expectations before filing a request.
 
 ## Summary
 

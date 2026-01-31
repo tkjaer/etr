@@ -31,3 +31,4 @@ What actually happened.
 ## Logs / output
 
 Paste relevant output here (redact sensitive data).
+Please read [CONTRIBUTING.md](https://github.com/tkjaer/etr/blob/main/CONTRIBUTING.md) before filing an issue.
