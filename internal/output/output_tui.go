@@ -540,11 +540,11 @@ func (m *tuiModel) View() string {
 
 	// Calculate available height for content
 	helpHeight := lipgloss.Height(m.help.View(m.keys))
-	contentHeight := m.height - 4 - helpHeight // title + spacing + help
+	contentHeight := m.height - 3 - helpHeight // title + separators + help
 
 	// Split view: summary on top, detailed probe view below
 	summaryHeight := min(contentHeight/3, 15)
-	probeHeight := contentHeight - summaryHeight - 2
+	probeHeight := contentHeight - summaryHeight - 1
 
 	// Render summary pane
 	summary := m.renderSummary(summaryHeight)
@@ -831,7 +831,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 		}
 	}
 
-	visibleLines := maxHeight - 4
+	visibleLines := maxHeight - 3
 	visibleLines = max(visibleLines, 0)
 
 	maxScroll := 0
