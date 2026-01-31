@@ -17,7 +17,7 @@ jobs:
             goos: linux
             goarch: amd64
             name: etr-linux-amd64
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-20.04-arm
             goos: linux
             goarch: arm64
             name: etr-linux-arm64
