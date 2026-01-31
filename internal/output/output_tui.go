@@ -199,6 +199,20 @@ func truncateToWidth(value string, width int) string {
 	return lipgloss.NewStyle().Width(width).Render(value)
 }
 
+func padToWidth(value string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	lines := strings.Split(value, "\n")
+	for i, line := range lines {
+		lineWidth := lipgloss.Width(line)
+		if lineWidth < width {
+			lines[i] = line + strings.Repeat(" ", width-lineWidth)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m *tuiModel) render(style lipgloss.Style, value string) string {
 	if m.noStyle {
 		return value
@@ -208,14 +222,14 @@ func (m *tuiModel) render(style lipgloss.Style, value string) string {
 
 func (m *tuiModel) renderWidth(style lipgloss.Style, width int, value string) string {
 	if m.noStyle {
-		return truncateToWidth(value, width)
+		return padToWidth(truncateToWidth(value, width), width)
 	}
 	return style.Width(width).Render(value)
 }
 
 func (m *tuiModel) renderContainer(style lipgloss.Style, width int, value string) string {
 	if m.noStyle {
-		return value
+		return padToWidth(value, width)
 	}
 	return style.Width(width).Render(value)
 }
@@ -538,9 +552,14 @@ func (m *tuiModel) View() string {
 	b.WriteString(m.renderWidth(titleStyle, m.width, title))
 	b.WriteString("\n")
 
-	// Calculate available height for content
-	helpHeight := lipgloss.Height(m.help.View(m.keys))
-	contentHeight := m.height - 3 - helpHeight // title + separators + help
+	// Help is always 1 line
+	helpHeight := 1
+	separatorHeight := 6
+	if m.noStyle {
+		// no styles means no borders
+		separatorHeight = 2
+	}
+	contentHeight := m.height - separatorHeight - helpHeight // title + separators + help
 
 	// Split view: summary on top, detailed probe view below
 	summaryHeight := min(contentHeight/3, 15)
@@ -581,7 +600,7 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	b.WriteString("\n\n")
 
 	// Header
-	header := fmt.Sprintf("  %-6s %7s %-9s %4s %8s %8s %8s %8s %8s",
+	header := fmt.Sprintf("  %-6s %6s %-8s %3s %6s %7s %7s %7s %7s",
 		"Probe", "SrcPort", " Path", "Hops", "Loss%", "Avg(ms)", "Min(ms)", "Max(ms)", "StdDev")
 	b.WriteString(m.render(headerStyle, truncateToWidth(header, m.width-4)))
 	b.WriteString("\n")
@@ -619,6 +638,9 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	}
 
 	contentWidth := m.width - 4
+	if m.noStyle {
+		contentWidth = m.width
+	}
 	contentWidth = max(contentWidth, 0)
 	start := m.summaryScroll
 	end := start + visibleRows
@@ -652,14 +674,14 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		srcPort := m.srcPort + id
 		cells := []string{
 			formatCell(fmt.Sprintf("#%d", id), 6, alignLeft),
-			formatCell(fmt.Sprintf("%d", srcPort), 7, alignRight),
-			formatCell(fmt.Sprintf("%.8s", stats.PathHash), 9, alignRight),
-			formatCell(fmt.Sprintf("%d", stats.NumHops), 4, alignRight),
-			formatCell(fmt.Sprintf("%.1f%%", stats.LossPct), 8, alignRight),
-			formatCell(fmt.Sprintf("%.2f", stats.AvgRTT), 8, alignRight),
-			formatCell(fmt.Sprintf("%.2f", stats.MinRTT), 8, alignRight),
-			formatCell(fmt.Sprintf("%.2f", stats.MaxRTT), 8, alignRight),
-			formatCell(fmt.Sprintf("%.2f", stats.StdDev), 8, alignRight),
+			formatCell(fmt.Sprintf("%d", srcPort), 6, alignRight),
+			formatCell(fmt.Sprintf("%.7s", stats.PathHash), 8, alignRight),
+			formatCell(fmt.Sprintf("%d", stats.NumHops), 3, alignRight),
+			formatCell(fmt.Sprintf("%.1f%%", stats.LossPct), 6, alignRight),
+			formatCell(fmt.Sprintf("%.2f", stats.AvgRTT), 7, alignRight),
+			formatCell(fmt.Sprintf("%.2f", stats.MinRTT), 7, alignRight),
+			formatCell(fmt.Sprintf("%.2f", stats.MaxRTT), 7, alignRight),
+			formatCell(fmt.Sprintf("%.2f", stats.StdDev), 7, alignRight),
 		}
 
 		cells[4] = m.render(lossStyle, cells[4])
@@ -674,7 +696,11 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		summaryContainer = summaryContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
 
-	return m.renderContainer(summaryContainer, m.width-2, b.String())
+	containerWidth := m.width - 2
+	if m.noStyle {
+		containerWidth = m.width
+	}
+	return m.renderContainer(summaryContainer, containerWidth, b.String())
 }
 
 // renderProbeDetails renders detailed hop-by-hop view for a specific probe
@@ -684,7 +710,11 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 
 	probe, exists := m.probes[probeID]
 	if !exists {
-		return m.renderContainer(borderStyle, m.width-4, "No data for probe")
+		containerWidth := m.width - 4
+		if m.noStyle {
+			containerWidth = m.width
+		}
+		return m.renderContainer(borderStyle, containerWidth, "No data for probe")
 	}
 
 	var b strings.Builder
@@ -699,13 +729,21 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 	b.WriteString("\n\n")
 
 	contentWidth := m.width - 4
+	if m.noStyle {
+		contentWidth = m.width
+	}
 	contentWidth = max(contentWidth, 20)
 
-	fixedColumns := 65
+	ttlWidth := 3
+	lossWidth := 6
+	sentWidth := 5
+	statWidth := 7
+	spaces := 8 // spaces between 9 columns
+	fixedColumns := ttlWidth + lossWidth + sentWidth + (statWidth * 5) + spaces
 	hostWidth := contentWidth - fixedColumns
 	hostWidth = max(hostWidth, 10)
 
-	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%8s %%6s %%8s %%8s %%8s %%8s %%8s", 3, hostWidth)
+	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%%ds %%%ds %%%ds %%%ds %%%ds %%%ds %%%ds", ttlWidth, hostWidth, lossWidth, sentWidth, statWidth, statWidth, statWidth, statWidth, statWidth)
 	header := fmt.Sprintf(headerFmt,
 		"TTL", "Host", "Loss%", "Sent", "Last", "Avg", "Best", "Worst", "StDev")
 	b.WriteString(m.render(headerStyle, truncateToWidth(header, contentWidth)))
@@ -759,15 +797,15 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 		}
 
 		cells := []string{
-			formatCell(fmt.Sprintf("%d", ttl), 3, alignLeft),
+			formatCell(fmt.Sprintf("%d", ttl), ttlWidth, alignLeft),
 			formatCell(ipDisplay, hostWidth, alignLeft),
-			formatCell(fmt.Sprintf("%.1f%%", lossPct), 8, alignRight),
-			formatCell(fmt.Sprintf("%d", sent), 6, alignRight),
-			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Last)/1000.0), 8, alignRight),
-			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Avg)/1000.0), 8, alignRight),
-			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Min)/1000.0), 8, alignRight),
-			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Max)/1000.0), 8, alignRight),
-			formatCell(fmt.Sprintf("%.2f", ipStats.StdDev/1000.0), 8, alignRight),
+			formatCell(fmt.Sprintf("%.1f%%", lossPct), lossWidth, alignRight),
+			formatCell(fmt.Sprintf("%d", sent), sentWidth, alignRight),
+			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Last)/1000.0), statWidth, alignRight),
+			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Avg)/1000.0), statWidth, alignRight),
+			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Min)/1000.0), statWidth, alignRight),
+			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Max)/1000.0), statWidth, alignRight),
+			formatCell(fmt.Sprintf("%.2f", ipStats.StdDev/1000.0), statWidth, alignRight),
 		}
 
 		if ip != "" && ip != "???" {
@@ -810,15 +848,15 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 				}
 
 				cells := []string{
-					formatCell("", 3, alignLeft),
+					formatCell("", ttlWidth, alignLeft),
 					formatCell(altValue, hostWidth, alignLeft),
-					formatCell(fmt.Sprintf("%.1f%%", altStats.LossPct), 8, alignRight),
-					formatCell(fmt.Sprintf("%d", altStats.Responses+altStats.Lost), 6, alignRight),
-					formatCell(fmt.Sprintf("%.2f", float64(altStats.Last)/1000.0), 8, alignRight),
-					formatCell(fmt.Sprintf("%.2f", float64(altStats.Avg)/1000.0), 8, alignRight),
-					formatCell(fmt.Sprintf("%.2f", float64(altStats.Min)/1000.0), 8, alignRight),
-					formatCell(fmt.Sprintf("%.2f", float64(altStats.Max)/1000.0), 8, alignRight),
-					formatCell(fmt.Sprintf("%.2f", altStats.StdDev/1000.0), 8, alignRight),
+					formatCell(fmt.Sprintf("%.1f%%", altStats.LossPct), lossWidth, alignRight),
+					formatCell(fmt.Sprintf("%d", altStats.Responses+altStats.Lost), sentWidth, alignRight),
+					formatCell(fmt.Sprintf("%.2f", float64(altStats.Last)/1000.0), statWidth, alignRight),
+					formatCell(fmt.Sprintf("%.2f", float64(altStats.Avg)/1000.0), statWidth, alignRight),
+					formatCell(fmt.Sprintf("%.2f", float64(altStats.Min)/1000.0), statWidth, alignRight),
+					formatCell(fmt.Sprintf("%.2f", float64(altStats.Max)/1000.0), statWidth, alignRight),
+					formatCell(fmt.Sprintf("%.2f", altStats.StdDev/1000.0), statWidth, alignRight),
 				}
 
 				cells[1] = m.render(ipStyle.Foreground(lipgloss.Color("#9CA3AF")), cells[1])
@@ -856,7 +894,11 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 		detailContainer = detailContainer.BorderForeground(lipgloss.Color("#34D399"))
 	}
 
-	return m.renderContainer(detailContainer, m.width-2, b.String())
+	containerWidth := m.width - 2
+	if m.noStyle {
+		containerWidth = m.width
+	}
+	return m.renderContainer(detailContainer, containerWidth, b.String())
 }
 
 // Helper types for aggregate stats
