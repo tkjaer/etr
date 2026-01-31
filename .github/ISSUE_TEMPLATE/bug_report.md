@@ -1,6 +1,6 @@
 ---
 name: Bug report
-description: Report a problem with ETR
+about: Report a problem with ETR
 labels: [bug]
 ---
 
