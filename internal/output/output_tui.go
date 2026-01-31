@@ -552,9 +552,14 @@ func (m *tuiModel) View() string {
 	b.WriteString(m.renderWidth(titleStyle, m.width, title))
 	b.WriteString("\n")
 
-	// Calculate available height for content
-	helpHeight := lipgloss.Height(m.help.View(m.keys))
-	contentHeight := m.height - 3 - helpHeight // title + separators + help
+	// Help is always 1 line
+	helpHeight := 1
+	separatorHeight := 6
+	if m.noStyle {
+		// no styles means no borders
+		separatorHeight = 2
+	}
+	contentHeight := m.height - separatorHeight - helpHeight // title + separators + help
 
 	// Split view: summary on top, detailed probe view below
 	summaryHeight := min(contentHeight/3, 15)
