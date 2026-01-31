@@ -118,5 +118,5 @@ MIT License - see LICENSE file for details.
 ## Further Reading
 
 - [Installation details](docs/install.md)
-- [Developing ETR](docs/developing.md)
+- [Contributing](CONTRIBUTING.md)
 - [Probe encoding design](docs/probe-encoding-design.md)
