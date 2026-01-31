@@ -278,7 +278,6 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 
 // Run initializes and executes all probes in parallel
 func (pm *ProbeManager) Run() error {
-
 	// Start transmit routine
 	pm.wg.Add(1)
 	go func() {

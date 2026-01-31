@@ -20,7 +20,6 @@ import (
 func Get(ip net.IP, iface *net.Interface, src net.IP) (net.HardwareAddr, error) {
 	// Check if the IP is in the kernel ARP table
 	mac, err := CheckARPTable(ip, iface)
-
 	// If the IP is not in the ARP table, send an ARP request and wait for a response
 	if err != nil {
 		slog.Debug("Sending ARP request", "target_ip", ip.String())

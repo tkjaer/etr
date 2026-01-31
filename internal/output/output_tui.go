@@ -27,12 +27,7 @@ type BubbleTUIOutput struct {
 }
 
 // tuiUpdateMsg is sent when hop stats are updated
-type tuiUpdateMsg struct {
-	probeID    uint16
-	ttl        uint8
-	hopStats   shared.HopStats
-	deleteTTLs []uint8 // TTLs to delete from this probe
-}
+type tuiUpdateMsg struct{}
 
 // tickMsg is sent periodically to refresh the display
 type tickMsg time.Time
@@ -311,17 +306,30 @@ func (b *BubbleTUIOutput) QuitChan() <-chan struct{} {
 
 // UpdateHop implements the Output interface
 func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats shared.HopStats) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	// Snapshot pointers so we don't hold b.mu while updating model state.
+	b.mu.RLock()
+	model := b.model
+	updateCh := b.updateCh
+	b.mu.RUnlock()
+	if model == nil {
+		return
+	}
 
-	select {
-	case b.updateCh <- tuiUpdateMsg{
-		probeID:  probeID,
-		ttl:      ttl,
-		hopStats: hopStats,
-	}:
-	default:
-		// Channel full, skip update
+	model.mu.Lock()
+	if probe, exists := model.probes[probeID]; exists {
+		if probe.Hops == nil {
+			probe.Hops = make(map[uint8]*shared.HopStats)
+		}
+		hopCopy := hopStats
+		probe.Hops[ttl] = &hopCopy
+	}
+	model.mu.Unlock()
+
+	if updateCh != nil {
+		select {
+		case updateCh <- tuiUpdateMsg{}:
+		default:
+		}
 	}
 }
 
@@ -331,14 +339,31 @@ func (b *BubbleTUIOutput) CompleteProbe(probeID uint16, stats shared.ProbeStats)
 }
 
 func (b *BubbleTUIOutput) DeleteHops(probeID uint16, ttls []uint8) {
+	if len(ttls) == 0 {
+		return
+	}
+
+	// Snapshot pointers so we don't hold b.mu while updating model state.
 	b.mu.RLock()
+	model := b.model
 	updateCh := b.updateCh
 	b.mu.RUnlock()
+	if model == nil {
+		return
+	}
 
-	if updateCh != nil && len(ttls) > 0 {
-		updateCh <- tuiUpdateMsg{
-			probeID:    probeID,
-			deleteTTLs: ttls,
+	model.mu.Lock()
+	if probe, exists := model.probes[probeID]; exists {
+		for _, ttl := range ttls {
+			delete(probe.Hops, ttl)
+		}
+	}
+	model.mu.Unlock()
+
+	if updateCh != nil {
+		select {
+		case updateCh <- tuiUpdateMsg{}:
+		default:
 		}
 	}
 }
@@ -445,24 +470,6 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.help.Width = msg.Width
 
 	case tuiUpdateMsg:
-		m.mu.Lock()
-		if probe, exists := m.probes[msg.probeID]; exists {
-			if probe.Hops == nil {
-				probe.Hops = make(map[uint8]*shared.HopStats)
-			}
-
-			// Handle hop deletions
-			if len(msg.deleteTTLs) > 0 {
-				for _, ttl := range msg.deleteTTLs {
-					delete(probe.Hops, ttl)
-				}
-			} else {
-				// Deep copy the hop stats
-				hopCopy := msg.hopStats
-				probe.Hops[msg.ttl] = &hopCopy
-			}
-		}
-		m.mu.Unlock()
 		return m, waitForUpdate(m.updateCh)
 
 	case tickMsg:

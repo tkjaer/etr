@@ -20,7 +20,7 @@ func SetupLogging(args Args) (*os.File, error) {
 
 	// Add file writer if specified
 	if args.Log != "" {
-		f, err := os.OpenFile(args.Log, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		f, err := os.OpenFile(args.Log, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			return nil, err
 		}
