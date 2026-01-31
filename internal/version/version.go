@@ -1,10 +1,9 @@
 package version
 
 import (
-	"os/exec"
+	"runtime/debug"
 	"strings"
 	"sync"
-	"time"
 )
 
 // Version information set via ldflags during build
@@ -17,34 +16,41 @@ var (
 var (
 	once          sync.Once
 	runtimeCommit string
-	runtimeDate   string
 )
 
-// initRuntimeVersion attempts to get version info from git if ldflags weren't used
+// initRuntimeVersion attempts to get version info from build metadata or git if ldflags weren't used
 func initRuntimeVersion() {
 	once.Do(func() {
-		// Try to get git commit
-		if GitCommit == "unknown" {
-			if cmd := exec.Command("git", "rev-parse", "--short", "HEAD"); cmd.Err == nil {
-				if output, err := cmd.Output(); err == nil {
-					runtimeCommit = strings.TrimSpace(string(output))
-
-					// Check if tree is dirty
-					if cmd := exec.Command("git", "diff-index", "--quiet", "HEAD", "--"); cmd.Err == nil {
-						if err := cmd.Run(); err != nil {
-							// Non-zero exit means dirty tree
-							runtimeCommit += "-dirty"
-						}
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, setting := range info.Settings {
+				switch setting.Key {
+				case "vcs.revision":
+					if runtimeCommit == "" {
+						runtimeCommit = setting.Value
+					}
+				case "vcs.modified":
+					if setting.Value == "true" && runtimeCommit != "" && !strings.HasSuffix(runtimeCommit, "-dirty") {
+						runtimeCommit += "-dirty"
 					}
 				}
 			}
 		}
 
-		// Use current time as build date if not set
-		if BuildDate == "unknown" {
-			runtimeDate = time.Now().UTC().Format("2006-01-02_15:04:05")
-		}
 	})
+}
+
+func normalizeCommit(commit string) string {
+	if commit == "" {
+		return commit
+	}
+	base := strings.TrimSuffix(commit, "-dirty")
+	if len(base) > 7 {
+		base = base[:7]
+	}
+	if strings.HasSuffix(commit, "-dirty") {
+		return base + "-dirty"
+	}
+	return base
 }
 
 // FullVersion returns a formatted version string
@@ -55,14 +61,10 @@ func FullVersion() string {
 	if commit == "unknown" && runtimeCommit != "" {
 		commit = runtimeCommit
 	}
-
-	buildDate := BuildDate
-	if buildDate == "unknown" && runtimeDate != "" {
-		buildDate = runtimeDate
-	}
+	commit = normalizeCommit(commit)
 
 	if Version == "dev" {
-		return "etr development build " + "(commit: " + commit + ", built: " + buildDate + ")"
+		return "etr development build " + "(commit: " + commit + ")"
 	}
-	return "etr " + Version + " (commit: " + commit + ", built: " + buildDate + ")"
+	return "etr " + Version + " (commit: " + commit + ")"
 }
