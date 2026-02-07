@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -13,22 +14,36 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             goos: linux
             goarch: amd64
             name: etr-linux-amd64
-          - os: ubuntu-22.04-arm
+            container: ""
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            name: etr-linux-amd64-glibc-2.31
+            container: golang:1.25-bullseye
+          - os: ubuntu-latest-arm
             goos: linux
             goarch: arm64
             name: etr-linux-arm64
+            container: ""
+          - os: ubuntu-latest-arm
+            goos: linux
+            goarch: arm64
+            name: etr-linux-arm64-glibc-2.31
+            container: golang:1.25-bullseye
           - os: macos-15-intel  # Intel - macOS 15 will be the last Intel runner
             goos: darwin
             goarch: amd64
             name: etr-darwin-amd64
+            container: ""
           - os: macos-latest    # Apple Silicon
             goos: darwin
             goarch: arm64
             name: etr-darwin-arm64
+            container: ""
 
     runs-on: ${{ matrix.os }}
 
@@ -42,12 +57,36 @@ jobs:
           go-version-file: 'go.mod'
 
       - name: Install libpcap (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.container == ''
         run: |
           sudo apt-get update
           sudo apt-get install -y libpcap-dev
 
+      - name: Build binary (Linux, container)
+        if: runner.os == 'Linux' && matrix.container != ''
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          COMMIT=$(git rev-parse --short HEAD)
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/work \
+            -w /work \
+            -e VERSION="$VERSION" \
+            -e COMMIT="$COMMIT" \
+            -e DATE="$DATE" \
+            ${{ matrix.container }} \
+            bash -lc '
+              apt-get update && apt-get install -y libpcap-dev ca-certificates &&
+              LDFLAGS="-X github.com/tkjaer/etr/internal/version.Version=${VERSION} \
+                       -X github.com/tkjaer/etr/internal/version.GitCommit=${COMMIT} \
+                       -X github.com/tkjaer/etr/internal/version.BuildDate=${DATE}" &&
+              GOOS=linux GOARCH=${{ matrix.goarch }} CGO_ENABLED=1 \
+                go build -ldflags="$LDFLAGS" -o ${{ matrix.name }} ./cmd/etr
+            '
+
       - name: Build binary
+        if: matrix.container == ''
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           COMMIT=$(git rev-parse --short HEAD)
