@@ -16,6 +16,7 @@ type Args struct {
 	NumProbes      uint
 	MaxTTL         uint
 	NoResolve      bool
+	PrintBPFFilter bool
 
 	// Protocol and ports
 	TCP             bool
@@ -65,6 +66,7 @@ func ParseArgs() (Args, error) {
 		println("  etr -U <destination>                 # UDP traceroute")
 		println("  etr -c 10 -J <destination>           # 10 probes, JSON to stdout")
 		println("  etr -j results.json <destination>    # Save JSON while showing TUI")
+		println("  etr --print-bpf <destination>        # Print tcpdump filter and exit")
 		println()
 		println("Options:")
 		flag.PrintDefaults()
@@ -81,6 +83,7 @@ func ParseArgs() (Args, error) {
 	flag.BoolVarP(&args.ForceIPv4, "ipv4", "4", false, "Force IPv4")
 	flag.BoolVarP(&args.ForceIPv6, "ipv6", "6", false, "Force IPv6")
 	flag.BoolVarP(&args.NoResolve, "no-resolve", "n", false, "Do not resolve IP addresses to hostnames")
+	flag.BoolVarP(&args.PrintBPFFilter, "print-bpf", "B", false, "Print tcpdump-compatible BPF filter and exit")
 	flag.UintVarP(&args.DestinationPort, "dest-port", "p", 0, "Destination port (default: 443 for TCP, 33434 for UDP)")
 	flag.UintVarP(&args.SourcePort, "source-port", "s", 50000, "Base source port")
 

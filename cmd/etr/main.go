@@ -30,6 +30,15 @@ func run() error {
 		return err
 	}
 
+	if args.PrintBPFFilter {
+		filter, err := probe.BuildBPFFilter(args)
+		if err != nil {
+			return err
+		}
+		fmt.Println(filter)
+		return nil
+	}
+
 	logFile, err := config.SetupLogging(args)
 	if err != nil {
 		return fmt.Errorf("failed to setup logging: %w", err)
