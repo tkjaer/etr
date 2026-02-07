@@ -28,7 +28,7 @@ RUN go mod download
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY pkg/ ./pkg/
-RUN go build -o etr ./cmd/etr
+RUN go build -buildvcs=false -o etr ./cmd/etr
 
 FROM debian:bullseye-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
