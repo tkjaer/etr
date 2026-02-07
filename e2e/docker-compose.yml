@@ -36,17 +36,16 @@ services:
       - ./data:/data
     command: |
       sh -c '
-      apt-get update && apt-get install -y --no-install-recommends iproute2 iputils-ping tcpdump curl jq &&
-      rm -rf /var/lib/apt/lists/* &&
+      apk add --no-cache iproute2 iputils-ping tcpdump curl jq &&
       tc qdisc add dev eth1 root netem delay 5ms 3ms &&
-      ip route add 10.2.0.0/16 via 10.1.1.102 dev eth1 &&
-      ip route add 10.3.0.0/16 via 10.1.1.102 dev eth1 &&
-      ip route add 10.4.0.0/16 via 10.1.1.102 dev eth1 &&
-      ip -6 route add fd16:24b7:6fcd:21::/64 via fd16:24b7:6fcd:11::102 dev eth1 &&
-      ip -6 route add fd16:24b7:6fcd:22::/64 via fd16:24b7:6fcd:11::102 dev eth1 &&
-      ip -6 route add fd16:24b7:6fcd:31::/64 via fd16:24b7:6fcd:11::102 dev eth1 &&
-      ip -6 route add fd16:24b7:6fcd:32::/64 via fd16:24b7:6fcd:11::102 dev eth1 &&
-      ip -6 route add fd16:24b7:6fcd:41::/64 via fd16:24b7:6fcd:11::102 dev eth1 &&
+      ip route add 10.2.0.0/16 nexthop via 10.1.1.102 &&
+      ip route add 10.3.0.0/16 nexthop via 10.1.1.102 &&
+      ip route add 10.4.0.0/16 nexthop via 10.1.1.102 &&
+      ip -6 route add fd16:24b7:6fcd:21::/64 via fd16:24b7:6fcd:11::102 &&
+      ip -6 route add fd16:24b7:6fcd:22::/64 via fd16:24b7:6fcd:11::102 &&
+      ip -6 route add fd16:24b7:6fcd:31::/64 via fd16:24b7:6fcd:11::102 &&
+      ip -6 route add fd16:24b7:6fcd:32::/64 via fd16:24b7:6fcd:11::102 &&
+      ip -6 route add fd16:24b7:6fcd:41::/64 via fd16:24b7:6fcd:11::102 &&
       echo "Probe ready" &&
       tail -f /dev/null
       '

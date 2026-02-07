@@ -1,10 +1,8 @@
-FROM debian:bullseye-slim AS builder
+FROM alpine:3.23 AS builder
 
 ARG TARGETARCH
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-		ca-certificates curl git build-essential pkg-config libpcap-dev \
-	&& rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates curl git build-base pkgconfig libpcap-dev
 
 WORKDIR /build
 COPY go.mod go.sum ./
@@ -30,10 +28,8 @@ COPY internal/ ./internal/
 COPY pkg/ ./pkg/
 RUN go build -buildvcs=false -o etr ./cmd/etr
 
-FROM debian:bullseye-slim
-RUN apt-get update && apt-get install -y --no-install-recommends \
-		ca-certificates libpcap0.8 iproute2 tcpdump \
-	&& rm -rf /var/lib/apt/lists/*
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates libpcap iproute2 tcpdump
 
 COPY --from=builder /build/etr /usr/local/bin/etr
 
