@@ -58,6 +58,7 @@ etr -p 80 -c 1000 -d 5s target.example.com
 - `-s <port>`: Base source port (default: 50000)
 - `-j <file>`: JSON output to file (keeps TUI)
 - `-J`: JSON output to stdout (disables TUI)
+- `-B`: Print a tcpdump-compatible BPF filter for the current options
 - `--help`: Full option list
 
 **TUI controls**: `↑/↓` scroll, `←/→` or `Tab` switch views, `q` quit
@@ -110,6 +111,20 @@ Each probe iteration outputs one line of JSON (newline-delimited):
 - `probe_num`: Iteration number (0, 1, 2, ...)
 - `reached_dest`: Whether the final destination was reached
 - `rtt`: Round-trip time in microseconds
+
+## Using `-B` with tcpdump
+
+ETR can print the exact BPF filter it uses for capturing probe responses. This is useful if you want to:
+
+- **Watch traffic live** alongside ETR:
+
+  `tcpdump -i eth0 "$(etr -B example.com)"`
+
+- **Capture a trace** for troubleshooting or sharing with others:
+
+  `tcpdump -i eth0 -w etr-trace.pcap "$(etr -B example.com)"`
+
+This keeps capture focused on the probe traffic ETR cares about and makes it easier to share evidence during debugging.
 
 ## License
 
