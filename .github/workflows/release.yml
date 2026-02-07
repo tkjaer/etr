@@ -79,7 +79,7 @@ jobs:
             bash -lc '
               apt-get update && apt-get install -y --no-install-recommends \
                 ca-certificates curl git build-essential pkg-config libpcap-dev &&
-              GO_VERSION=$(awk "^go {print \$2}" go.mod) &&
+              GO_VERSION=$(awk "/^go /{print \$2}" go.mod) &&
               ARCH=$(uname -m) &&
               case "$ARCH" in
                 x86_64) GOARCH=amd64 ;;
