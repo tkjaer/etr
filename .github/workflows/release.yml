@@ -24,12 +24,12 @@ jobs:
             goarch: amd64
             name: etr-linux-amd64-glibc-2.31
             container: debian:bullseye-slim
-          - os: ubuntu-latest-arm
+          - os: ubuntu-24.04-arm64
             goos: linux
             goarch: arm64
             name: etr-linux-arm64
             container: ""
-          - os: ubuntu-latest-arm
+          - os: ubuntu-24.04-arm64
             goos: linux
             goarch: arm64
             name: etr-linux-arm64-glibc-2.31
