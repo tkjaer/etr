@@ -1,9 +1,25 @@
-FROM golang:1.25-alpine AS builder
+FROM debian:bullseye-slim AS builder
 
-RUN apk add --no-cache libpcap-dev gcc musl-dev
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+		ca-certificates curl git build-essential pkg-config libpcap-dev \
+	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 COPY go.mod go.sum ./
+RUN GO_VERSION=$(awk '/^go /{print $2}' go.mod) && \
+		ARCH=${TARGETARCH:-amd64} && \
+		case "$ARCH" in \
+			amd64|arm64) GOARCH=$ARCH ;; \
+			*) echo "Unsupported arch: $ARCH"; exit 1 ;; \
+		esac && \
+		curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" -o /tmp/go.tgz && \
+		tar -C /usr/local -xzf /tmp/go.tgz && \
+		rm /tmp/go.tgz
+
+ENV PATH=/usr/local/go/bin:$PATH
+
 RUN go mod download
 
 COPY cmd/ ./cmd/
@@ -11,8 +27,10 @@ COPY internal/ ./internal/
 COPY pkg/ ./pkg/
 RUN go build -o etr ./cmd/etr
 
-FROM alpine:latest
-RUN apk add --no-cache libpcap iproute2 tcpdump
+FROM debian:bullseye-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+		ca-certificates libpcap0.8 iproute2 tcpdump \
+	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/etr /usr/local/bin/etr
 

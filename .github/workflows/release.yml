@@ -23,7 +23,7 @@ jobs:
             goos: linux
             goarch: amd64
             name: etr-linux-amd64-glibc-2.31
-            container: golang:1.25-bullseye
+            container: debian:bullseye-slim
           - os: ubuntu-latest-arm
             goos: linux
             goarch: arm64
@@ -33,7 +33,7 @@ jobs:
             goos: linux
             goarch: arm64
             name: etr-linux-arm64-glibc-2.31
-            container: golang:1.25-bullseye
+            container: debian:bullseye-slim
           - os: macos-15-intel  # Intel - macOS 15 will be the last Intel runner
             goos: darwin
             goarch: amd64
@@ -77,7 +77,18 @@ jobs:
             -e DATE="$DATE" \
             ${{ matrix.container }} \
             bash -lc '
-              apt-get update && apt-get install -y libpcap-dev ca-certificates &&
+              apt-get update && apt-get install -y --no-install-recommends \
+                ca-certificates curl git build-essential pkg-config libpcap-dev &&
+              GO_VERSION=$(awk "^go {print \$2}" go.mod) &&
+              ARCH=$(uname -m) &&
+              case "$ARCH" in
+                x86_64) GOARCH=amd64 ;;
+                aarch64|arm64) GOARCH=arm64 ;;
+                *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+              esac &&
+              curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" -o /tmp/go.tgz &&
+              tar -C /usr/local -xzf /tmp/go.tgz &&
+              export PATH=/usr/local/go/bin:$PATH &&
               LDFLAGS="-X github.com/tkjaer/etr/internal/version.Version=${VERSION} \
                        -X github.com/tkjaer/etr/internal/version.GitCommit=${COMMIT} \
                        -X github.com/tkjaer/etr/internal/version.BuildDate=${DATE}" &&
