@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 COPY go.mod go.sum ./
-RUN GO_VERSION=$(awk '/^go /{print $2}' go.mod) && \
+RUN GO_MINOR=$(awk '/^go /{print $2}' go.mod) && \
+		GO_VERSION=$(curl -fsSL "https://go.dev/dl/?mode=json" | \
+			grep -o "\"version\": \"go${GO_MINOR}\\.[0-9][0-9]*\"" | \
+			head -n 1 | sed -E 's/.*"go([0-9.]+)"/\1/') && \
 		ARCH=${TARGETARCH:-amd64} && \
 		case "$ARCH" in \
 			amd64|arm64) GOARCH=$ARCH ;; \
