@@ -1,18 +1,35 @@
-FROM golang:1.25-alpine AS builder
+FROM alpine:3.23 AS builder
 
-RUN apk add --no-cache libpcap-dev gcc musl-dev
+ARG TARGETARCH
+
+RUN apk add --no-cache ca-certificates curl git build-base pkgconfig libpcap-dev
 
 WORKDIR /build
 COPY go.mod go.sum ./
+RUN GO_MINOR=$(awk '/^go /{print $2}' go.mod) && \
+		GO_VERSION=$(curl -fsSL "https://go.dev/dl/?mode=json" | \
+			grep -o "\"version\": \"go${GO_MINOR}\\.[0-9][0-9]*\"" | \
+			head -n 1 | sed -E 's/.*"go([0-9.]+)"/\1/') && \
+		ARCH=${TARGETARCH:-amd64} && \
+		case "$ARCH" in \
+			amd64|arm64) GOARCH=$ARCH ;; \
+			*) echo "Unsupported arch: $ARCH"; exit 1 ;; \
+		esac && \
+		curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" -o /tmp/go.tgz && \
+		tar -C /usr/local -xzf /tmp/go.tgz && \
+		rm /tmp/go.tgz
+
+ENV PATH=/usr/local/go/bin:$PATH
+
 RUN go mod download
 
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY pkg/ ./pkg/
-RUN go build -o etr ./cmd/etr
+RUN go build -buildvcs=false -o etr ./cmd/etr
 
-FROM alpine:latest
-RUN apk add --no-cache libpcap iproute2 tcpdump
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates libpcap iproute2 tcpdump
 
 COPY --from=builder /build/etr /usr/local/bin/etr
 

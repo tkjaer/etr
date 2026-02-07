@@ -93,6 +93,7 @@ type ProbeManager struct {
 	parallelProbes uint16
 	probeConfig    ProbeConfig
 	probeTracker   ProbeTracker
+	args           config.Args
 
 	stats        ProbeManagerStats
 	outputConfig outputConfig
@@ -144,6 +145,7 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 			tuiRefresh:    a.TUIRefresh,
 			noStyle:       a.NoStyle,
 		},
+		args: a,
 	}
 
 	err := pm.init(a)
@@ -260,6 +262,15 @@ func (pm *ProbeManager) init(a config.Args) error {
 	}()
 
 	return nil
+}
+
+// Create and set probe BPF filter string to capture returning probes.
+func (pm *ProbeManager) setBPFFilter() error {
+	filter, err := BuildBPFFilter(pm.args)
+	if err != nil {
+		return err
+	}
+	return pm.handle.SetBPFFilter(filter)
 }
 
 // AddProbe initializes and adds a probe to the manager
