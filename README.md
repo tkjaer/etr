@@ -23,6 +23,11 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
 
 ## Installation
 
+- **Homebrew** (macOS/Linux):
+  ```bash
+  brew tap tkjaer/tap
+  brew install etr
+  ```
 - **Releases**: Download the latest macOS/Linux binary from the [releases page](https://github.com/tkjaer/etr/releases).
 - **Source**: `go install github.com/tkjaer/etr/cmd/etr@latest` (requires libpcap headers).
 - **BSD**: Supported via source builds (OpenBSD/NetBSD limited to Ethernet source interfaces).

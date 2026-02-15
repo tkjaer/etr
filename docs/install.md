@@ -70,9 +70,12 @@ cd etr
 go build -o etr ./cmd/etr
 ```
 
-## Homebrew
+## Homebrew (macOS/Linux)
 
-A Homebrew formula will be published once the [self-submitted criteria](https://docs.brew.sh/Acceptable-Formulae#niche-or-self-submitted-stuff) are met.
+```bash
+brew tap tkjaer/tap
+brew install etr
+```
 
 ## BSD Systems
 
