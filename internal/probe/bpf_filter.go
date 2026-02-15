@@ -82,12 +82,12 @@ func BuildBPFFilter(a config.Args) (string, error) {
 			if i > 0 {
 				portRange += " or "
 			}
-			portRange += fmt.Sprintf("dst port %d", probeConfig.srcPort+i)
+			portRange += fmt.Sprintf("port %d", probeConfig.srcPort+i)
 		}
 		portRange += ")"
 	} else {
 		portRange = fmt.Sprintf(
-			"dst portrange %d-%d",
+			"portrange %d-%d",
 			probeConfig.srcPort,
 			probeConfig.srcPort+pp-1)
 	}
@@ -102,16 +102,30 @@ func BuildBPFFilter(a config.Args) (string, error) {
 	// Note: We match on src/dst IP and ports reversed, since we are capturing
 	// the returning packets.
 	destinationAnswers := fmt.Sprintf(
-		"%v and src host %v and dst host %v and src port %v and %v",
+		"%v and src host %v and dst host %v and src port %v and dst %v",
 		proto,
 		probeConfig.route.Destination,
 		probeConfig.route.Source,
 		probeConfig.dstPort,
 		portRange)
 
+	// Match packets that are the probes we are sending out
+	etrPackets := fmt.Sprintf(
+		"%v and src host %v and dst host %v and src %v and dst port %v",
+		proto,
+		probeConfig.route.Source,
+		probeConfig.route.Destination,
+		portRange,
+		probeConfig.dstPort)
+
 	// Match packets that are TTL exceeded messages from intermediate routers
 	ttlExceededAnswers := fmt.Sprintf("dst host %v and %v", probeConfig.route.Source, ttlExceeded)
 	destUnreachableAnswers := fmt.Sprintf("dst host %v and %v", probeConfig.route.Source, destUnreachable)
 
+	// If --print-bpf is set, include the outgoing probe packets in the filter,
+	// allow capturing them with tcpdump for testing/debugging.
+	if a.PrintBPFFilter {
+		return fmt.Sprintf("(%v or %v or %v) or (%v)", destinationAnswers, ttlExceededAnswers, destUnreachableAnswers, etrPackets), nil
+	}
 	return fmt.Sprintf("(%v) or (%v) or (%v)", destinationAnswers, ttlExceededAnswers, destUnreachableAnswers), nil
 }
