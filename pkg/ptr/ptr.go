@@ -35,19 +35,17 @@ func normalizePTR(ptr string) string {
 	return strings.TrimSuffix(ptr, ".")
 }
 
-// isCached checks if a PTR record is already cached
-func (pm *PtrManager) isCached(ip string) bool {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
-	_, exists := pm.cache[ip]
-	return exists
-}
-
-// markInProgress marks a lookup as in progress
-func (pm *PtrManager) markInProgress(ip string) {
+// markInProgressIfNeeded performs atomic check-and-mark for in-progress lookups
+func (pm *PtrManager) markInProgressIfNeeded(ip string) bool {
 	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if _, exists := pm.cache[ip]; exists {
+		return false
+	}
+
 	pm.cache[ip] = ""
-	pm.mu.Unlock()
+	return true
 }
 
 // setCached stores a PTR record in the cache
@@ -73,11 +71,9 @@ func (pm *PtrManager) performLookup(ip string) (string, bool) {
 
 // RequestPTR initiates a PTR lookup for the given IP address if not cached
 func (pm *PtrManager) RequestPTR(ip string) {
-	if pm.isCached(ip) {
+	if !pm.markInProgressIfNeeded(ip) {
 		return
 	}
-
-	pm.markInProgress(ip)
 
 	if ptr, ok := pm.performLookup(ip); ok {
 		pm.setCached(ip, ptr)
