@@ -322,8 +322,7 @@ func (b *BubbleTUIOutput) Start() {
 	b.doneCh = doneCh
 	b.program = tea.NewProgram(
 		b.model,
-		tea.WithAltScreen(),       // Use alternate screen buffer
-		tea.WithMouseCellMotion(), // Proper mouse handling cleanup
+		tea.WithAltScreen(), // Use alternate screen buffer
 	)
 
 	go func() {
