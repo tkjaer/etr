@@ -10,6 +10,8 @@ import (
 	"github.com/tkjaer/etr/internal/version"
 )
 
+var ErrMissingDestination = errors.New("destination is required")
+
 type Args struct {
 	Destination    string
 	ParallelProbes uint
@@ -116,7 +118,7 @@ func ParseArgs() (Args, error) {
 
 	args.Destination = flag.Arg(0)
 	if args.Destination == "" {
-		return args, errors.New("destination is required")
+		return args, ErrMissingDestination
 	}
 
 	switch {
@@ -150,6 +152,11 @@ func ParseArgs() (Args, error) {
 	}
 
 	return args, nil
+}
+
+func PrintShortUsage() {
+	println("Usage: etr [OPTIONS] DESTINATION")
+	println("Try 'etr --help' for more information.")
 }
 
 // ProtocolName returns the protocol name based on args
