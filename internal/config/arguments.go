@@ -86,7 +86,7 @@ func ParseArgs() (Args, error) {
 	flag.BoolVarP(&args.ForceIPv4, "ipv4", "4", false, "Force IPv4")
 	flag.BoolVarP(&args.ForceIPv6, "ipv6", "6", false, "Force IPv6")
 	flag.BoolVarP(&args.NoResolve, "no-resolve", "n", false, "Do not resolve IP addresses to hostnames")
-	flag.BoolVarP(&args.LookupASN, "asn", "a", false, "Lookup ASN for hop and destination IPs using WHOIS")
+	flag.BoolVarP(&args.LookupASN, "asn", "a", false, "Lookup ASN for hop and destination IPs via DNS (Team Cymru, cached) with WHOIS fallback")
 	flag.BoolVarP(&args.PrintBPFFilter, "print-bpf", "B", false, "Print tcpdump-compatible BPF filter and exit")
 	flag.UintVarP(&args.DestinationPort, "dest-port", "p", 0, "Destination port (default: 443 for TCP, 33434 for UDP)")
 	flag.UintVarP(&args.SourcePort, "source-port", "s", 50000, "Base source port")
@@ -157,8 +157,8 @@ func ParseArgs() (Args, error) {
 }
 
 func PrintShortUsage() {
-	println("Usage: etr [OPTIONS] DESTINATION")
-	println("Try 'etr --help' for more information.")
+	fmt.Fprintln(os.Stderr, "Usage: etr [OPTIONS] DESTINATION")
+	fmt.Fprintln(os.Stderr, "Try 'etr --help' for more information.")
 }
 
 // ProtocolName returns the protocol name based on args
