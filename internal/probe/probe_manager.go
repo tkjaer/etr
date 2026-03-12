@@ -11,6 +11,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/tkjaer/etr/pkg/arp"
+	"github.com/tkjaer/etr/pkg/asn"
 	"github.com/tkjaer/etr/pkg/ndp"
 	"github.com/tkjaer/etr/pkg/ptr"
 	"github.com/tkjaer/etr/pkg/route"
@@ -88,6 +89,7 @@ type ProbeManager struct {
 	outputChan   chan outputMsg
 	transmitChan chan TransmitEvent
 	ptrManager   *ptr.PtrManager
+	asnManager   *asn.ASNManager
 
 	// Probe Configuration
 	parallelProbes uint16
@@ -116,6 +118,7 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 		outputChan:   make(chan outputMsg, 100),
 		transmitChan: make(chan TransmitEvent, 100),
 		ptrManager:   ptr.NewPtrManager(),
+		asnManager:   asn.NewASNManager(),
 
 		probeTracker: ProbeTracker{
 			probes: make(map[uint16]*Probe),
@@ -136,6 +139,7 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 			interTTLDelay:   a.InterTTLDelay,
 			timeout:         a.Timeout,
 			NoResolve:       a.NoResolve,
+			LookupASN:       a.LookupASN,
 		},
 
 		outputConfig: outputConfig{

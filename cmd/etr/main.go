@@ -16,6 +16,11 @@ var errForcedExit = errors.New("second interrupt received")
 
 func main() {
 	if err := run(); err != nil {
+		if errors.Is(err, config.ErrMissingDestination) {
+			fmt.Fprintf(os.Stderr, "Error: destination is required\n\n")
+			config.PrintShortUsage()
+			os.Exit(2)
+		}
 		if errors.Is(err, errForcedExit) {
 			os.Exit(1)
 		}
