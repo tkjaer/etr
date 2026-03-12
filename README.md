@@ -29,10 +29,18 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
   brew install etr
   ```
 - **Releases**: Download the latest macOS/Linux binary from the [releases page](https://github.com/tkjaer/etr/releases).
+- **APT repository** (Debian/Ubuntu):
+  ```bash
+  sudo mkdir -p /etc/apt/keyrings
+  curl -fsSL https://tkjaer.github.io/etr/etr.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/etr.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/etr.gpg] https://tkjaer.github.io/etr stable main" | sudo tee /etc/apt/sources.list.d/etr.list
+  sudo apt update
+  sudo apt install etr
+  ```
 - **Source**: `go install github.com/tkjaer/etr/cmd/etr@latest` (requires libpcap headers).
 - **BSD**: Supported via source builds (OpenBSD/NetBSD limited to Ethernet source interfaces).
 
-Detailed platform notes (Gatekeeper prompts, package installs, raw-socket permissions) live in [docs/install.md](docs/install.md).
+Detailed platform notes (Gatekeeper prompts, package installs, raw-socket permissions) live in [docs/install.md](docs/install.md). The APT repository is signed and requires the published repository key.
 
 ## Usage
 
@@ -140,3 +148,4 @@ MIT License - see LICENSE file for details.
 - [Installation details](docs/install.md)
 - [Contributing](CONTRIBUTING.md)
 - [Probe encoding design](docs/probe-encoding-design.md)
+- [Reusable APT Pages workflow](docs/apt-repo-workflow.md)

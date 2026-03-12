@@ -1,0 +1,34 @@
+name: Common CI Filter
+description: Determines whether CI jobs should run based on shared path rules.
+
+outputs:
+  ci:
+    description: True when shared CI-relevant files changed.
+    value: ${{ steps.filter.outputs.ci }}
+  e2e:
+    description: True when E2E-relevant files changed.
+    value: ${{ steps.filter.outputs.e2e }}
+
+runs:
+  using: composite
+  steps:
+    - id: filter
+      uses: dorny/paths-filter@v3
+      with:
+        filters: |
+          ci:
+            - "**"
+            - "!docs/**"
+            - "!**/*.md"
+            - "!LICENSE"
+            - "!*.tape"
+            - ".github/**"
+          e2e:
+            - "e2e/**"
+            - "cmd/**"
+            - "internal/**"
+            - "pkg/**"
+            - "go.mod"
+            - "go.sum"
+            - "nfpm.yaml"
+            - ".github/workflows/e2e.yml"

@@ -1,6 +1,10 @@
 # E2E tests using Docker Compose topology
 name: E2E Tests
 
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
@@ -12,7 +16,21 @@ on:
     branches: [ "main" ]
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run_e2e: ${{ steps.filter.outputs.e2e }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - id: filter
+      uses: ./.github/actions/common-ci-filter
+
   e2e:
+    needs: changes
+    if: needs.changes.outputs.run_e2e == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
