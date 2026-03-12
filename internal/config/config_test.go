@@ -221,8 +221,43 @@ func TestParseArgs_Defaults(t *testing.T) {
 	if args.LogLevel != "error" {
 		t.Errorf("Default log level = %v, want error", args.LogLevel)
 	}
+	if args.LookupASN {
+		t.Error("ASN lookup should be false by default")
+	}
 	if args.Destination != "example.com" {
 		t.Errorf("Destination = %v, want example.com", args.Destination)
+	}
+}
+
+func TestParseArgs_ASNFlag(t *testing.T) {
+	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+
+	oldArgs := os.Args
+	os.Args = []string{"cmd", "--asn", "example.com"}
+	defer func() { os.Args = oldArgs }()
+
+	args, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs() unexpected error: %v", err)
+	}
+	if !args.LookupASN {
+		t.Fatal("LookupASN should be true when --asn is specified")
+	}
+}
+
+func TestParseArgs_ASNShortFlag(t *testing.T) {
+	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+
+	oldArgs := os.Args
+	os.Args = []string{"cmd", "-a", "example.com"}
+	defer func() { os.Args = oldArgs }()
+
+	args, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs() unexpected error: %v", err)
+	}
+	if !args.LookupASN {
+		t.Fatal("LookupASN should be true when -a is specified")
 	}
 }
 

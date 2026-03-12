@@ -66,6 +66,9 @@ func (pm *ProbeManager) statsProcessor() {
 	if !pm.probeConfig.NoResolve {
 		go pm.ptrManager.RequestPTR(pm.probeConfig.route.Destination.String())
 	}
+	if pm.probeConfig.LookupASN {
+		go pm.asnManager.RequestASN(pm.probeConfig.route.Destination.String())
+	}
 	defer pm.stats.TTLCache.Stop()
 
 	for {
@@ -264,12 +267,21 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 		if !pm.probeConfig.NoResolve {
 			go pm.ptrManager.RequestPTR(data.IP)
 		}
+		if pm.probeConfig.LookupASN {
+			go pm.asnManager.RequestASN(data.IP)
+		}
 	}
 
 	// Update PTR if missing in probe, and available in manager
 	if ipStats.PTR == "" && !pm.probeConfig.NoResolve {
 		if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
 			ipStats.PTR = ptr
+		}
+	}
+
+	if ipStats.ASN == "" && pm.probeConfig.LookupASN {
+		if asn, found := pm.asnManager.GetASN(data.IP); found && asn != "" {
+			ipStats.ASN = asn
 		}
 	}
 
@@ -290,12 +302,20 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 
 	// Get the latest PTR from the manager
 	ptrValue := ipStats.PTR
+	asnValue := ipStats.ASN
 
 	if !pm.probeConfig.NoResolve {
 		if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
 			ptrValue = ptr
 			// Update ipStats.PTR as well for consistency
 			ipStats.PTR = ptr
+		}
+	}
+
+	if pm.probeConfig.LookupASN {
+		if asn, found := pm.asnManager.GetASN(data.IP); found && asn != "" {
+			asnValue = asn
+			ipStats.ASN = asn
 		}
 	}
 
@@ -307,6 +327,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 			RTT:      rtt,
 			Timeout:  false,
 			PTR:      ptrValue,
+			ASN:      asnValue,
 			RecvTime: data.Timestamp,
 		}
 	}
@@ -360,6 +381,11 @@ func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataT
 		if ipStats.PTR == "" {
 			if ptr, found := pm.ptrManager.GetPTR(hopStats.CurrentIP); found && ptr != "" {
 				ipStats.PTR = ptr
+			}
+		}
+		if ipStats.ASN == "" && pm.probeConfig.LookupASN {
+			if asn, found := pm.asnManager.GetASN(hopStats.CurrentIP); found && asn != "" {
+				ipStats.ASN = asn
 			}
 		}
 	}
@@ -452,9 +478,15 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 			if ok {
 				// Get the latest PTR from the manager
 				ptrValue := ipStats.PTR
+				asnValue := ipStats.ASN
 				if !pm.probeConfig.NoResolve {
 					if ptr, found := pm.ptrManager.GetPTR(hopStats.CurrentIP); found && ptr != "" {
 						ptrValue = ptr
+					}
+				}
+				if pm.probeConfig.LookupASN {
+					if asn, found := pm.asnManager.GetASN(hopStats.CurrentIP); found && asn != "" {
+						asnValue = asn
 					}
 				}
 				hopsMap[ttl] = &shared.HopRun{
@@ -463,6 +495,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 					RTT:      ipStats.Last,
 					Timeout:  false,
 					PTR:      ptrValue,
+					ASN:      asnValue,
 					RecvTime: data.Timestamp, // Approximate
 				}
 			}
@@ -511,6 +544,12 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 	if ptr, found := pm.ptrManager.GetPTR(destIP); found && ptr != "" {
 		destPTR = ptr
 	}
+	destASN := ""
+	if pm.probeConfig.LookupASN {
+		if asn, found := pm.asnManager.GetASN(destIP); found && asn != "" {
+			destASN = asn
+		}
+	}
 
 	// Build ProbeRun with all metadata
 	run := &shared.ProbeRun{
@@ -522,6 +561,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 		DestinationIP:   destIP,
 		DestinationPort: pm.probeConfig.dstPort,
 		DestinationPTR:  destPTR,
+		DestinationASN:  destASN,
 		Protocol:        protocol,
 		ReachedDest:     reachedDest,
 		Hops:            hopsSlice,
