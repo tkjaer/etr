@@ -193,10 +193,27 @@ func truncateToWidth(value string, width int) string {
 	if width <= 0 {
 		return ""
 	}
+	value = strings.ReplaceAll(value, "\n", " ")
 	if lipgloss.Width(value) <= width {
 		return value
 	}
-	return lipgloss.NewStyle().Width(width).Render(value)
+	if width <= 3 {
+		return strings.Repeat(".", width)
+	}
+
+	targetWidth := width - 3
+	var b strings.Builder
+	currentWidth := 0
+	for _, r := range value {
+		runeWidth := lipgloss.Width(string(r))
+		if currentWidth+runeWidth > targetWidth {
+			break
+		}
+		b.WriteRune(r)
+		currentWidth += runeWidth
+	}
+
+	return b.String() + "..."
 }
 
 func padToWidth(value string, width int) string {
@@ -211,6 +228,23 @@ func padToWidth(value string, width int) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func formatHopDisplay(ip, ptr, asn string) string {
+	if ip == "" || ip == "???" {
+		return "???"
+	}
+
+	switch {
+	case ptr != "" && asn != "":
+		return fmt.Sprintf("%s (%s) [%s]", ptr, ip, asn)
+	case ptr != "":
+		return fmt.Sprintf("%s (%s)", ptr, ip)
+	case asn != "":
+		return fmt.Sprintf("%s [%s]", ip, asn)
+	default:
+		return ip
+	}
 }
 
 func (m *tuiModel) render(style lipgloss.Style, value string) string {
@@ -322,8 +356,7 @@ func (b *BubbleTUIOutput) Start() {
 	b.doneCh = doneCh
 	b.program = tea.NewProgram(
 		b.model,
-		tea.WithAltScreen(),       // Use alternate screen buffer
-		tea.WithMouseCellMotion(), // Proper mouse handling cleanup
+		tea.WithAltScreen(), // Use alternate screen buffer
 	)
 
 	go func() {
@@ -786,16 +819,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 			lossStyle = statsBadStyle
 		}
 
-		ipDisplay := ip
-		if ip == "" || ip == "???" {
-			ipDisplay = "???"
-		} else if ipStats.PTR != "" {
-			ipDisplay = fmt.Sprintf("%s (%s)", ipStats.PTR, ip)
-		}
-
-		if len(ipDisplay) > hostWidth {
-			ipDisplay = ipDisplay[:hostWidth-3] + "..."
-		}
+		ipDisplay := truncateToWidth(formatHopDisplay(ip, ipStats.PTR, ipStats.ASN), hostWidth)
 
 		cells := []string{
 			formatCell(fmt.Sprintf("%d", ttl), ttlWidth, alignLeft),
@@ -830,15 +854,7 @@ func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
 					continue
 				}
 
-				altIPDisplay := altIP
-				if altStats.PTR != "" {
-					altIPDisplay = fmt.Sprintf("%s (%s)", altStats.PTR, altIP)
-				}
-
-				altValue := "↳ " + altIPDisplay
-				if len(altValue) > hostWidth {
-					altValue = altValue[:hostWidth-3] + "..."
-				}
+				altValue := truncateToWidth("↳ "+formatHopDisplay(altIP, altStats.PTR, altStats.ASN), hostWidth)
 
 				altLossStyle := statsGoodStyle
 				if altStats.LossPct > 10 {

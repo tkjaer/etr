@@ -117,6 +117,55 @@ func TestTruncateToWidth(t *testing.T) {
 	}
 }
 
+func TestTruncateToWidthSingleLineBehavior(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		width int
+		want  string
+	}{
+		{
+			name:  "shorter than width",
+			value: "short",
+			width: 10,
+			want:  "short",
+		},
+		{
+			name:  "truncates with ellipsis",
+			value: "very-long-hostname.example.net",
+			width: 12,
+			want:  "very-long...",
+		},
+		{
+			name:  "tiny width becomes dots",
+			value: "abcdef",
+			width: 3,
+			want:  "...",
+		},
+		{
+			name:  "newlines are flattened",
+			value: "abc\ndef",
+			width: 7,
+			want:  "abc def",
+		},
+		{
+			name:  "combined host ip asn truncates from right",
+			value: "one.one.one.one.cloudflare-dns.com (1.1.1.1) [AS13335]",
+			width: 30,
+			want:  "one.one.one.one.cloudflare-...",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateToWidth(tt.value, tt.width)
+			if got != tt.want {
+				t.Errorf("truncateToWidth(%q, %d) = %q, want %q", tt.value, tt.width, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCalculateProbeAggregateStats(t *testing.T) {
 	tests := []struct {
 		name      string

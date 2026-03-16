@@ -62,9 +62,17 @@ func FullVersion() string {
 		commit = runtimeCommit
 	}
 	commit = normalizeCommit(commit)
+	showCommit := commit != "" && commit != "unknown"
 
 	if Version == "dev" {
-		return "etr development build " + "(commit: " + commit + ")"
+		if showCommit {
+			return "etr development build (commit: " + commit + ")"
+		}
+		return "etr development build"
 	}
-	return "etr " + Version + " (commit: " + commit + ")"
+
+	if showCommit {
+		return "etr " + Version + " (commit: " + commit + ")"
+	}
+	return "etr " + Version
 }

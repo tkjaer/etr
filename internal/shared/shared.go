@@ -23,6 +23,7 @@ type HopIPStats struct {
 	Sum        int64   `json:"sum"`         // Sum of RTTs for calculating average
 	SumSquares int64   `json:"sum_squares"` // Sum of squares for stddev calculation
 	PTR        string  `json:"ptr"`         // PTR record for this IP
+	ASN        string  `json:"asn"`         // AS number for this IP
 }
 
 // Holds stats for a single hop (TTL)
@@ -63,6 +64,7 @@ type ProbeRun struct {
 	DestinationIP   string    `json:"destination_ip"`   // Destination IP address
 	DestinationPort uint16    `json:"destination_port"` // Destination port
 	DestinationPTR  string    `json:"destination_ptr"`  // PTR record for destination
+	DestinationASN  string    `json:"destination_asn"`  // ASN for destination
 	Protocol        string    `json:"protocol"`         // Protocol (TCP/UDP)
 	ReachedDest     bool      `json:"reached_dest"`     // Whether destination was reached
 	Hops            []*HopRun `json:"hops"`             // Hops sorted by TTL
@@ -76,6 +78,7 @@ type HopRun struct {
 	RTT      int64     `json:"rtt"`       // RTT in microseconds (0 if timeout)
 	Timeout  bool      `json:"timeout"`   // Whether this hop timed out
 	PTR      string    `json:"ptr"`       // PTR record for this IP
+	ASN      string    `json:"asn"`       // ASN for this IP
 	RecvTime time.Time `json:"recv_time"` // When response was received
 }
 

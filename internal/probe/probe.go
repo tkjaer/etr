@@ -24,6 +24,7 @@ type ProbeConfig struct {
 	maxTTL          uint8
 	useEthernet     bool
 	NoResolve       bool
+	LookupASN       bool
 	interProbeDelay time.Duration
 	interTTLDelay   time.Duration
 	timeout         time.Duration

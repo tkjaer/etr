@@ -72,6 +72,7 @@ etr -p 80 -c 1000 -d 5s target.example.com
 - `-j <file>`: JSON output to file (keeps TUI)
 - `-J`: JSON output to stdout (disables TUI)
 - `-B`: Print a tcpdump-compatible BPF filter for the current options
+- `-a`, `--asn`: Enable ASN (Autonomous System Number) lookups for each hop
 - `--help`: Full option list
 
 **TUI controls**: `↑/↓` scroll, `←/→` or `Tab` switch views, `q` quit
