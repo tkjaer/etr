@@ -150,15 +150,15 @@ jobs:
             gzip -fk "dists/${{ inputs.suite }}/${{ inputs.component }}/binary-${arch}/Packages"
           done
 
-          cat > "dists/${{ inputs.suite }}/Release" << EOF
-          Origin: ${{ inputs.package_name }}
-          Label: ${{ inputs.package_name }}
-          Suite: ${{ inputs.suite }}
-          Codename: ${{ inputs.suite }}
-          Architectures: ${{ inputs.architectures }}
-          Components: ${{ inputs.component }}
-          Description: ${{ inputs.package_name }} APT Repository
-          EOF
+          {
+            echo "Origin: ${{ inputs.package_name }}"
+            echo "Label: ${{ inputs.package_name }}"
+            echo "Suite: ${{ inputs.suite }}"
+            echo "Codename: ${{ inputs.suite }}"
+            echo "Architectures: ${{ inputs.architectures }}"
+            echo "Components: ${{ inputs.component }}"
+            echo "Description: ${{ inputs.package_name }} APT Repository"
+          } > "dists/${{ inputs.suite }}/Release"
 
           apt-ftparchive release "dists/${{ inputs.suite }}" >> "dists/${{ inputs.suite }}/Release"
 
@@ -166,29 +166,21 @@ jobs:
           gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "$GPG_KEY_ID" --clearsign -o "dists/${{ inputs.suite }}/InRelease" "dists/${{ inputs.suite }}/Release"
           gpg --armor --export "$GPG_KEY_ID" > "${{ inputs.package_name }}.gpg.key"
 
-          cat > index.html << EOF
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          PKG="${{ inputs.package_name }}"
+          SUITE="${{ inputs.suite }}"
+          COMPONENT="${{ inputs.component }}"
+
+          cat > index.html <<HTMLEOF
           <!DOCTYPE html>
           <html>
           <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>${{ inputs.package_name }} APT Repository</title>
+          <title>${PKG} APT Repository</title>
           <style>
-            :root {
-              color-scheme: light dark;
-              --bg: #ffffff;
-              --fg: #1f2328;
-              --muted: #57606a;
-              --panel: #f6f8fa;
-            }
-            @media (prefers-color-scheme: dark) {
-              :root {
-                --bg: #0d1117;
-                --fg: #e6edf3;
-                --muted: #9da7b3;
-                --panel: #161b22;
-              }
-            }
+            :root { color-scheme: light dark; --bg: #ffffff; --fg: #1f2328; --muted: #57606a; --panel: #f6f8fa; }
+            @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9da7b3; --panel: #161b22; } }
             body { background: var(--bg); color: var(--fg); max-width: 860px; margin: 2rem auto; padding: 0 1rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
             h1 { margin-bottom: 0.25rem; }
             .muted { color: var(--muted); }
@@ -197,19 +189,20 @@ jobs:
           </style>
           </head>
           <body>
-          <h1>${{ inputs.package_name }} APT Repository</h1>
-          <p class="muted">Repository URL: <code>https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}</code></p>
+          <h1>${PKG} APT Repository</h1>
+          <p class="muted">Repository URL: <code>${PAGES_URL}</code></p>
           <p>Install on Debian/Ubuntu:</p>
           <pre>
           sudo mkdir -p /etc/apt/keyrings
-          curl -fsSL https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${{ inputs.package_name }}.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/${{ inputs.package_name }}.gpg
-          echo "deb [signed-by=/etc/apt/keyrings/${{ inputs.package_name }}.gpg] https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }} ${{ inputs.suite }} ${{ inputs.component }}" | sudo tee /etc/apt/sources.list.d/${{ inputs.package_name }}.list
+          curl -fsSL ${PAGES_URL}/${PKG}.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/${PKG}.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/${PKG}.gpg] ${PAGES_URL} ${SUITE} ${COMPONENT}" | sudo tee /etc/apt/sources.list.d/${PKG}.list
           sudo apt update
-          sudo apt install ${{ inputs.package_name }}
+          sudo apt install ${PKG}
           </pre>
           <p class="muted">Generated from the latest tagged release.</p>
           </body></html>
-          EOF
+          HTMLEOF
+          sed -i 's/^          //' index.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
