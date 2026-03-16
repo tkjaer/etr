@@ -2,9 +2,17 @@
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
 
 name: Go
+
+concurrency:
+  group: go-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
+
+env:
+  NFPM_VERSION: v2.45.0
 
 on:
   push:
@@ -14,7 +22,21 @@ on:
 
 jobs:
 
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run_ci: ${{ steps.filter.outputs.ci }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - id: filter
+      uses: ./.github/actions/common-ci-filter
+
   build:
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
@@ -55,3 +77,12 @@ jobs:
 
     - name: Build
       run: go build -v ./cmd/etr
+
+    - name: Validate packaging config (nfpm)
+      run: |
+        go install github.com/goreleaser/nfpm/v2/cmd/nfpm@${NFPM_VERSION}
+        mkdir -p dist
+        install -m 0755 ./etr ./dist/etr
+
+        ARCH=amd64 VERSION=0.0.0-ci nfpm package --packager deb --config ./nfpm.yaml --target ./dist/etr_0.0.0-ci_amd64.deb
+        ARCH=x86_64 VERSION=0.0.0-ci nfpm package --packager rpm --config ./nfpm.yaml --target ./dist/etr-0.0.0-ci-1.x86_64.rpm

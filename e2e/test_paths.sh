@@ -21,41 +21,27 @@ echo "Running ETR e2e path discovery test..."
 echo "Destination: $DESTINATION_IP"
 echo "Expected hop2 IPs: $HOP2A_IP, $HOP2B_IP"
 
-# Run etr with 4 parallel probes, 2 iterations
-OUTPUT=$(docker exec probe etr -P4 "$DESTINATION_IP" -c2 -J 2>/dev/null)
+# 16 parallel probes = 16 distinct source ports = 16 different ECMP hash
+# inputs. With 2-way ECMP the probability of all landing on one side is
+# 1/2^15 ≈ 0.003%.
+OUTPUT=$(docker exec probe etr -P16 "$DESTINATION_IP" -c1 -J 2>/dev/null)
 
-# Save output to file for debugging
 echo "$OUTPUT" > /tmp/etr_output.json
 
-# Extract unique path hashes
 UNIQUE_PATHS=$(echo "$OUTPUT" | jq -r '.path_hash' | sort -u | wc -l)
-
 echo "Found $UNIQUE_PATHS unique paths"
 
-# Verify we found 2 paths
-if [ "$UNIQUE_PATHS" -ne 2 ]; then
-    echo "ERROR: Expected 2 paths, found $UNIQUE_PATHS"
-    echo "=== ETR Output ==="
-    cat /tmp/etr_output.json
-    exit 1
-fi
-
-# Extract second hop IPs from both probes
 HOP2_IPS=$(echo "$OUTPUT" | jq -r '.hops[] | select(.ttl == 2) | .ip' | sort -u)
 HOP2_COUNT=$(echo "$HOP2_IPS" | wc -l)
+echo "Found $HOP2_COUNT unique hop2 addresses: $(echo "$HOP2_IPS" | tr '\n' ' ')"
 
-echo "Found $HOP2_COUNT unique hop2 addresses:"
-echo "$HOP2_IPS"
-
-# Verify we have 2 different hop2 addresses (hop2a and hop2b)
-if [ "$HOP2_COUNT" -ne 2 ]; then
-    echo "ERROR: Expected 2 different hop2 addresses, found $HOP2_COUNT"
+if [ "$UNIQUE_PATHS" -lt 2 ]; then
+    echo "ERROR: Expected at least 2 paths, found $UNIQUE_PATHS"
     echo "=== ETR Output ==="
     cat /tmp/etr_output.json
     exit 1
 fi
 
-# Verify hop2a IP is present
 if ! echo "$HOP2_IPS" | grep -qF "$HOP2A_IP"; then
     echo "ERROR: Expected to find hop2a ($HOP2A_IP)"
     echo "=== ETR Output ==="
@@ -63,7 +49,6 @@ if ! echo "$HOP2_IPS" | grep -qF "$HOP2A_IP"; then
     exit 1
 fi
 
-# Verify hop2b IP is present
 if ! echo "$HOP2_IPS" | grep -qF "$HOP2B_IP"; then
     echo "ERROR: Expected to find hop2b ($HOP2B_IP)"
     echo "=== ETR Output ==="

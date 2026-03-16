@@ -1,0 +1,216 @@
+name: Reusable APT Pages Publish
+
+on:
+  workflow_call:
+    inputs:
+      package_name:
+        description: Debian package name and key prefix
+        required: true
+        type: string
+      suite:
+        description: Debian suite/codename
+        required: false
+        default: stable
+        type: string
+      component:
+        description: Debian component
+        required: false
+        default: main
+        type: string
+      architectures:
+        description: "Space-separated Debian architectures (for example: amd64 arm64)"
+        required: false
+        default: amd64 arm64
+        type: string
+      key_expiry_warn_days:
+        description: Warn threshold for signing key expiry (days)
+        required: false
+        default: 90
+        type: number
+      key_expiry_fail_days:
+        description: Fail threshold for signing key expiry (days)
+        required: false
+        default: 14
+        type: number
+    secrets:
+      APT_GPG_PRIVATE_KEY:
+        required: true
+      APT_GPG_PASSPHRASE:
+        required: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install repository tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils gnupg
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Import required GPG signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "Missing required secret: APT_GPG_PRIVATE_KEY"
+            exit 1
+          fi
+          if [ -z "$GPG_PASSPHRASE" ]; then
+            echo "Missing required secret: APT_GPG_PASSPHRASE"
+            exit 1
+          fi
+
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
+
+          GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format long 2>/dev/null | awk '/^sec/{print $2}' | cut -d/ -f2 | head -1)
+          if [ -z "$GPG_KEY_ID" ]; then
+            echo "No secret key available after import"
+            exit 1
+          fi
+
+          echo "GPG_KEY_ID=$GPG_KEY_ID" >> "$GITHUB_ENV"
+          echo "APT repository signing enabled (key: $GPG_KEY_ID)"
+
+      - name: Check signing key expiry policy
+        env:
+          WARN_DAYS: ${{ inputs.key_expiry_warn_days }}
+          FAIL_DAYS: ${{ inputs.key_expiry_fail_days }}
+        run: |
+          set -eu
+
+          if [ "$FAIL_DAYS" -gt "$WARN_DAYS" ]; then
+            echo "Invalid expiry policy: FAIL_DAYS ($FAIL_DAYS) must be <= WARN_DAYS ($WARN_DAYS)"
+            exit 1
+          fi
+
+          NOW_EPOCH=$(date +%s)
+
+          KEY_EXPIRY_EPOCH=$(gpg --with-colons --list-secret-keys "$GPG_KEY_ID" | awk -F: '$1=="ssb" && $12 ~ /s/ {print $7; exit}')
+          if [ -z "${KEY_EXPIRY_EPOCH:-}" ]; then
+            KEY_EXPIRY_EPOCH=$(gpg --with-colons --list-keys "$GPG_KEY_ID" | awk -F: '$1=="pub" {print $7; exit}')
+          fi
+
+          if [ -z "${KEY_EXPIRY_EPOCH:-}" ] || [ "$KEY_EXPIRY_EPOCH" = "0" ]; then
+            echo "Signing key has no expiry set. Consider setting one (recommended for key hygiene)."
+            exit 0
+          fi
+
+          SECONDS_LEFT=$((KEY_EXPIRY_EPOCH - NOW_EPOCH))
+          DAYS_LEFT=$((SECONDS_LEFT / 86400))
+
+          if [ "$SECONDS_LEFT" -le 0 ]; then
+            echo "Signing key is expired. Rotate APT signing key before releasing."
+            exit 1
+          fi
+
+          if [ "$DAYS_LEFT" -lt "$FAIL_DAYS" ]; then
+            echo "Signing key expires in ${DAYS_LEFT} days (threshold: ${FAIL_DAYS}). Blocking release."
+            exit 1
+          fi
+
+          if [ "$DAYS_LEFT" -lt "$WARN_DAYS" ]; then
+            echo "::warning::Signing key expires in ${DAYS_LEFT} days. Plan rotation soon (warn threshold: ${WARN_DAYS})."
+          else
+            echo "Signing key expiry check passed (${DAYS_LEFT} days remaining)."
+          fi
+
+      - name: Build signed APT repository
+        env:
+          GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          mkdir -p repo/pool/main
+
+          for arch in ${{ inputs.architectures }}; do
+            mkdir -p "repo/dists/${{ inputs.suite }}/${{ inputs.component }}/binary-${arch}"
+          done
+
+          find artifacts -name '*.deb' -exec cp {} repo/pool/main/ \;
+
+          cd repo
+          for arch in ${{ inputs.architectures }}; do
+            dpkg-scanpackages --arch "$arch" pool/main > "dists/${{ inputs.suite }}/${{ inputs.component }}/binary-${arch}/Packages"
+            gzip -fk "dists/${{ inputs.suite }}/${{ inputs.component }}/binary-${arch}/Packages"
+          done
+
+          {
+            echo "Origin: ${{ inputs.package_name }}"
+            echo "Label: ${{ inputs.package_name }}"
+            echo "Suite: ${{ inputs.suite }}"
+            echo "Codename: ${{ inputs.suite }}"
+            echo "Architectures: ${{ inputs.architectures }}"
+            echo "Components: ${{ inputs.component }}"
+            echo "Description: ${{ inputs.package_name }} APT Repository"
+          } > "dists/${{ inputs.suite }}/Release"
+
+          apt-ftparchive release "dists/${{ inputs.suite }}" >> "dists/${{ inputs.suite }}/Release"
+
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "$GPG_KEY_ID" -abs -o "dists/${{ inputs.suite }}/Release.gpg" "dists/${{ inputs.suite }}/Release"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "$GPG_KEY_ID" --clearsign -o "dists/${{ inputs.suite }}/InRelease" "dists/${{ inputs.suite }}/Release"
+          gpg --armor --export "$GPG_KEY_ID" > "${{ inputs.package_name }}.gpg.key"
+
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          PKG="${{ inputs.package_name }}"
+          SUITE="${{ inputs.suite }}"
+          COMPONENT="${{ inputs.component }}"
+
+          cat > index.html <<HTMLEOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>${PKG} APT Repository</title>
+          <style>
+            :root { color-scheme: light dark; --bg: #ffffff; --fg: #1f2328; --muted: #57606a; --panel: #f6f8fa; }
+            @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9da7b3; --panel: #161b22; } }
+            body { background: var(--bg); color: var(--fg); max-width: 860px; margin: 2rem auto; padding: 0 1rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
+            h1 { margin-bottom: 0.25rem; }
+            .muted { color: var(--muted); }
+            pre { background: var(--panel); padding: 1rem; border-radius: 8px; overflow-x: auto; }
+            code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+          </style>
+          </head>
+          <body>
+          <h1>${PKG} APT Repository</h1>
+          <p class="muted">Repository URL: <code>${PAGES_URL}</code></p>
+          <p>Install on Debian/Ubuntu:</p>
+          <pre>
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL ${PAGES_URL}/${PKG}.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/${PKG}.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/${PKG}.gpg] ${PAGES_URL} ${SUITE} ${COMPONENT}" | sudo tee /etc/apt/sources.list.d/${PKG}.list
+          sudo apt update
+          sudo apt install ${PKG}
+          </pre>
+          <p class="muted">Generated from the latest tagged release.</p>
+          </body></html>
+          HTMLEOF
+          sed -i 's/^          //' index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: repo
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4

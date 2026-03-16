@@ -1,0 +1,15 @@
+name: etr
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+section: net
+priority: optional
+maintainer: "ETR Maintainers"
+description: "ETR network path probing tool"
+license: "MIT"
+homepage: "https://github.com/tkjaer/etr"
+contents:
+  - src: ./dist/etr
+    dst: /usr/bin/etr
+    file_info:
+      mode: 0755
