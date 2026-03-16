@@ -77,6 +77,16 @@ brew tap tkjaer/tap
 brew install etr
 ```
 
+## APT Repository (Debian/Ubuntu)
+
+```bash
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://tkjaer.github.io/etr/etr.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/etr.gpg
+echo "deb [signed-by=/etc/apt/keyrings/etr.gpg] https://tkjaer.github.io/etr stable main" | sudo tee /etc/apt/sources.list.d/etr.list
+sudo apt update
+sudo apt install etr
+```
+
 ## BSD Systems
 
 ETR supports FreeBSD, OpenBSD, and NetBSD (Ethernet source interfaces only on OpenBSD/NetBSD). Pre-built binaries are not available; build from source after installing:
