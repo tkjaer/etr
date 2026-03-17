@@ -173,10 +173,10 @@ jobs:
       matrix:
         include:
           - goarch: amd64
-            artifact_name: etr-linux-amd64
+            artifact_name: etr-linux-amd64-glibc-2.31
             rpm_arch: x86_64
           - goarch: arm64
-            artifact_name: etr-linux-arm64
+            artifact_name: etr-linux-arm64-glibc-2.31
             rpm_arch: aarch64
 
     steps:
