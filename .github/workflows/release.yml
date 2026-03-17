@@ -161,7 +161,7 @@ jobs:
             go build -buildvcs=false -ldflags="${LDFLAGS}" -o ${{ matrix.name }} ./cmd/etr
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.name }}
@@ -183,7 +183,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Download Linux binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.artifact_name }}
           path: dist
@@ -205,7 +205,7 @@ jobs:
           ARCH="${{ matrix.rpm_arch }}" VERSION="$VERSION" nfpm package --packager rpm --config ./nfpm.yaml --target "dist/etr-${VERSION}-1.${{ matrix.rpm_arch }}.rpm"
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: etr-packages-${{ matrix.goarch }}
           path: |
@@ -219,7 +219,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
