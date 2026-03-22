@@ -1,0 +1,204 @@
+package probe
+
+import (
+	"log/slog"
+
+	"github.com/tkjaer/etr/internal/shared"
+)
+
+// TrackDiscoveryPath records a completed probe run during discovery.
+// It updates per-probe stability and, when a path is confirmed, retires
+// the probe and spawns a replacement with a new source port.
+func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHash string, hops []*shared.HopRun) {
+	pm.discoveryMu.Lock()
+	defer pm.discoveryMu.Unlock()
+
+	if !pm.discovery.enabled {
+		return
+	}
+
+	// Per-probe stability tracking — a path hash is only recorded as
+	// "discovered" once it has been observed for perProbeStableRounds
+	// consecutive rounds, filtering out transient jitter from non-responding hops.
+	probeState, exists := pm.discovery.perProbeState[probeID]
+	if !exists {
+		probeState = &probeDiscoveryState{
+			lastPathHash:      pathHash,
+			stableRoundsCount: 1,
+		}
+		pm.discovery.perProbeState[probeID] = probeState
+	} else if pathHash == probeState.lastPathHash {
+		probeState.stableRoundsCount++
+		// If every hop responded, the hash is maximally complete —
+		// confirm after just 2 stable rounds instead of the full count.
+		allResponded := true
+		for _, h := range hops {
+			if h.Timeout {
+				allResponded = false
+				break
+			}
+		}
+		requiredRounds := pm.discovery.perProbeStableRounds
+		if allResponded && requiredRounds > 2 {
+			requiredRounds = 2
+		}
+		if probeState.stableRoundsCount >= requiredRounds {
+			// Path confirmed stable — record it (first port wins)
+			srcPort := pm.probeConfig.srcPort + probeID
+			if pathHash != "" {
+				if _, seen := pm.discovery.allDiscoveredPaths[pathHash]; !seen {
+					hopIPs := make([]string, len(hops))
+					for i, h := range hops {
+						if h.Timeout {
+							hopIPs[i] = "*"
+						} else {
+							hopIPs[i] = h.IP
+						}
+					}
+					pm.discovery.allDiscoveredPaths[pathHash] = discoveredPathInfo{
+						sourcePort: srcPort,
+						hops:       hopIPs,
+					}
+				}
+			}
+			// Retire this probe and spawn a replacement
+			pm.retireAndReplaceProbeNoLock(probeID)
+		}
+	} else {
+		probeState.stableRoundsCount = 1
+		probeState.lastPathHash = pathHash
+	}
+
+	// Round completion tracking — count completions from active probes
+	if _, active := pm.discovery.activeProbes[probeID]; active {
+		completions, exists := pm.discovery.roundCompletions[probeNum]
+		if !exists {
+			completions = make(map[uint16]struct{})
+			pm.discovery.roundCompletions[probeNum] = completions
+		}
+		completions[probeID] = struct{}{}
+
+		if uint(len(completions)) >= uint(len(pm.discovery.activeProbes)) {
+			delete(pm.discovery.roundCompletions, probeNum)
+			pm.evaluateRoundNoLock()
+		}
+	}
+}
+
+// retireAndReplaceProbeNoLock stops a confirmed probe and starts a new one.
+// Caller must hold discoveryMu write lock.
+func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
+	// Clean up old probe's discovery state
+	delete(pm.discovery.perProbeState, probeID)
+	delete(pm.discovery.activeProbes, probeID)
+
+	// Close the probe's discovery channel to stop its Run loop
+	pm.probeTracker.mutex.Lock()
+	if p, exists := pm.probeTracker.probes[probeID]; exists && p.discoveryStop != nil {
+		close(p.discoveryStop)
+	}
+	pm.probeTracker.mutex.Unlock()
+
+	// Check budget before spawning replacement
+	if pm.discovery.flowBudget > 0 && pm.discovery.flowsUsed >= pm.discovery.flowBudget {
+		return
+	}
+	nextID := pm.discovery.nextProbeID
+	if uint32(pm.probeConfig.srcPort)+uint32(nextID) > 65535 {
+		return
+	}
+
+	pm.discovery.flowsUsed++
+	pm.discovery.nextProbeID = nextID + 1
+	pm.discovery.perProbeState[nextID] = &probeDiscoveryState{}
+	pm.discovery.activeProbes[nextID] = struct{}{}
+
+	slog.Debug("Discovery: spawning new probe", "new_probe_id", nextID,
+		"src_port", pm.probeConfig.srcPort+nextID)
+
+	// Spawn outside the lock to avoid holding discoveryMu during goroutine start
+	go pm.spawnDiscoveryProbe(nextID)
+}
+
+// evaluateRoundNoLock checks convergence after a full round completes.
+// Caller must hold discoveryMu write lock.
+func (pm *ProbeManager) evaluateRoundNoLock() {
+	pm.discovery.fullRoundsCompleted++
+
+	currentPathCount := uint(len(pm.discovery.allDiscoveredPaths))
+	if currentPathCount == pm.discovery.lastPathCount {
+		pm.discovery.noNewPathsCount++
+	} else {
+		pm.discovery.noNewPathsCount = 0
+		pm.discovery.lastPathCount = currentPathCount
+	}
+
+	if pm.shouldStopDiscoveryNoLock() {
+		pm.stopOnce.Do(func() { close(pm.stop) })
+	}
+}
+
+// shouldStopDiscoveryNoLock checks convergence conditions.
+// Caller must hold discoveryMu write lock.
+func (pm *ProbeManager) shouldStopDiscoveryNoLock() bool {
+	if pm.discovery.noNewPathsCount >= pm.discovery.noNewPathsRounds {
+		return true
+	}
+	if pm.discovery.flowBudget > 0 && pm.discovery.flowsUsed >= pm.discovery.flowBudget {
+		if pm.discovery.noNewPathsCount > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// DiscoveredPath describes one unique path found during discovery.
+type DiscoveredPath struct {
+	PathHash   string
+	SourcePort uint16
+	Hops       []string // IP per hop ("*" for timeouts)
+}
+
+// DiscoverySummary holds end-of-run discovery statistics.
+type DiscoverySummary struct {
+	Enabled         bool
+	DistinctPaths   uint
+	FlowsUsed       uint
+	FlowBudget      uint
+	RoundsCompleted uint
+	Paths           []DiscoveredPath
+}
+
+// GetDiscoverySummary returns end-of-run discovery statistics.
+func (pm *ProbeManager) GetDiscoverySummary() DiscoverySummary {
+	pm.discoveryMu.RLock()
+	defer pm.discoveryMu.RUnlock()
+
+	paths := make([]DiscoveredPath, 0, len(pm.discovery.allDiscoveredPaths))
+	for hash, info := range pm.discovery.allDiscoveredPaths {
+		paths = append(paths, DiscoveredPath{PathHash: hash, SourcePort: info.sourcePort, Hops: info.hops})
+	}
+
+	return DiscoverySummary{
+		Enabled:         pm.discovery.enabled,
+		DistinctPaths:   uint(len(pm.discovery.allDiscoveredPaths)),
+		FlowsUsed:       pm.discovery.flowsUsed,
+		FlowBudget:      pm.discovery.flowBudget,
+		RoundsCompleted: pm.discovery.fullRoundsCompleted,
+		Paths:           paths,
+	}
+}
+
+// discoveryStatsSnapshot returns a TUI-friendly snapshot of current discovery state.
+// Caller must NOT hold discoveryMu.
+func (pm *ProbeManager) discoveryStatsSnapshot() shared.DiscoveryStats {
+	pm.discoveryMu.RLock()
+	defer pm.discoveryMu.RUnlock()
+	return shared.DiscoveryStats{
+		FlowsUsed:        pm.discovery.flowsUsed,
+		FlowBudget:       pm.discovery.flowBudget,
+		RoundsCompleted:  pm.discovery.fullRoundsCompleted,
+		NoNewPathsCount:  pm.discovery.noNewPathsCount,
+		NoNewPathsTarget: pm.discovery.noNewPathsRounds,
+	}
+}

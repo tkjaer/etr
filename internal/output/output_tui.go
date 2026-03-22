@@ -50,6 +50,10 @@ type tuiModel struct {
 	refreshInterval time.Duration
 	noStyle         bool
 
+	// Discovery mode
+	discoverMode   bool
+	discoveryStats shared.DiscoveryStats
+
 	// UI state
 	width         int
 	height        int
@@ -320,6 +324,7 @@ func NewBubbleTUIOutput(info shared.OutputInfo) *BubbleTUIOutput {
 		hashAlgorithm:   info.HashAlgorithm,
 		refreshInterval: info.TUIRefresh,
 		noStyle:         info.NoStyle,
+		discoverMode:    info.DiscoverMode,
 		selectedProbe:   0,
 		focus:           focusSummary,
 		help:            help.New(),
@@ -393,6 +398,13 @@ func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats shared.H
 	}
 
 	model.mu.Lock()
+	if _, exists := model.probes[probeID]; !exists {
+		// Auto-create probe entry for dynamically spawned discovery probes
+		model.probes[probeID] = &shared.ProbeStats{
+			ProbeID: probeID,
+			Hops:    make(map[uint8]*shared.HopStats),
+		}
+	}
 	if probe, exists := model.probes[probeID]; exists {
 		if probe.Hops == nil {
 			probe.Hops = make(map[uint8]*shared.HopStats)
@@ -460,7 +472,27 @@ func (b *BubbleTUIOutput) shouldSignal() bool {
 }
 
 func (b *BubbleTUIOutput) CompleteProbeRun(run *shared.ProbeRun) {
-	// No-op for TUI, we use UpdateHop for real-time updates
+	// No special handling needed — stats are tracked via UpdateHop
+}
+
+// UpdateDiscoveryStats receives live discovery progress from the probe manager.
+func (b *BubbleTUIOutput) UpdateDiscoveryStats(stats shared.DiscoveryStats) {
+	b.mu.RLock()
+	model := b.model
+	updateCh := b.updateCh
+	b.mu.RUnlock()
+	if model == nil {
+		return
+	}
+	model.mu.Lock()
+	model.discoveryStats = stats
+	model.mu.Unlock()
+	if updateCh != nil && b.shouldSignal() {
+		select {
+		case updateCh <- tuiUpdateMsg{}:
+		default:
+		}
+	}
 }
 
 // Close implements the Output interface
@@ -581,31 +613,44 @@ func (m *tuiModel) View() string {
 
 	// Title bar
 	elapsed := time.Since(m.startTime)
-	title := fmt.Sprintf(" ECMP Traceroute to %s | Protocol: %s | Port: %d | Elapsed: %s ",
-		m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
+	var title string
+	if m.discoverMode {
+		title = fmt.Sprintf(" DISCOVERY — %s | %s port %d | Elapsed: %s ",
+			m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
+	} else {
+		title = fmt.Sprintf(" ECMP Traceroute to %s | Protocol: %s | Port: %d | Elapsed: %s ",
+			m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
+	}
 	b.WriteString(m.renderWidth(titleStyle, m.width, title))
 	b.WriteString("\n")
+
+	// Discovery progress strip (only in discovery mode)
+	discoveryStripHeight := 0
+	if m.discoverMode {
+		b.WriteString(m.renderDiscoveryProgress())
+		b.WriteString("\n")
+		discoveryStripHeight = 1
+	}
 
 	// Help is always 1 line
 	helpHeight := 1
 	separatorHeight := 6
 	if m.noStyle {
-		// no styles means no borders
 		separatorHeight = 2
 	}
-	contentHeight := m.height - separatorHeight - helpHeight // title + separators + help
+	contentHeight := m.height - separatorHeight - helpHeight - discoveryStripHeight
 
 	// Split view: summary on top, detailed probe view below
 	summaryHeight := min(contentHeight/3, 15)
 	probeHeight := contentHeight - summaryHeight - 1
 
 	// Render summary pane
-	summary := m.renderSummary(summaryHeight)
+	summary := m.renderNormalSummary(summaryHeight)
 	b.WriteString(summary)
 	b.WriteString("\n")
 
 	// Render selected probe details
-	probeView := m.renderProbeDetails(m.selectedProbe, probeHeight)
+	probeView := m.renderLiveProbeDetails(m.selectedProbe, probeHeight)
 	b.WriteString(probeView)
 
 	// Help
@@ -615,21 +660,61 @@ func (m *tuiModel) View() string {
 	return b.String()
 }
 
-// renderSummary renders the summary pane showing all probes
-func (m *tuiModel) renderSummary(maxHeight int) string {
+// renderDiscoveryProgress renders a one-line status strip for discovery mode.
+func (m *tuiModel) renderDiscoveryProgress() string {
+	m.mu.RLock()
+	stats := m.discoveryStats
+	// Count unique paths across all probes
+	uniquePaths := make(map[string]struct{})
+	for _, probe := range m.probes {
+		hash := shared.CalculatePathHashFromProbe(probe, m.hashAlgorithm)
+		if hash != "" && hash != "00000000" {
+			uniquePaths[hash] = struct{}{}
+		}
+	}
+	paths := len(uniquePaths)
+	m.mu.RUnlock()
+
+	// Build progress bar for flow budget
+	var flowPart string
+	if stats.FlowBudget == 0 {
+		flowPart = fmt.Sprintf("Flows: %d/∞", stats.FlowsUsed)
+	} else {
+		barWidth := 12
+		filled := int(float64(stats.FlowsUsed) / float64(stats.FlowBudget) * float64(barWidth))
+		if filled > barWidth {
+			filled = barWidth
+		}
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+		flowPart = fmt.Sprintf("Flows: %d/%d [%s]", stats.FlowsUsed, stats.FlowBudget, bar)
+	}
+
+	noNewPart := fmt.Sprintf("No new paths: %d/%d rounds", stats.NoNewPathsCount, stats.NoNewPathsTarget)
+	progressLine := fmt.Sprintf("  %d path(s) found   %s   Round %d   %s  ",
+		paths, flowPart, stats.RoundsCompleted, noNewPart)
+	return m.renderWidth(titleStyle, m.width, progressLine)
+}
+
+// renderNormalSummary renders the per-probe summary pane.
+func (m *tuiModel) renderNormalSummary(maxHeight int) string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	var b strings.Builder
 
-	// Calculate unique paths
-	uniquePaths := make(map[string]bool)
-	for _, probe := range m.probes {
+	// Calculate unique paths and track which probeID first observed each hash
+	pathFirstProbe := make(map[string]uint16) // hash -> lowest probeID
+	pathCount := make(map[string]int)
+	for id, probe := range m.probes {
 		hash := shared.CalculatePathHashFromProbe(probe, m.hashAlgorithm)
-		uniquePaths[hash] = true
+		pathCount[hash]++
+		if first, exists := pathFirstProbe[hash]; !exists || id < first {
+			pathFirstProbe[hash] = id
+		}
 	}
+	uniqueCount := len(pathCount)
 
-	title := m.render(summaryTitleStyle, fmt.Sprintf(" Summary (%d probes, %d unique paths) ", len(m.probes), len(uniquePaths)))
+	title := m.render(summaryTitleStyle, fmt.Sprintf(" Summary (%d probes, %d unique paths) ", len(m.probes), uniqueCount))
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
@@ -706,10 +791,14 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 		}
 
 		srcPort := m.srcPort + id
+		pathLabel := fmt.Sprintf("%.7s", stats.PathHash)
+		if pathCount[stats.PathHash] > 1 && pathFirstProbe[stats.PathHash] != id {
+			pathLabel = fmt.Sprintf("%.5s =", stats.PathHash)
+		}
 		cells := []string{
 			formatCell(fmt.Sprintf("#%d", id), 6, alignLeft),
 			formatCell(fmt.Sprintf("%d", srcPort), 6, alignRight),
-			formatCell(fmt.Sprintf("%.7s", stats.PathHash), 8, alignRight),
+			formatCell(pathLabel, 8, alignRight),
 			formatCell(fmt.Sprintf("%d", stats.NumHops), 3, alignRight),
 			formatCell(fmt.Sprintf("%.1f%%", stats.LossPct), 6, alignRight),
 			formatCell(fmt.Sprintf("%.2f", stats.AvgRTT), 7, alignRight),
@@ -737,8 +826,8 @@ func (m *tuiModel) renderSummary(maxHeight int) string {
 	return m.renderContainer(summaryContainer, containerWidth, b.String())
 }
 
-// renderProbeDetails renders detailed hop-by-hop view for a specific probe
-func (m *tuiModel) renderProbeDetails(probeID uint16, maxHeight int) string {
+// renderLiveProbeDetails renders the hop-by-hop live view for a specific probe.
+func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/tkjaer/etr/internal/config"
@@ -76,7 +77,27 @@ func run() error {
 		done <- pm.Run()
 	}()
 
-	return waitForCompletion(pm, done, sigChan)
+	runErr := waitForCompletion(pm, done, sigChan)
+
+	if args.Discover {
+		s := pm.GetDiscoverySummary()
+		if s.Enabled {
+			var flowStr string
+			if s.FlowBudget == 0 {
+				flowStr = fmt.Sprintf("%d/∞", s.FlowsUsed)
+			} else {
+				flowStr = fmt.Sprintf("%d/%d", s.FlowsUsed, s.FlowBudget)
+			}
+			fmt.Fprintf(os.Stderr, "\nDiscovery complete: %d unique path(s), %s flows, %d round(s)\n",
+				s.DistinctPaths, flowStr, s.RoundsCompleted)
+			for _, p := range s.Paths {
+				fmt.Fprintf(os.Stderr, "  path %s  src-port :%d  %s\n",
+					p.PathHash, p.SourcePort, strings.Join(p.Hops, " → "))
+			}
+		}
+	}
+
+	return runErr
 }
 
 func waitForCompletion(pm *probe.ProbeManager, done <-chan error, sigChan <-chan os.Signal) error {

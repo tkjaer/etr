@@ -557,7 +557,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 		ProbeNum:        data.ProbeNum,
 		PathHash:        pathHash,
 		SourceIP:        pm.probeConfig.route.Source.String(),
-		SourcePort:      pm.probeConfig.srcPort + probeID, // Each probe uses a different source port
+		SourcePort:      pm.probeConfig.srcPort + probeID,
 		DestinationIP:   destIP,
 		DestinationPort: pm.probeConfig.dstPort,
 		DestinationPTR:  destPTR,
@@ -573,5 +573,15 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 		probeNum: data.ProbeNum,
 		msgType:  "probe_run",
 		run:      run,
+	}
+
+	// Track discovery state and push a stats update to the TUI
+	if pm.discovery.enabled {
+		pm.TrackDiscoveryPath(probeID, data.ProbeNum, pathHash, hopsSlice)
+		stats := pm.discoveryStatsSnapshot()
+		pm.outputChan <- outputMsg{
+			msgType:        "discovery_update",
+			discoveryStats: &stats,
+		}
 	}
 }
