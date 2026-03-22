@@ -10,6 +10,7 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
 
 - **Real-time TUI**: MTR-like interface with live statistics (RTT, delay variation, packet loss per hop)
 - **Parallel probes**: Run multiple simultaneous probes to discover different ECMP paths
+- **Path discovery**: Automatically discover all ECMP paths with `--discover`
 - **Protocol support**: TCP SYN and UDP probes (UDP payload length encodes probe details)
 - **JSON export**: Stream results to stdout or file for analysis and integration
 - **Path identification**: CRC32 or SHA256 hashing to identify unique routes
@@ -59,6 +60,9 @@ etr -J example.com > results.json
 
 # Custom port and extended monitoring
 etr -p 80 -c 1000 -d 5s target.example.com
+
+# Discover all ECMP paths to a destination
+etr --discover example.com
 ```
 
 **Common options**:
@@ -82,12 +86,19 @@ etr -p 80 -c 1000 -d 5s target.example.com
 ## Example: Finding ECMP Paths for iperf Testing
 
 ```bash
-# Discover paths with many parallel probes
-etr -U -P 20 -j paths.json target.example.com
+# Discover ECMP paths automatically
+etr --discover target.example.com
+# Output shows each unique path with its source port and hop chain:
+#   path e82729e8  src-port :50001  10.0.1.1 → 91.100.34.1 → ... → 142.250.180.14
+#   path 1a7507c3  src-port :50004  10.0.1.1 → 91.100.34.1 → ... → 142.250.180.14
 
-# Analyze JSON to find paths with specific characteristics
-# Use iperf with matching source ports to test the exact same path
+# Use iperf with a discovered source port to test that exact ECMP path
+iperf3 -c target.example.com --cport 50001
 ```
+
+`--discover` probes with sequential source ports, confirms each path is stable,
+then moves on. It defaults to `-P 2 -d 500ms` to reduce ICMP pressure on routers.
+Run `etr --help` for tuning flags.
 
 ## JSON Output Format
 
