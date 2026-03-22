@@ -14,20 +14,20 @@ import (
 
 // ProbeConfig holds configuration common to all probes
 type ProbeConfig struct {
-	destination      string
-	numProbes        uint
-	protocolConfig   ProtocolConfig
-	route            route.Route
-	srcPort          uint16
-	dstPort          uint16
-	dstMAC           net.HardwareAddr
-	maxTTL           uint8
-	useEthernet      bool
-	NoResolve        bool
-	LookupASN        bool
-	interProbeDelay  time.Duration
-	interTTLDelay    time.Duration
-	timeout          time.Duration
+	destination     string
+	numProbes       uint
+	protocolConfig  ProtocolConfig
+	route           route.Route
+	srcPort         uint16
+	dstPort         uint16
+	dstMAC          net.HardwareAddr
+	maxTTL          uint8
+	useEthernet     bool
+	NoResolve       bool
+	LookupASN       bool
+	interProbeDelay time.Duration
+	interTTLDelay   time.Duration
+	timeout         time.Duration
 }
 
 type TransmitEvent struct {

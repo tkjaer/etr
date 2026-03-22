@@ -38,16 +38,16 @@ type HopStats struct {
 
 // Holds general output information
 type OutputInfo struct {
-	Destination       string
-	Protocol          string
-	SrcPort           uint16
-	DstPort           uint16
-	ParallelProbes    uint16
-	HashAlgorithm     string
-	TUIRefresh        time.Duration
-	NoStyle           bool
-	DiscoverMode      bool
-	DiscoMode         bool
+	Destination    string
+	Protocol       string
+	SrcPort        uint16
+	DstPort        uint16
+	ParallelProbes uint16
+	HashAlgorithm  string
+	TUIRefresh     time.Duration
+	NoStyle        bool
+	DiscoverMode   bool
+	DiscoMode      bool
 }
 
 // DiscoveryStats holds live stats about a discovery run, for the TUI
