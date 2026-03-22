@@ -51,6 +51,8 @@ func (m *mockOutput) CompleteProbeRun(run *shared.ProbeRun) {
 	m.completeProbeRunCalls = append(m.completeProbeRunCalls, completeProbeRunCall{run})
 }
 
+func (m *mockOutput) UpdateDiscoveryStats(_ shared.DiscoveryStats) {}
+
 func (m *mockOutput) Close() error {
 	m.closeCalls++
 	return nil

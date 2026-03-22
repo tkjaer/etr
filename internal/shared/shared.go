@@ -46,6 +46,17 @@ type OutputInfo struct {
 	HashAlgorithm  string
 	TUIRefresh     time.Duration
 	NoStyle        bool
+	DiscoverMode   bool
+	DiscoMode      bool
+}
+
+// DiscoveryStats holds live stats about a discovery run, for the TUI
+type DiscoveryStats struct {
+	FlowsUsed        uint
+	FlowBudget       uint
+	RoundsCompleted  uint
+	NoNewPathsCount  uint
+	NoNewPathsTarget uint
 }
 
 // Holds stats for a single probe instance

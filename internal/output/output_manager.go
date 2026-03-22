@@ -12,6 +12,7 @@ type Output interface {
 	DeleteHops(probeID uint16, ttls []uint8)
 	CompleteProbe(probeID uint16, stats shared.ProbeStats)
 	CompleteProbeRun(run *shared.ProbeRun)
+	UpdateDiscoveryStats(stats shared.DiscoveryStats)
 	Close() error
 }
 
@@ -45,6 +46,12 @@ func (om *OutputManager) CompleteProbe(probeID uint16, stats shared.ProbeStats) 
 func (om *OutputManager) CompleteProbeRun(run *shared.ProbeRun) {
 	for _, o := range om.outputs {
 		o.CompleteProbeRun(run)
+	}
+}
+
+func (om *OutputManager) UpdateDiscoveryStats(stats shared.DiscoveryStats) {
+	for _, o := range om.outputs {
+		o.UpdateDiscoveryStats(stats)
 	}
 }
 

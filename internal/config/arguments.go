@@ -29,6 +29,13 @@ type Args struct {
 	DestinationPort uint
 	SourcePort      uint
 
+	// Discovery mode
+	Discover                     bool
+	Disco                        bool // easter egg: discovery with disco visuals
+	DiscoverFlows                uint // Max source ports to probe (0 = unlimited)
+	DiscoverNoNewPathsRounds     uint // Stop after N rounds with no new paths
+	DiscoverPerProbeStableRounds uint // Move probe to new port after N identical rounds
+
 	// Timing
 	InterProbeDelay time.Duration
 	InterTTLDelay   time.Duration
@@ -70,9 +77,30 @@ func ParseArgs() (Args, error) {
 		println("  etr -c 10 -J <destination>           # 10 probes, JSON to stdout")
 		println("  etr -j results.json <destination>    # Save JSON while showing TUI")
 		println("  etr --print-bpf <destination>        # Print tcpdump filter and exit")
+		println("  etr --discover <destination>          # Discover ECMP paths")
 		println()
 		println("Options:")
 		flag.PrintDefaults()
+		println()
+		println("Discovery mode (--discover):")
+		println("  Probes with sequential source ports to discover ECMP paths.")
+		println("  Each source port gets its own probe with independent statistics.")
+		println("  A path is confirmed once its hash is stable for 2 consecutive rounds")
+		println("  where all hops responded, OR 10 rounds when some hops timed out.")
+		println("  Once confirmed, the probe is retired and a new one is spawned.")
+		println()
+		println("  Defaults adjusted for discovery (override with explicit flags):")
+		println("    -P 2        Fewer parallel probes reduces ICMP pressure on routers")
+		println("    -d 500ms    Faster rounds (fewer probes make this safe)")
+		println()
+		println("  Tuning flags:")
+		println("    --discover-flows uint                      Max source ports to try (default unlimited)")
+		println("    --discover-no-new-paths-rounds uint        Stop after N rounds with no new paths (default 20)")
+		println("    --discover-per-probe-stable-rounds uint    Rounds with timeouts before confirming path (default 10)")
+		println()
+		println("  Stopping conditions (OR):")
+		println("    --discover-no-new-paths-rounds consecutive rounds with no new paths")
+		println("    --discover-flows exhausted AND at least 1 no-new-paths round")
 		println()
 		println("Documentation: https://github.com/tkjaer/etr")
 		println("Report issues: https://github.com/tkjaer/etr/issues")
@@ -95,6 +123,16 @@ func ParseArgs() (Args, error) {
 	flag.UintVarP(&args.ParallelProbes, "parallel-probes", "P", 5, "Number of parallel probes")
 	flag.UintVarP(&args.NumProbes, "count", "c", 0, "Number of probe iterations (0 = infinite)")
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL hops")
+	// Discovery mode
+	flag.BoolVar(&args.Discover, "discover", false, "Discover ECMP paths and exit (see below)")
+	flag.BoolVar(&args.Disco, "disco", false, "")
+	_ = flag.CommandLine.MarkHidden("disco")
+	flag.UintVar(&args.DiscoverFlows, "discover-flows", 0, "Max source ports to use during discovery (0 = unlimited)")
+	flag.UintVar(&args.DiscoverNoNewPathsRounds, "discover-no-new-paths-rounds", 20, "Stop after N consecutive rounds with no new paths")
+	flag.UintVar(&args.DiscoverPerProbeStableRounds, "discover-per-probe-stable-rounds", 10, "Confirm path after N identical rounds")
+	_ = flag.CommandLine.MarkHidden("discover-flows")
+	_ = flag.CommandLine.MarkHidden("discover-no-new-paths-rounds")
+	_ = flag.CommandLine.MarkHidden("discover-per-probe-stable-rounds")
 
 	// Timing controls
 	flag.DurationVarP(&args.InterTTLDelay, "inter-ttl-delay", "i", 100*time.Millisecond, "Delay between each TTL hop in a probe")
@@ -136,12 +174,37 @@ func ParseArgs() (Args, error) {
 		return args, errors.New("cannot force both IPv4 and IPv6")
 	case args.DestinationPort > 65535:
 		return args, errors.New("destination port must be between 0 and 65535")
-	case args.SourcePort+args.ParallelProbes > 65535:
-		return args, errors.New("source port+parallel probes must be below 65535")
+	case args.SourcePort > 65535:
+		return args, errors.New("source port must be between 0 and 65535")
+	case args.ParallelProbes == 0:
+		return args, errors.New("parallel probes must be at least 1")
+	case args.SourcePort+(args.ParallelProbes-1) > 65535:
+		return args, errors.New("source port range (base + parallel probes - 1) must be below 65535")
 	case args.MaxTTL > 255:
 		return args, errors.New("maximum TTL must be between 0 and 255")
 	case args.Timeout >= 20*args.InterProbeDelay:
 		return args, errors.New("timeout must be less than 20 times inter-probe delay to prevent probe number wrapping issues")
+	}
+
+	if args.Disco {
+		args.Discover = true
+	}
+
+	if args.Discover {
+		if args.DiscoverPerProbeStableRounds == 0 {
+			return args, errors.New("discover per probe stable rounds must be at least 1")
+		}
+		if args.DiscoverNoNewPathsRounds == 0 {
+			return args, errors.New("discover no new paths rounds must be at least 1")
+		}
+		// Default to fewer parallel probes and slower probing in discovery mode
+		// to reduce ICMP pressure on intermediate hops, unless user overrode them.
+		if !flag.CommandLine.Changed("parallel-probes") {
+			args.ParallelProbes = 2
+		}
+		if !flag.CommandLine.Changed("inter-probe-delay") {
+			args.InterProbeDelay = 500 * time.Millisecond
+		}
 	}
 
 	// Set protocol-specific default destination port if not specified

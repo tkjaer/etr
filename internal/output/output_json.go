@@ -56,6 +56,10 @@ func (j *JSONOutput) CompleteProbeRun(run *shared.ProbeRun) {
 	_ = j.enc.Encode(run)
 }
 
+func (j *JSONOutput) UpdateDiscoveryStats(_ shared.DiscoveryStats) {
+	// No-op for JSON output
+}
+
 func (j *JSONOutput) Close() error {
 	if j.toStdout {
 		return nil

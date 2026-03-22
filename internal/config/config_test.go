@@ -107,7 +107,7 @@ func TestParseArgs_Validation(t *testing.T) {
 		{
 			name:    "source port + parallel probes exceeds limit with TCP",
 			args:    []string{"--tcp", "--source-port", "65530", "--parallel-probes", "10", "example.com"},
-			wantErr: "source port+parallel probes must be below 65535",
+			wantErr: "source port range (base + parallel probes - 1) must be below 65535",
 		},
 		{
 			name:    "max ttl too large with TCP",
@@ -286,5 +286,110 @@ func TestParseArgs_UDPDefaults(t *testing.T) {
 	}
 	if args.SourcePort != 50000 {
 		t.Errorf("Default source port = %v, want 50000", args.SourcePort)
+	}
+}
+
+func TestParseArgs_DiscoveryDefaults(t *testing.T) {
+	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+
+	oldArgs := os.Args
+	os.Args = []string{"cmd", "--discover", "example.com"}
+	defer func() { os.Args = oldArgs }()
+
+	args, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs() unexpected error: %v", err)
+	}
+
+	if !args.Discover {
+		t.Error("Discover should be true when --discover is specified")
+	}
+	if args.DiscoverFlows != 0 {
+		t.Errorf("Default DiscoverFlows = %v, want 0 (unlimited)", args.DiscoverFlows)
+	}
+	if args.DiscoverNoNewPathsRounds != 20 {
+		t.Errorf("Default DiscoverNoNewPathsRounds = %v, want 20", args.DiscoverNoNewPathsRounds)
+	}
+	if args.DiscoverPerProbeStableRounds != 10 {
+		t.Errorf("Default DiscoverPerProbeStableRounds = %v, want 10", args.DiscoverPerProbeStableRounds)
+	}
+}
+
+func TestParseArgs_DiscoveryCustom(t *testing.T) {
+	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+
+	oldArgs := os.Args
+	os.Args = []string{"cmd", "--discover", "--discover-flows", "50",
+		"--discover-no-new-paths-rounds", "5",
+		"--discover-per-probe-stable-rounds", "2",
+		"example.com"}
+	defer func() { os.Args = oldArgs }()
+
+	args, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs() unexpected error: %v", err)
+	}
+
+	if args.DiscoverFlows != 50 {
+		t.Errorf("DiscoverFlows = %v, want 50", args.DiscoverFlows)
+	}
+	if args.DiscoverNoNewPathsRounds != 5 {
+		t.Errorf("DiscoverNoNewPathsRounds = %v, want 5", args.DiscoverNoNewPathsRounds)
+	}
+	if args.DiscoverPerProbeStableRounds != 2 {
+		t.Errorf("DiscoverPerProbeStableRounds = %v, want 2", args.DiscoverPerProbeStableRounds)
+	}
+}
+
+func TestParseArgs_DiscoveryUnlimitedFlows(t *testing.T) {
+	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+
+	oldArgs := os.Args
+	os.Args = []string{"cmd", "--discover", "--discover-flows", "0", "example.com"}
+	defer func() { os.Args = oldArgs }()
+
+	args, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs() unexpected error: %v", err)
+	}
+
+	if args.DiscoverFlows != 0 {
+		t.Errorf("DiscoverFlows = %v, want 0 (unlimited)", args.DiscoverFlows)
+	}
+}
+
+func TestParseArgs_DiscoveryValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "per probe stable rounds cannot be zero",
+			args:    []string{"--discover", "--discover-per-probe-stable-rounds", "0", "example.com"},
+			wantErr: "discover per probe stable rounds must be at least 1",
+		},
+		{
+			name:    "no new paths rounds cannot be zero",
+			args:    []string{"--discover", "--discover-no-new-paths-rounds", "0", "example.com"},
+			wantErr: "discover no new paths rounds must be at least 1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
+
+			oldArgs := os.Args
+			os.Args = append([]string{"cmd"}, tt.args...)
+			defer func() { os.Args = oldArgs }()
+
+			_, err := ParseArgs()
+			if err == nil {
+				t.Errorf("ParseArgs() expected error %q, got nil", tt.wantErr)
+			} else if err.Error() != tt.wantErr {
+				t.Errorf("ParseArgs() error = %v, want %v", err.Error(), tt.wantErr)
+			}
+		})
 	}
 }

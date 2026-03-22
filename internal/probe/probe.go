@@ -149,13 +149,14 @@ func serializeLayers(buf gopacket.SerializeBuffer, opts gopacket.SerializeOption
 
 // newProbe holds configuration for a single probe instance
 type Probe struct {
-	probeID      uint16
-	config       *ProbeConfig
-	transmitChan chan TransmitEvent
-	responseChan chan ResponseEvent
-	statsChan    chan ProbeEvent
-	stop         chan struct{}
-	wg           *sync.WaitGroup
+	probeID       uint16
+	config        *ProbeConfig
+	transmitChan  chan TransmitEvent
+	responseChan  chan ResponseEvent
+	statsChan     chan ProbeEvent
+	stop          chan struct{}
+	discoveryStop chan struct{} // closed to retire this probe during discovery
+	wg            *sync.WaitGroup
 }
 
 func (p *Probe) Run() {
@@ -194,6 +195,14 @@ func (p *Probe) Run() {
 			return
 		default:
 		}
+		if p.discoveryStop != nil {
+			select {
+			case <-p.discoveryStop:
+				slog.Debug("Probe retired by discovery", "probe_id", p.probeID)
+				return
+			default:
+			}
+		}
 
 		// Drain any old responses from the channel before starting this probe
 		draining := true
@@ -208,6 +217,7 @@ func (p *Probe) Run() {
 
 		slog.Debug("Starting probe", "probe_num", n)
 		lastProbeStart = time.Now()
+		currentSrcPort := probeConfig.srcPort + p.probeID
 		ttl := uint8(0)
 
 	TTLLoop:
@@ -251,7 +261,7 @@ func (p *Probe) Run() {
 					case layers.IPProtocolTCP:
 						tcp := layers.TCP{
 							Seq:     encodeTTLAndProbe(ttl, uint(n)),
-							SrcPort: layers.TCPPort(probeConfig.srcPort + p.probeID),
+							SrcPort: layers.TCPPort(currentSrcPort),
 							DstPort: layers.TCPPort(probeConfig.dstPort),
 							SYN:     true,
 							Window:  65535,
@@ -274,7 +284,7 @@ func (p *Probe) Run() {
 						length := uint16(8 + encodeTTLAndProbe(ttl, uint(n)))
 						payload := gopacket.Payload(make([]byte, length-8))
 						udp := layers.UDP{
-							SrcPort: layers.UDPPort(probeConfig.srcPort + p.probeID),
+							SrcPort: layers.UDPPort(currentSrcPort),
 							DstPort: layers.UDPPort(probeConfig.dstPort),
 							Length:  uint16(length),
 						}
@@ -304,7 +314,7 @@ func (p *Probe) Run() {
 					case layers.IPProtocolTCP:
 						tcp := layers.TCP{
 							Seq:     encodeTTLAndProbe(ttl, uint(n)),
-							SrcPort: layers.TCPPort(probeConfig.srcPort + p.probeID),
+							SrcPort: layers.TCPPort(currentSrcPort),
 							DstPort: layers.TCPPort(probeConfig.dstPort),
 							SYN:     true,
 							Window:  65535,
@@ -327,7 +337,7 @@ func (p *Probe) Run() {
 						length := uint16(8 + encodeTTLAndProbe(ttl, uint(n)))
 						payload := gopacket.Payload(make([]byte, length-8))
 						udp := layers.UDP{
-							SrcPort: layers.UDPPort(probeConfig.srcPort + p.probeID),
+							SrcPort: layers.UDPPort(currentSrcPort),
 							DstPort: layers.UDPPort(probeConfig.dstPort),
 							Length:  uint16(length),
 						}

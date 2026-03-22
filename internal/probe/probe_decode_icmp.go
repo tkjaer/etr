@@ -172,10 +172,21 @@ func locateInnerIPv6Header(payload []byte) (int, bool) {
 	return 0, false
 }
 
-// sourcePortWithinRange checks if the given source port falls within the range
-// allocated for this probe manager's probes.
+// sourcePortWithinRange checks if the given source port belongs to one of
+// this probe manager's probes.
 func (pm *ProbeManager) sourcePortWithinRange(srcPort uint16) bool {
-	return srcPort >= uint16(pm.probeConfig.srcPort) && srcPort < uint16(pm.probeConfig.srcPort+pm.parallelProbes)
+	if srcPort < pm.probeConfig.srcPort {
+		return false
+	}
+	offset := srcPort - pm.probeConfig.srcPort
+	if !pm.discovery.enabled {
+		return offset < pm.parallelProbes
+	}
+	// In discovery mode, accept any port that maps to a known probe.
+	pm.probeTracker.mutex.Lock()
+	_, exists := pm.probeTracker.probes[offset]
+	pm.probeTracker.mutex.Unlock()
+	return exists
 }
 
 // protoToLayerType maps an IPProtocol to the corresponding gopacket LayerType.

@@ -74,22 +74,37 @@ func BuildBPFFilter(a config.Args) (string, error) {
 	if pp == 0 {
 		pp = 1
 	}
+
+	// In discovery mode, each new flow gets its own sequential source port.
+	// Widen the BPF port range to cover the initial probes plus the flow budget.
+	portCount := uint32(pp)
+	if a.Discover {
+		budget := uint32(a.DiscoverFlows)
+		if budget == 0 {
+			budget = 1000 // reasonable cap for unlimited budget
+		}
+		portCount = uint32(pp) + budget
+		if uint32(probeConfig.srcPort)+portCount-1 > 65535 {
+			portCount = 65536 - uint32(probeConfig.srcPort)
+		}
+	}
+
 	portRange := ""
 	// libpcap on OpenBSD does not support "portrange" syntax
 	if runtime.GOOS == "openbsd" {
 		portRange = "("
-		for i := range pp {
+		for i := range portCount {
 			if i > 0 {
 				portRange += " or "
 			}
-			portRange += fmt.Sprintf("port %d", probeConfig.srcPort+i)
+			portRange += fmt.Sprintf("port %d", uint32(probeConfig.srcPort)+uint32(i))
 		}
 		portRange += ")"
 	} else {
 		portRange = fmt.Sprintf(
 			"portrange %d-%d",
 			probeConfig.srcPort,
-			probeConfig.srcPort+pp-1)
+			uint32(probeConfig.srcPort)+portCount-1)
 	}
 
 	// Note:

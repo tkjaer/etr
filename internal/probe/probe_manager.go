@@ -67,17 +67,48 @@ type outputConfig struct {
 }
 
 type outputMsg struct {
-	msgType    string           // Message type: "hop", "probe_run", "complete", "delete_hops"
-	run        *shared.ProbeRun // For probe_run messages
-	deleteTTLs []uint8          // For delete_hops messages
-	probeNum   uint             // Probe number for hop/delete_hops/complete messages
-	ttl        uint8            // TTL for hop messages
+	msgType        string                 // "hop", "probe_run", "complete", "delete_hops", "discovery_update"
+	run            *shared.ProbeRun       // For probe_run messages
+	deleteTTLs     []uint8                // For delete_hops messages
+	probeNum       uint                   // Probe number for hop/delete_hops/complete messages
+	ttl            uint8                  // TTL for hop messages
+	discoveryStats *shared.DiscoveryStats // For discovery_update messages
+}
+
+// discoveryState tracks per-probe path stability and flow rotation
+type discoveryState struct {
+	enabled              bool
+	flowBudget           uint
+	noNewPathsRounds     uint
+	perProbeStableRounds uint
+	flowsUsed            uint
+	noNewPathsCount      uint
+	allDiscoveredPaths   map[string]discoveredPathInfo // path hash -> info about first observation
+	perProbeState        map[uint16]*probeDiscoveryState
+	activeProbes         map[uint16]struct{} // probeIDs currently running
+	nextProbeID          uint16              // next probeID to assign
+	fullRoundsCompleted  uint
+	lastPathCount        uint
+	roundCompletions     map[uint]map[uint16]struct{} // probeNum -> set of probeIDs that completed
+}
+
+// discoveredPathInfo stores metadata about a confirmed path.
+type discoveredPathInfo struct {
+	sourcePort uint16
+	hops       []string // IP per hop (\"*\" for timeouts)
+}
+
+// probeDiscoveryState tracks stability for one probe's current flow
+type probeDiscoveryState struct {
+	lastPathHash      string // Last round's path hash
+	stableRoundsCount uint   // How many consecutive rounds with same path
 }
 
 // ProbeManager coordinates multiple parallel probes to the same destination
 type ProbeManager struct {
 	// Coordination
 	wg       sync.WaitGroup
+	probesWg sync.WaitGroup // tracks probe goroutines only (for probesDone signaling)
 	stop     chan struct{}
 	stopOnce sync.Once
 
@@ -99,6 +130,8 @@ type ProbeManager struct {
 
 	stats        ProbeManagerStats
 	outputConfig outputConfig
+	discoveryMu  sync.RWMutex
+	discovery    discoveryState
 }
 
 type ProtocolConfig struct {
@@ -149,7 +182,27 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 			tuiRefresh:    a.TUIRefresh,
 			noStyle:       a.NoStyle,
 		},
+		discovery: discoveryState{
+			enabled:              a.Discover,
+			flowBudget:           a.DiscoverFlows,
+			noNewPathsRounds:     a.DiscoverNoNewPathsRounds,
+			perProbeStableRounds: a.DiscoverPerProbeStableRounds,
+			allDiscoveredPaths:   make(map[string]discoveredPathInfo),
+			perProbeState:        make(map[uint16]*probeDiscoveryState),
+			activeProbes:         make(map[uint16]struct{}),
+			nextProbeID:          uint16(a.ParallelProbes),
+			flowsUsed:            a.ParallelProbes, // initial probes count toward the budget
+			roundCompletions:     make(map[uint]map[uint16]struct{}),
+		},
 		args: a,
+	}
+
+	// Initialize per-probe discovery state
+	if pm.discovery.enabled {
+		for p := uint16(0); p < uint16(a.ParallelProbes); p++ {
+			pm.discovery.perProbeState[p] = &probeDiscoveryState{}
+			pm.discovery.activeProbes[p] = struct{}{}
+		}
 	}
 
 	err := pm.init(a)
@@ -286,6 +339,9 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	p.responseChan = make(chan ResponseEvent, 100)
 	p.statsChan = pm.statsChan
 	p.stop = pm.stop
+	if pm.discovery.enabled {
+		p.discoveryStop = make(chan struct{})
+	}
 	p.wg = &pm.wg
 
 	pm.probeTracker.mutex.Lock()
@@ -293,6 +349,27 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	pm.probeTracker.probes[probeIndex] = p
 
 	return nil
+}
+
+// spawnDiscoveryProbe creates and starts a new probe with the given ID.
+// Called from the stats goroutine (via TrackDiscoveryPath) when a probe's
+// path has been confirmed and the old probe has been retired.
+func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
+	if err := pm.addProbe(probeID); err != nil {
+		slog.Error("Failed to create discovery probe", "probe_id", probeID, "error", err)
+		return
+	}
+	pm.probeTracker.mutex.Lock()
+	p := pm.probeTracker.probes[probeID]
+	pm.probeTracker.mutex.Unlock()
+
+	pm.wg.Add(1)
+	pm.probesWg.Add(1)
+	go func() {
+		defer pm.wg.Done()
+		defer pm.probesWg.Done()
+		p.Run()
+	}()
 }
 
 // Run initializes and executes all probes in parallel
@@ -316,16 +393,13 @@ func (pm *ProbeManager) Run() error {
 		pm.outputRoutine(om)
 	}()
 
-	// Track just the probe goroutines separately
-	var probesWg sync.WaitGroup
-
 	// Start all probes
 	for _, p := range pm.probeTracker.probes {
 		pm.wg.Add(1)
-		probesWg.Add(1)
+		pm.probesWg.Add(1)
 		go func(p *Probe) {
 			defer pm.wg.Done()
-			defer probesWg.Done()
+			defer pm.probesWg.Done()
 			p.Run()
 		}(p)
 	}
@@ -333,7 +407,7 @@ func (pm *ProbeManager) Run() error {
 	// Create a channel that signals when probes are done (not all goroutines)
 	probesDone := make(chan struct{})
 	go func() {
-		probesWg.Wait()
+		pm.probesWg.Wait()
 		close(probesDone)
 	}()
 
@@ -406,6 +480,8 @@ func (pm *ProbeManager) createOutputs() (*output.BubbleTUIOutput, *output.Output
 		HashAlgorithm:  pm.outputConfig.hashAlgorithm,
 		TUIRefresh:     pm.outputConfig.tuiRefresh,
 		NoStyle:        pm.outputConfig.noStyle,
+		DiscoverMode:   pm.discovery.enabled,
+		DiscoMode:      pm.args.Disco,
 	}
 	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {
 		info.Protocol = "UDP"
@@ -454,6 +530,10 @@ func (pm *ProbeManager) outputRoutine(om *output.OutputManager) {
 			// Output individual probe run (for JSON)
 			if msg.run != nil {
 				om.CompleteProbeRun(msg.run)
+			}
+		case "discovery_update":
+			if msg.discoveryStats != nil {
+				om.UpdateDiscoveryStats(*msg.discoveryStats)
 			}
 		case "complete":
 			if probeStats, exists := pm.getProbeStats(uint16(msg.probeNum)); exists {
