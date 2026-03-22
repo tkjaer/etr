@@ -47,6 +47,7 @@ type OutputInfo struct {
 	TUIRefresh        time.Duration
 	NoStyle           bool
 	DiscoverMode      bool
+	DiscoMode         bool
 }
 
 // DiscoveryStats holds live stats about a discovery run, for the TUI

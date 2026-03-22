@@ -481,6 +481,7 @@ func (pm *ProbeManager) createOutputs() (*output.BubbleTUIOutput, *output.Output
 		TUIRefresh:     pm.outputConfig.tuiRefresh,
 		NoStyle:        pm.outputConfig.noStyle,
 		DiscoverMode:   pm.discovery.enabled,
+		DiscoMode:      pm.args.Disco,
 	}
 	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {
 		info.Protocol = "UDP"

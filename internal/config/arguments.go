@@ -22,15 +22,16 @@ type Args struct {
 	PrintBPFFilter bool
 
 	// Protocol and ports
-	TCP              bool
-	UDP              bool
-	ForceIPv4        bool
-	ForceIPv6        bool
-	DestinationPort  uint
-	SourcePort       uint
+	TCP             bool
+	UDP             bool
+	ForceIPv4       bool
+	ForceIPv6       bool
+	DestinationPort uint
+	SourcePort      uint
 
 	// Discovery mode
 	Discover                     bool
+	Disco                        bool // easter egg: discovery with disco visuals
 	DiscoverFlows                uint // Max source ports to probe (0 = unlimited)
 	DiscoverNoNewPathsRounds     uint // Stop after N rounds with no new paths
 	DiscoverPerProbeStableRounds uint // Move probe to new port after N identical rounds
@@ -124,6 +125,8 @@ func ParseArgs() (Args, error) {
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL hops")
 	// Discovery mode
 	flag.BoolVar(&args.Discover, "discover", false, "Discover ECMP paths and exit (see below)")
+	flag.BoolVar(&args.Disco, "disco", false, "")
+	_ = flag.CommandLine.MarkHidden("disco")
 	flag.UintVar(&args.DiscoverFlows, "discover-flows", 0, "Max source ports to use during discovery (0 = unlimited)")
 	flag.UintVar(&args.DiscoverNoNewPathsRounds, "discover-no-new-paths-rounds", 20, "Stop after N consecutive rounds with no new paths")
 	flag.UintVar(&args.DiscoverPerProbeStableRounds, "discover-per-probe-stable-rounds", 10, "Confirm path after N identical rounds")
@@ -181,6 +184,10 @@ func ParseArgs() (Args, error) {
 		return args, errors.New("maximum TTL must be between 0 and 255")
 	case args.Timeout >= 20*args.InterProbeDelay:
 		return args, errors.New("timeout must be less than 20 times inter-probe delay to prevent probe number wrapping issues")
+	}
+
+	if args.Disco {
+		args.Discover = true
 	}
 
 	if args.Discover {

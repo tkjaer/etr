@@ -52,6 +52,8 @@ type tuiModel struct {
 
 	// Discovery mode
 	discoverMode   bool
+	discoMode      bool
+	discoFrame     int
 	discoveryStats shared.DiscoveryStats
 
 	// UI state
@@ -325,6 +327,7 @@ func NewBubbleTUIOutput(info shared.OutputInfo) *BubbleTUIOutput {
 		refreshInterval: info.TUIRefresh,
 		noStyle:         info.NoStyle,
 		discoverMode:    info.DiscoverMode,
+		discoMode:       info.DiscoMode,
 		selectedProbe:   0,
 		focus:           focusSummary,
 		help:            help.New(),
@@ -617,11 +620,37 @@ func (m *tuiModel) View() string {
 	if m.discoverMode {
 		title = fmt.Sprintf(" DISCOVERY — %s | %s port %d | Elapsed: %s ",
 			m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
+		if m.discoMode {
+			title = fmt.Sprintf(" 🪩 DISCO — %s | %s port %d | Elapsed: %s ",
+				m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
+		}
 	} else {
 		title = fmt.Sprintf(" ECMP Traceroute to %s | Protocol: %s | Port: %d | Elapsed: %s ",
 			m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
 	}
-	b.WriteString(m.renderWidth(titleStyle, m.width, title))
+	if m.discoMode {
+		// Easter egg: --disco renders a rainbow wave across the title bar 🪩
+		rainbow := []string{"#FF0055", "#FF4400", "#FF9900", "#FFDD00", "#88FF00", "#00FF88", "#00DDFF", "#0088FF", "#4400FF", "#9900FF", "#FF00AA"}
+		// Pad title to full width
+		for lipgloss.Width(title) < m.width {
+			title += " "
+		}
+		// Render each character with a shifted color for a moving wave
+		var discoBar strings.Builder
+		frame := m.discoFrame / 3 // slow down: advance wave every 3 renders
+		for i, ch := range title {
+			idx := (i/2 + frame) % len(rainbow)
+			style := lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(lipgloss.Color(rainbow[idx]))
+			discoBar.WriteString(style.Render(string(ch)))
+		}
+		m.discoFrame++
+		b.WriteString(discoBar.String())
+	} else {
+		b.WriteString(m.renderWidth(titleStyle, m.width, title))
+	}
 	b.WriteString("\n")
 
 	// Discovery progress strip (only in discovery mode)
