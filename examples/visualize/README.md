@@ -4,80 +4,43 @@ Tools for visualizing ETR traceroute results.
 
 ## path-diagram
 
-Generate visual diagrams from ETR JSON output showing ECMP path diversity.
+Generate a merged DAG (directed acyclic graph) from ETR JSON output showing
+ECMP path diversity. Paths that share hops are merged, and divergence/convergence
+points are clearly visible.
 
 **Features:**
-- ASCII output - terminal-friendly text visualization
-- Image output - PNG/SVG/PDF diagrams with Graphviz
-- Color-coded paths showing common vs divergent hops
-- Dark mode support for images
-- 5-tuple flow information display
-- Path statistics and distribution
+- PNG/SVG/PDF output via Graphviz
+- Merged DAG — shared hops appear once, branches fan out and rejoin
+- Dark mode support
+- Reads both probe-run JSON and discovery summary format
 
-### ASCII Mode (no dependencies)
-
+**Requirements:**
 ```bash
-# Basic ASCII output
-./examples/visualize/path-diagram --ascii examples/monitoring/data/etr.json
-
-# stdin
-./etr --count 5 --tcp -J 192.0.2.1 | ./path-diagram --ascii -
-```
-
-### Image Mode (requires graphviz)
-
-```bash
-# Install dependencies
-pip install graphviz      # pip
+pip install graphviz      # Python bindings
 brew install graphviz     # macOS
 apt-get install graphviz  # Linux
-
-# Generate PNG diagram
-./examples/visualize/path-diagram examples/monitoring/data/etr.json
-
-# Generate SVG (better for zooming)
-./examples/visualize/path-diagram examples/monitoring/data/etr.json --output paths.svg
-
-# Generate PDF
-./examples/visualize/path-diagram examples/monitoring/data/etr.json --output paths.pdf
-
-# Dark mode (for dark backgrounds)
-./examples/visualize/path-diagram examples/monitoring/data/etr.json --output paths-dark.png --dark
 ```
 
-### Color Legend
+### Usage
 
-**Image Mode:**
-- 🟢 Green: Common hop (same across all paths)
-- 🟠 Orange: Different hop (ECMP divergence)
-- 🟡 Yellow: Timeout (no response)
+```bash
+# From discovery output
+etr -D -j paths.json example.com
+./examples/visualize/path-diagram paths.json
 
-**ASCII Mode:**
-- `[COMMON]` - Same across all paths
-- `<DIFFER>` - ECMP divergence point
-- `*` - Timeout
+# SVG (better for zooming)
+./examples/visualize/path-diagram paths.json --output paths.svg
 
-### Example Output
+# Dark mode
+./examples/visualize/path-diagram paths.json --output paths-dark.png --dark
 
+# From stdin
+etr -D -J example.com 2>/dev/null | ./examples/visualize/path-diagram -
 ```
-====================================================================================================
-ETR Path Diagram - Destination: 8.8.8.8 (dns.google)
-Total Probes: 75 | Unique Paths: 7
-====================================================================================================
+```
 
-Legend: [COMMON] = Same across all paths  |  <DIFFER> = ECMP divergence  |  * = Timeout
-====================================================================================================
-
-Path 1: 20386dc3 - 15 probes (20.0%)
-Flow: 10.0.1.51:33438 -> 8.8.8.8:443 (TCP)
-----------------------------------------------------------------------------------------------------
-TTL  1 │ [COMMON] │ 10.0.1.1
-TTL  2 │ [COMMON] │ 91.100.34.1 (91.100.34.1.generic-hostname.arrownet.dk)
-TTL  3 │ [COMMON] │ 85.24.4.1 (85.24.4.1.generic-hostname.arrownet.dk)
-TTL  4 │ <DIFFER> │ 62.61.140.120 (62.61.140.120.generic-hostname.danskkabeltv.dk)
-TTL  5 │ [COMMON] │ 82.150.156.122 (danskkabel.ixcph1.openpeering.nl)
-TTL  6 │ [COMMON] │ 217.170.0.243 (telecity-cr.openpeering.nl)
-TTL  7 │    *     │ * * * (timeout)
+Branch labels like `[dc297,e7b6d]` show which path hashes use that edge.
+Edges used by all paths have no label.
 TTL  8 │ <DIFFER> │ 74.125.242.187
 TTL  9 │ <DIFFER> │ 142.251.225.135
 TTL 10 │ [COMMON] │ 8.8.8.8 (dns.google)
