@@ -680,7 +680,7 @@ func (m *tuiModel) View() string {
 	}
 	m.mu.RUnlock()
 
-	summaryWant := probeCount + 5 // rows + header + border
+	summaryWant := probeCount + 5  // rows + header + border
 	detailWant := selectedHops + 5 // hops + header + border
 	minPane := 5
 
