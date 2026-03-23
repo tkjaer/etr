@@ -140,7 +140,7 @@ func BuildBPFFilter(a config.Args) (string, error) {
 	// If --print-bpf is set, include the outgoing probe packets in the filter,
 	// allow capturing them with tcpdump for testing/debugging.
 	if a.PrintBPFFilter {
-		return fmt.Sprintf("(%v or %v or %v) or (%v)", destinationAnswers, ttlExceededAnswers, destUnreachableAnswers, etrPackets), nil
+		return fmt.Sprintf("(%v) or (%v) or (%v) or (%v)", destinationAnswers, ttlExceededAnswers, destUnreachableAnswers, etrPackets), nil
 	}
 	return fmt.Sprintf("(%v) or (%v) or (%v)", destinationAnswers, ttlExceededAnswers, destUnreachableAnswers), nil
 }
