@@ -89,8 +89,8 @@ func run() error {
 			} else {
 				flowStr = fmt.Sprintf("%d/%d", s.FlowsUsed, s.FlowBudget)
 			}
-			fmt.Fprintf(os.Stderr, "\nDiscovery complete: %d unique path(s), %s flows, %d round(s)\n",
-				s.DistinctPaths, flowStr, s.RoundsCompleted)
+			fmt.Fprintf(os.Stderr, "\nDiscovery complete: %d unique path(s), %s flows, %d probes confirmed\n",
+				s.DistinctPaths, flowStr, s.ProbesConfirmed)
 			for _, p := range s.Paths {
 				fmt.Fprintf(os.Stderr, "  path %s  src-port :%d  %s\n",
 					p.PathHash, p.SourcePort, strings.Join(p.Hops, " → "))

@@ -43,10 +43,12 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 			requiredRounds = 2
 		}
 		if probeState.stableRoundsCount >= requiredRounds {
-			// Path confirmed stable — record it (first port wins)
+			// Path confirmed stable — record it and check convergence
 			srcPort := pm.probeConfig.srcPort + probeID
+			newPath := false
 			if pathHash != "" {
 				if _, seen := pm.discovery.allDiscoveredPaths[pathHash]; !seen {
+					newPath = true
 					hopIPs := make([]string, len(hops))
 					for i, h := range hops {
 						if h.Timeout {
@@ -61,27 +63,25 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 					}
 				}
 			}
+
+			pm.discovery.confirmedProbes++
+			if newPath {
+				pm.discovery.noNewPathsCount = 0
+			} else {
+				pm.discovery.noNewPathsCount++
+			}
+
+			if pm.shouldStopDiscoveryNoLock() {
+				pm.stopOnce.Do(func() { close(pm.stop) })
+				return
+			}
+
 			// Retire this probe and spawn a replacement
 			pm.retireAndReplaceProbeNoLock(probeID)
 		}
 	} else {
 		probeState.stableRoundsCount = 1
 		probeState.lastPathHash = pathHash
-	}
-
-	// Round completion tracking — count completions from active probes
-	if _, active := pm.discovery.activeProbes[probeID]; active {
-		completions, exists := pm.discovery.roundCompletions[probeNum]
-		if !exists {
-			completions = make(map[uint16]struct{})
-			pm.discovery.roundCompletions[probeNum] = completions
-		}
-		completions[probeID] = struct{}{}
-
-		if uint(len(completions)) >= uint(len(pm.discovery.activeProbes)) {
-			delete(pm.discovery.roundCompletions, probeNum)
-			pm.evaluateRoundNoLock()
-		}
 	}
 }
 
@@ -120,28 +120,10 @@ func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
 	go pm.spawnDiscoveryProbe(nextID)
 }
 
-// evaluateRoundNoLock checks convergence after a full round completes.
-// Caller must hold discoveryMu write lock.
-func (pm *ProbeManager) evaluateRoundNoLock() {
-	pm.discovery.fullRoundsCompleted++
-
-	currentPathCount := uint(len(pm.discovery.allDiscoveredPaths))
-	if currentPathCount == pm.discovery.lastPathCount {
-		pm.discovery.noNewPathsCount++
-	} else {
-		pm.discovery.noNewPathsCount = 0
-		pm.discovery.lastPathCount = currentPathCount
-	}
-
-	if pm.shouldStopDiscoveryNoLock() {
-		pm.stopOnce.Do(func() { close(pm.stop) })
-	}
-}
-
 // shouldStopDiscoveryNoLock checks convergence conditions.
 // Caller must hold discoveryMu write lock.
 func (pm *ProbeManager) shouldStopDiscoveryNoLock() bool {
-	if pm.discovery.noNewPathsCount >= pm.discovery.noNewPathsRounds {
+	if pm.discovery.noNewPathsCount >= pm.discovery.noNewPathsLimit {
 		return true
 	}
 	if pm.discovery.flowBudget > 0 && pm.discovery.flowsUsed >= pm.discovery.flowBudget {
@@ -165,7 +147,7 @@ type DiscoverySummary struct {
 	DistinctPaths   uint             `json:"distinct_paths"`
 	FlowsUsed       uint             `json:"flows_used"`
 	FlowBudget      uint             `json:"flow_budget"`
-	RoundsCompleted uint             `json:"rounds_completed"`
+	ProbesConfirmed uint             `json:"probes_confirmed"`
 	Paths           []DiscoveredPath `json:"paths"`
 }
 
@@ -184,7 +166,7 @@ func (pm *ProbeManager) GetDiscoverySummary() DiscoverySummary {
 		DistinctPaths:   uint(len(pm.discovery.allDiscoveredPaths)),
 		FlowsUsed:       pm.discovery.flowsUsed,
 		FlowBudget:      pm.discovery.flowBudget,
-		RoundsCompleted: pm.discovery.fullRoundsCompleted,
+		ProbesConfirmed: pm.discovery.confirmedProbes,
 		Paths:           paths,
 	}
 }
@@ -197,8 +179,8 @@ func (pm *ProbeManager) discoveryStatsSnapshot() shared.DiscoveryStats {
 	return shared.DiscoveryStats{
 		FlowsUsed:        pm.discovery.flowsUsed,
 		FlowBudget:       pm.discovery.flowBudget,
-		RoundsCompleted:  pm.discovery.fullRoundsCompleted,
+		ProbesConfirmed:  pm.discovery.confirmedProbes,
 		NoNewPathsCount:  pm.discovery.noNewPathsCount,
-		NoNewPathsTarget: pm.discovery.noNewPathsRounds,
+		NoNewPathsTarget: pm.discovery.noNewPathsLimit,
 	}
 }
