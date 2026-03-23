@@ -157,12 +157,12 @@ func ParseArgs() (Args, error) {
 		println()
 		println("  Tuning flags:")
 		println("    --discover-flows uint                      Max source ports to try (default unlimited)")
-		println("    --discover-no-new-paths-rounds uint        Stop after N rounds with no new paths (default 20)")
+		println("    --discover-no-new-paths-rounds uint        Stop after N confirmed probes with no new path (default 20)")
 		println("    --discover-per-probe-stable-rounds uint    Rounds with timeouts before confirming path (default 10)")
 		println()
 		println("  Stopping conditions (OR):")
-		println("    --discover-no-new-paths-rounds consecutive rounds with no new paths")
-		println("    --discover-flows exhausted AND at least 1 no-new-paths round")
+		println("    --discover-no-new-paths-rounds consecutive confirmed probes with no new path")
+		println("    --discover-flows exhausted AND at least 1 no-new-paths confirmation")
 		os.Exit(0)
 	}
 

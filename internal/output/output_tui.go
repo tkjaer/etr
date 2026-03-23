@@ -267,9 +267,30 @@ func (m *tuiModel) renderWidth(style lipgloss.Style, width int, value string) st
 	return style.Width(width).Render(value)
 }
 
-func (m *tuiModel) renderContainer(style lipgloss.Style, width int, value string) string {
+func padToSize(value string, width, height int) string {
+	if height <= 0 {
+		return ""
+	}
+	value = padToWidth(value, width)
+	lines := strings.Split(value, "\n")
+	if len(lines) > height {
+		return strings.Join(lines[:height], "\n")
+	}
+	for len(lines) < height {
+		lines = append(lines, strings.Repeat(" ", max(width, 0)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m *tuiModel) renderContainer(style lipgloss.Style, width, height int, value string) string {
 	if m.noStyle {
-		return padToWidth(value, width)
+		return padToSize(value, width, height)
+	}
+	if height > 0 {
+		// lipgloss Height sets inner content height; subtract border + vertical padding
+		vPad := style.GetVerticalBorderSize() + style.GetVerticalPadding()
+		innerHeight := max(height-vPad, 1)
+		return style.Width(width).Height(innerHeight).Render(value)
 	}
 	return style.Width(width).Render(value)
 }
@@ -661,13 +682,10 @@ func (m *tuiModel) View() string {
 		discoveryStripHeight = 1
 	}
 
-	// Help is always 1 line
-	helpHeight := 1
-	separatorHeight := 6
-	if m.noStyle {
-		separatorHeight = 2
-	}
-	contentHeight := m.height - separatorHeight - helpHeight - discoveryStripHeight
+	// Overhead outside the two panes:
+	//   title(1) + \n(1) + \n after summary(1) + \n after detail(1) + help(1) = 5
+	overheadHeight := 5 + discoveryStripHeight
+	contentHeight := m.height - overheadHeight
 
 	// Split view: summary on top, detailed probe view below.
 	// Size each pane to fit its content; when both need more than available,
@@ -680,24 +698,23 @@ func (m *tuiModel) View() string {
 	}
 	m.mu.RUnlock()
 
-	summaryWant := probeCount + 5  // rows + header + border
-	detailWant := selectedHops + 5 // hops + header + border
+	summaryWant := probeCount + 3 + 2  // content(rows + header) + border
+	detailWant := selectedHops + 3 + 2 // content(hops + header) + border
 	minPane := 5
 
-	totalWant := summaryWant + detailWant + 1
+	// Always fill contentHeight. Summary gets what it needs (capped),
+	// detail gets the rest. contentHeight = summaryHeight + probeHeight.
 	var summaryHeight, probeHeight int
+	totalWant := summaryWant + detailWant
 	if totalWant <= contentHeight {
-		// Both fit — give each what it needs, extra goes to detail
 		summaryHeight = summaryWant
-		probeHeight = contentHeight - summaryHeight - 1
 	} else {
-		// Not enough room — share proportionally, min 5 each
 		ratio := float64(summaryWant) / float64(totalWant)
-		summaryHeight = int(ratio * float64(contentHeight-1))
+		summaryHeight = int(ratio * float64(contentHeight))
 		summaryHeight = max(summaryHeight, minPane)
-		summaryHeight = min(summaryHeight, contentHeight-1-minPane)
-		probeHeight = contentHeight - summaryHeight - 1
+		summaryHeight = min(summaryHeight, contentHeight-minPane)
 	}
+	probeHeight = contentHeight - summaryHeight
 
 	// Render summary pane
 	summary := m.renderNormalSummary(summaryHeight)
@@ -744,9 +761,9 @@ func (m *tuiModel) renderDiscoveryProgress() string {
 		flowPart = fmt.Sprintf("Flows: %d/%d [%s]", stats.FlowsUsed, stats.FlowBudget, bar)
 	}
 
-	noNewPart := fmt.Sprintf("No new paths: %d/%d rounds", stats.NoNewPathsCount, stats.NoNewPathsTarget)
-	progressLine := fmt.Sprintf("  %d path(s) found   %s   Round %d   %s  ",
-		paths, flowPart, stats.RoundsCompleted, noNewPart)
+	noNewPart := fmt.Sprintf("No new paths: %d/%d probes", stats.NoNewPathsCount, stats.NoNewPathsTarget)
+	progressLine := fmt.Sprintf("  %d path(s) found   %s   %d confirmed   %s  ",
+		paths, flowPart, stats.ProbesConfirmed, noNewPart)
 	return m.renderWidth(titleStyle, m.width, progressLine)
 }
 
@@ -786,7 +803,7 @@ func (m *tuiModel) renderNormalSummary(maxHeight int) string {
 	}
 	slices.Sort(probeIDs)
 
-	visibleRows := maxHeight - 3
+	visibleRows := maxHeight - 3 - 2 // subtract header(3) and border(2)
 	visibleRows = max(visibleRows, 1)
 
 	selectedIndex := 0
@@ -878,7 +895,7 @@ func (m *tuiModel) renderNormalSummary(maxHeight int) string {
 	if m.noStyle {
 		containerWidth = m.width
 	}
-	return m.renderContainer(summaryContainer, containerWidth, b.String())
+	return m.renderContainer(summaryContainer, containerWidth, maxHeight, b.String())
 }
 
 // renderLiveProbeDetails renders the hop-by-hop live view for a specific probe.
@@ -892,7 +909,7 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 		if m.noStyle {
 			containerWidth = m.width
 		}
-		return m.renderContainer(borderStyle, containerWidth, "No data for probe")
+		return m.renderContainer(borderStyle, containerWidth, maxHeight, "No data for probe")
 	}
 
 	var b strings.Builder
@@ -1030,7 +1047,7 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 		}
 	}
 
-	visibleLines := maxHeight - 3
+	visibleLines := maxHeight - 3 - 2 // subtract header(3) and border(2)
 	visibleLines = max(visibleLines, 0)
 
 	maxScroll := 0
@@ -1059,7 +1076,7 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 	if m.noStyle {
 		containerWidth = m.width
 	}
-	return m.renderContainer(detailContainer, containerWidth, b.String())
+	return m.renderContainer(detailContainer, containerWidth, maxHeight, b.String())
 }
 
 // Helper types for aggregate stats

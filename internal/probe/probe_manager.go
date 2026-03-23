@@ -79,17 +79,15 @@ type outputMsg struct {
 type discoveryState struct {
 	enabled              bool
 	flowBudget           uint
-	noNewPathsRounds     uint
+	noNewPathsLimit      uint
 	perProbeStableRounds uint
 	flowsUsed            uint
 	noNewPathsCount      uint
+	confirmedProbes      uint
 	allDiscoveredPaths   map[string]discoveredPathInfo // path hash -> info about first observation
 	perProbeState        map[uint16]*probeDiscoveryState
 	activeProbes         map[uint16]struct{} // probeIDs currently running
 	nextProbeID          uint16              // next probeID to assign
-	fullRoundsCompleted  uint
-	lastPathCount        uint
-	roundCompletions     map[uint]map[uint16]struct{} // probeNum -> set of probeIDs that completed
 }
 
 // discoveredPathInfo stores metadata about a confirmed path.
@@ -185,14 +183,13 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 		discovery: discoveryState{
 			enabled:              a.Discover,
 			flowBudget:           a.DiscoverFlows,
-			noNewPathsRounds:     a.DiscoverNoNewPathsRounds,
+			noNewPathsLimit:      a.DiscoverNoNewPathsRounds,
 			perProbeStableRounds: a.DiscoverPerProbeStableRounds,
 			allDiscoveredPaths:   make(map[string]discoveredPathInfo),
 			perProbeState:        make(map[uint16]*probeDiscoveryState),
 			activeProbes:         make(map[uint16]struct{}),
 			nextProbeID:          uint16(a.ParallelProbes),
 			flowsUsed:            a.ParallelProbes, // initial probes count toward the budget
-			roundCompletions:     make(map[uint]map[uint16]struct{}),
 		},
 		args: a,
 	}

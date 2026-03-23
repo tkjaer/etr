@@ -54,7 +54,7 @@ type OutputInfo struct {
 type DiscoveryStats struct {
 	FlowsUsed        uint
 	FlowBudget       uint
-	RoundsCompleted  uint
+	ProbesConfirmed  uint
 	NoNewPathsCount  uint
 	NoNewPathsTarget uint
 }
