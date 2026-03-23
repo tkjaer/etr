@@ -669,9 +669,35 @@ func (m *tuiModel) View() string {
 	}
 	contentHeight := m.height - separatorHeight - helpHeight - discoveryStripHeight
 
-	// Split view: summary on top, detailed probe view below
-	summaryHeight := min(contentHeight/3, 15)
-	probeHeight := contentHeight - summaryHeight - 1
+	// Split view: summary on top, detailed probe view below.
+	// Size each pane to fit its content; when both need more than available,
+	// share proportionally with a minimum of 5 rows each.
+	m.mu.RLock()
+	probeCount := len(m.probes)
+	selectedHops := 0
+	if probe, ok := m.probes[m.selectedProbe]; ok {
+		selectedHops = len(probe.Hops)
+	}
+	m.mu.RUnlock()
+
+	summaryWant := probeCount + 5 // rows + header + border
+	detailWant := selectedHops + 5 // hops + header + border
+	minPane := 5
+
+	totalWant := summaryWant + detailWant + 1
+	var summaryHeight, probeHeight int
+	if totalWant <= contentHeight {
+		// Both fit — give each what it needs, extra goes to detail
+		summaryHeight = summaryWant
+		probeHeight = contentHeight - summaryHeight - 1
+	} else {
+		// Not enough room — share proportionally, min 5 each
+		ratio := float64(summaryWant) / float64(totalWant)
+		summaryHeight = int(ratio * float64(contentHeight-1))
+		summaryHeight = max(summaryHeight, minPane)
+		summaryHeight = min(summaryHeight, contentHeight-1-minPane)
+		probeHeight = contentHeight - summaryHeight - 1
+	}
 
 	// Render summary pane
 	summary := m.renderNormalSummary(summaryHeight)
