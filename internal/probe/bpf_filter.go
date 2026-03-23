@@ -81,11 +81,13 @@ func BuildBPFFilter(a config.Args) (string, error) {
 	if a.Discover {
 		budget := uint32(a.DiscoverFlows)
 		if budget == 0 {
-			budget = 1000 // reasonable cap for unlimited budget
-		}
-		portCount = uint32(pp) + budget
-		if uint32(probeConfig.srcPort)+portCount-1 > 65535 {
+			// Unlimited: cover all ports from srcPort to 65535
 			portCount = 65536 - uint32(probeConfig.srcPort)
+		} else {
+			portCount = uint32(pp) + budget
+			if uint32(probeConfig.srcPort)+portCount-1 > 65535 {
+				portCount = 65536 - uint32(probeConfig.srcPort)
+			}
 		}
 	}
 
