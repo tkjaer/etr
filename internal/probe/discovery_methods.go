@@ -154,19 +154,19 @@ func (pm *ProbeManager) shouldStopDiscoveryNoLock() bool {
 
 // DiscoveredPath describes one unique path found during discovery.
 type DiscoveredPath struct {
-	PathHash   string
-	SourcePort uint16
-	Hops       []string // IP per hop ("*" for timeouts)
+	PathHash   string   `json:"path_hash"`
+	SourcePort uint16   `json:"source_port"`
+	Hops       []string `json:"hops"`
 }
 
 // DiscoverySummary holds end-of-run discovery statistics.
 type DiscoverySummary struct {
-	Enabled         bool
-	DistinctPaths   uint
-	FlowsUsed       uint
-	FlowBudget      uint
-	RoundsCompleted uint
-	Paths           []DiscoveredPath
+	Enabled         bool             `json:"-"`
+	DistinctPaths   uint             `json:"distinct_paths"`
+	FlowsUsed       uint             `json:"flows_used"`
+	FlowBudget      uint             `json:"flow_budget"`
+	RoundsCompleted uint             `json:"rounds_completed"`
+	Paths           []DiscoveredPath `json:"paths"`
 }
 
 // GetDiscoverySummary returns end-of-run discovery statistics.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -93,6 +94,14 @@ func run() error {
 			for _, p := range s.Paths {
 				fmt.Fprintf(os.Stderr, "  path %s  src-port :%d  %s\n",
 					p.PathHash, p.SourcePort, strings.Join(p.Hops, " → "))
+			} // Write JSON summary to stdout (-J) or file (-j)
+			if args.Json {
+				_ = json.NewEncoder(os.Stdout).Encode(s)
+			} else if args.JsonFile != "" {
+				if f, err := os.OpenFile(args.JsonFile, os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+					_ = json.NewEncoder(f).Encode(s)
+					_ = f.Close()
+				}
 			}
 		}
 	}
