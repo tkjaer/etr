@@ -58,6 +58,7 @@ type Args struct {
 func ParseArgs() (Args, error) {
 	var args Args
 	var showVersion bool
+	var showDiscoverHelp bool
 	if _, ok := os.LookupEnv("NO_COLOR"); ok {
 		args.NoStyle = true
 	}
@@ -76,31 +77,13 @@ func ParseArgs() (Args, error) {
 		println("  etr -U <destination>                 # UDP traceroute")
 		println("  etr -c 10 -J <destination>           # 10 probes, JSON to stdout")
 		println("  etr -j results.json <destination>    # Save JSON while showing TUI")
-		println("  etr --print-bpf <destination>        # Print tcpdump filter and exit")
-		println("  etr --discover <destination>          # Discover ECMP paths")
+		println("  etr -B <destination>                 # Print tcpdump filter and exit")
+		println("  etr -D <destination>                 # Discover ECMP paths")
 		println()
 		println("Options:")
 		flag.PrintDefaults()
 		println()
-		println("Discovery mode (--discover):")
-		println("  Probes with sequential source ports to discover ECMP paths.")
-		println("  Each source port gets its own probe with independent statistics.")
-		println("  A path is confirmed once its hash is stable for 2 consecutive rounds")
-		println("  where all hops responded, OR 10 rounds when some hops timed out.")
-		println("  Once confirmed, the probe is retired and a new one is spawned.")
-		println()
-		println("  Defaults adjusted for discovery (override with explicit flags):")
-		println("    -P 2        Fewer parallel probes reduces ICMP pressure on routers")
-		println("    -d 500ms    Faster rounds (fewer probes make this safe)")
-		println()
-		println("  Tuning flags:")
-		println("    --discover-flows uint                      Max source ports to try (default unlimited)")
-		println("    --discover-no-new-paths-rounds uint        Stop after N rounds with no new paths (default 20)")
-		println("    --discover-per-probe-stable-rounds uint    Rounds with timeouts before confirming path (default 10)")
-		println()
-		println("  Stopping conditions (OR):")
-		println("    --discover-no-new-paths-rounds consecutive rounds with no new paths")
-		println("    --discover-flows exhausted AND at least 1 no-new-paths round")
+		println("Run 'etr --discover-help' for discovery mode tuning details.")
 		println()
 		println("Documentation: https://github.com/tkjaer/etr")
 		println("Report issues: https://github.com/tkjaer/etr/issues")
@@ -124,7 +107,9 @@ func ParseArgs() (Args, error) {
 	flag.UintVarP(&args.NumProbes, "count", "c", 0, "Number of probe iterations (0 = infinite)")
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL hops")
 	// Discovery mode
-	flag.BoolVar(&args.Discover, "discover", false, "Discover ECMP paths and exit (see below)")
+	flag.BoolVarP(&args.Discover, "discover", "D", false, "Discover ECMP paths and exit (see --discover-help)")
+	flag.BoolVar(&showDiscoverHelp, "discover-help", false, "Show discovery mode help and exit")
+	_ = flag.CommandLine.MarkHidden("discover-help")
 	flag.BoolVar(&args.Disco, "disco", false, "")
 	_ = flag.CommandLine.MarkHidden("disco")
 	flag.UintVar(&args.DiscoverFlows, "discover-flows", 0, "Max source ports to use during discovery (0 = unlimited)")
@@ -153,6 +138,31 @@ func ParseArgs() (Args, error) {
 	// Handle version flag
 	if showVersion {
 		fmt.Println(version.FullVersion())
+		os.Exit(0)
+	}
+
+	// Handle discover help flag
+	if showDiscoverHelp {
+		println("Discovery mode (--discover):")
+		println()
+		println("  Probes with sequential source ports to discover ECMP paths.")
+		println("  Each source port gets its own probe with independent statistics.")
+		println("  A path is confirmed once its hash is stable for 2 consecutive rounds")
+		println("  where all hops responded, OR 10 rounds when some hops timed out.")
+		println("  Once confirmed, the probe is retired and a new one is spawned.")
+		println()
+		println("  Defaults adjusted for discovery (override with explicit flags):")
+		println("    -P 2        Fewer parallel probes reduces ICMP pressure on routers")
+		println("    -d 500ms    Faster rounds (fewer probes make this safe)")
+		println()
+		println("  Tuning flags:")
+		println("    --discover-flows uint                      Max source ports to try (default unlimited)")
+		println("    --discover-no-new-paths-rounds uint        Stop after N rounds with no new paths (default 20)")
+		println("    --discover-per-probe-stable-rounds uint    Rounds with timeouts before confirming path (default 10)")
+		println()
+		println("  Stopping conditions (OR):")
+		println("    --discover-no-new-paths-rounds consecutive rounds with no new paths")
+		println("    --discover-flows exhausted AND at least 1 no-new-paths round")
 		os.Exit(0)
 	}
 
