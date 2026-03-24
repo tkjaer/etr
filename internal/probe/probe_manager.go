@@ -96,7 +96,14 @@ type discoveryState struct {
 // discoveredPathInfo stores metadata about a confirmed path.
 type discoveredPathInfo struct {
 	sourcePort uint16
-	hops       []string // IP per hop (\"*\" for timeouts)
+	hops       []discoveredHop
+}
+
+// discoveredHop stores per-hop metadata.
+type discoveredHop struct {
+	IP  string
+	PTR string
+	ASN string
 }
 
 // probeDiscoveryState tracks stability for one probe's current flow

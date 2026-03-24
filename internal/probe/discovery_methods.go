@@ -50,17 +50,17 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 			// Always record the path (first port per hash wins)
 			if pathHash != "" {
 				if _, seen := pm.discovery.allDiscoveredPaths[pathHash]; !seen {
-					hopIPs := make([]string, len(hops))
+					dHops := make([]discoveredHop, len(hops))
 					for i, h := range hops {
 						if h.Timeout {
-							hopIPs[i] = "*"
+							dHops[i] = discoveredHop{IP: "*"}
 						} else {
-							hopIPs[i] = h.IP
+							dHops[i] = discoveredHop{IP: h.IP, PTR: h.PTR, ASN: h.ASN}
 						}
 					}
 					pm.discovery.allDiscoveredPaths[pathHash] = discoveredPathInfo{
 						sourcePort: srcPort,
-						hops:       hopIPs,
+						hops:       dHops,
 					}
 					if !pm.discovery.hopsMode {
 						foundNew = true
@@ -152,11 +152,18 @@ func (pm *ProbeManager) shouldStopDiscoveryNoLock() bool {
 	return false
 }
 
+// DiscoveredHop describes a single hop in a discovered path.
+type DiscoveredHop struct {
+	IP  string `json:"ip"`
+	PTR string `json:"ptr,omitempty"`
+	ASN string `json:"asn,omitempty"`
+}
+
 // DiscoveredPath describes one unique path found during discovery.
 type DiscoveredPath struct {
-	PathHash   string   `json:"path_hash"`
-	SourcePort uint16   `json:"source_port"`
-	Hops       []string `json:"hops"`
+	PathHash   string          `json:"path_hash"`
+	SourcePort uint16          `json:"source_port"`
+	Hops       []DiscoveredHop `json:"hops"`
 }
 
 // DiscoverySummary holds end-of-run discovery statistics.
@@ -179,7 +186,11 @@ func (pm *ProbeManager) GetDiscoverySummary() DiscoverySummary {
 
 	paths := make([]DiscoveredPath, 0, len(pm.discovery.allDiscoveredPaths))
 	for hash, info := range pm.discovery.allDiscoveredPaths {
-		paths = append(paths, DiscoveredPath{PathHash: hash, SourcePort: info.sourcePort, Hops: info.hops})
+		dHops := make([]DiscoveredHop, len(info.hops))
+		for i, h := range info.hops {
+			dHops[i] = DiscoveredHop(h)
+		}
+		paths = append(paths, DiscoveredPath{PathHash: hash, SourcePort: info.sourcePort, Hops: dHops})
 	}
 
 	return DiscoverySummary{
