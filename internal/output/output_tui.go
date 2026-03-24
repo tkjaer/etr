@@ -52,6 +52,7 @@ type tuiModel struct {
 
 	// Discovery mode
 	discoverMode   bool
+	discoverHops   bool
 	discoMode      bool
 	discoFrame     int
 	discoveryStats shared.DiscoveryStats
@@ -348,6 +349,7 @@ func NewBubbleTUIOutput(info shared.OutputInfo) *BubbleTUIOutput {
 		refreshInterval: info.TUIRefresh,
 		noStyle:         info.NoStyle,
 		discoverMode:    info.DiscoverMode,
+		discoverHops:    info.DiscoverHops,
 		discoMode:       info.DiscoMode,
 		selectedProbe:   0,
 		focus:           focusSummary,
@@ -639,8 +641,12 @@ func (m *tuiModel) View() string {
 	elapsed := time.Since(m.startTime)
 	var title string
 	if m.discoverMode {
-		title = fmt.Sprintf(" DISCOVERY — %s | %s port %d | Elapsed: %s ",
-			m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
+		mode := "DISCOVERY"
+		if m.discoverHops {
+			mode = "DISCOVERY (hops)"
+		}
+		title = fmt.Sprintf(" %s — %s | %s port %d | Elapsed: %s ",
+			mode, m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
 		if m.discoMode {
 			title = fmt.Sprintf(" 🪩 DISCO — %s | %s port %d | Elapsed: %s ",
 				m.destination, m.protocol, m.dstPort, elapsed.Round(time.Second))
@@ -758,7 +764,11 @@ func (m *tuiModel) renderDiscoveryProgress() string {
 		flowPart = fmt.Sprintf("Flows: %d/%d [%s]", stats.FlowsUsed, stats.FlowBudget, bar)
 	}
 
-	noNewPart := fmt.Sprintf("No new paths: %d/%d probes", stats.NoNewPathsCount, stats.NoNewPathsTarget)
+	noNewLabel := "No new paths"
+	if m.discoverHops {
+		noNewLabel = "No new hops"
+	}
+	noNewPart := fmt.Sprintf("%s: %d/%d probes", noNewLabel, stats.NoNewPathsCount, stats.NoNewPathsTarget)
 	progressLine := fmt.Sprintf("  %d path(s) found   %s   %d confirmed   %s  ",
 		paths, flowPart, stats.ProbesConfirmed, noNewPart)
 	return m.renderWidth(titleStyle, m.width, progressLine)

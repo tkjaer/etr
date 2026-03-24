@@ -45,10 +45,11 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 		if probeState.stableRoundsCount >= requiredRounds {
 			// Path confirmed stable — record it and check convergence
 			srcPort := pm.probeConfig.srcPort + probeID
-			newPath := false
+			foundNew := false
+
+			// Always record the path (first port per hash wins)
 			if pathHash != "" {
 				if _, seen := pm.discovery.allDiscoveredPaths[pathHash]; !seen {
-					newPath = true
 					hopIPs := make([]string, len(hops))
 					for i, h := range hops {
 						if h.Timeout {
@@ -61,11 +62,26 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 						sourcePort: srcPort,
 						hops:       hopIPs,
 					}
+					if !pm.discovery.hopsMode {
+						foundNew = true
+					}
+				}
+			}
+
+			// In hops mode, check for new IPs instead of new paths
+			if pm.discovery.hopsMode {
+				for _, h := range hops {
+					if !h.Timeout && h.IP != "" {
+						if _, seen := pm.discovery.allDiscoveredIPs[h.IP]; !seen {
+							pm.discovery.allDiscoveredIPs[h.IP] = struct{}{}
+							foundNew = true
+						}
+					}
 				}
 			}
 
 			pm.discovery.confirmedProbes++
-			if newPath {
+			if foundNew {
 				pm.discovery.noNewPathsCount = 0
 			} else {
 				pm.discovery.noNewPathsCount++
@@ -105,6 +121,8 @@ func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
 	}
 	nextID := pm.discovery.nextProbeID
 	if uint32(pm.probeConfig.srcPort)+uint32(nextID) > 65535 {
+		pm.discovery.stoppedByPortLimit = true
+		slog.Warn("Discovery: ran out of source ports", "last_port", pm.probeConfig.srcPort+nextID-1)
 		return
 	}
 
@@ -143,12 +161,15 @@ type DiscoveredPath struct {
 
 // DiscoverySummary holds end-of-run discovery statistics.
 type DiscoverySummary struct {
-	Enabled         bool             `json:"-"`
-	DistinctPaths   uint             `json:"distinct_paths"`
-	FlowsUsed       uint             `json:"flows_used"`
-	FlowBudget      uint             `json:"flow_budget"`
-	ProbesConfirmed uint             `json:"probes_confirmed"`
-	Paths           []DiscoveredPath `json:"paths"`
+	Enabled            bool             `json:"-"`
+	HopsMode           bool             `json:"hops_mode,omitempty"`
+	DistinctPaths      uint             `json:"distinct_paths"`
+	UniqueHops         uint             `json:"unique_hops,omitempty"`
+	FlowsUsed          uint             `json:"flows_used"`
+	FlowBudget         uint             `json:"flow_budget"`
+	ProbesConfirmed    uint             `json:"probes_confirmed"`
+	StoppedByPortLimit bool             `json:"stopped_by_port_limit,omitempty"`
+	Paths              []DiscoveredPath `json:"paths"`
 }
 
 // GetDiscoverySummary returns end-of-run discovery statistics.
@@ -162,12 +183,15 @@ func (pm *ProbeManager) GetDiscoverySummary() DiscoverySummary {
 	}
 
 	return DiscoverySummary{
-		Enabled:         pm.discovery.enabled,
-		DistinctPaths:   uint(len(pm.discovery.allDiscoveredPaths)),
-		FlowsUsed:       pm.discovery.flowsUsed,
-		FlowBudget:      pm.discovery.flowBudget,
-		ProbesConfirmed: pm.discovery.confirmedProbes,
-		Paths:           paths,
+		Enabled:            pm.discovery.enabled,
+		HopsMode:           pm.discovery.hopsMode,
+		DistinctPaths:      uint(len(pm.discovery.allDiscoveredPaths)),
+		UniqueHops:         uint(len(pm.discovery.allDiscoveredIPs)),
+		FlowsUsed:          pm.discovery.flowsUsed,
+		FlowBudget:         pm.discovery.flowBudget,
+		ProbesConfirmed:    pm.discovery.confirmedProbes,
+		StoppedByPortLimit: pm.discovery.stoppedByPortLimit,
+		Paths:              paths,
 	}
 }
 

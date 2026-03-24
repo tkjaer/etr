@@ -89,8 +89,16 @@ func run() error {
 			} else {
 				flowStr = fmt.Sprintf("%d/%d", s.FlowsUsed, s.FlowBudget)
 			}
-			fmt.Fprintf(os.Stderr, "\nDiscovery complete: %d unique path(s), %s flows, %d probes confirmed\n",
-				s.DistinctPaths, flowStr, s.ProbesConfirmed)
+			if s.HopsMode {
+				fmt.Fprintf(os.Stderr, "\nDiscovery complete: %d unique hop(s), %d path(s), %s flows, %d probes confirmed\n",
+					s.UniqueHops, s.DistinctPaths, flowStr, s.ProbesConfirmed)
+			} else {
+				fmt.Fprintf(os.Stderr, "\nDiscovery complete: %d unique path(s), %s flows, %d probes confirmed\n",
+					s.DistinctPaths, flowStr, s.ProbesConfirmed)
+			}
+			if s.StoppedByPortLimit {
+				fmt.Fprintf(os.Stderr, "  WARNING: stopped by source port limit (65535). Use -s <lower port> for more range.\n")
+			}
 			for _, p := range s.Paths {
 				fmt.Fprintf(os.Stderr, "  path %s  src-port :%d  %s\n",
 					p.PathHash, p.SourcePort, strings.Join(p.Hops, " → "))

@@ -78,6 +78,7 @@ type outputMsg struct {
 // discoveryState tracks per-probe path stability and flow rotation
 type discoveryState struct {
 	enabled              bool
+	hopsMode             bool // count unique IPs instead of unique paths
 	flowBudget           uint
 	noNewPathsLimit      uint
 	perProbeStableRounds uint
@@ -85,9 +86,11 @@ type discoveryState struct {
 	noNewPathsCount      uint
 	confirmedProbes      uint
 	allDiscoveredPaths   map[string]discoveredPathInfo // path hash -> info about first observation
+	allDiscoveredIPs     map[string]struct{}           // all unique IPs seen (hops mode)
 	perProbeState        map[uint16]*probeDiscoveryState
 	activeProbes         map[uint16]struct{} // probeIDs currently running
 	nextProbeID          uint16              // next probeID to assign
+	stoppedByPortLimit   bool
 }
 
 // discoveredPathInfo stores metadata about a confirmed path.
@@ -182,10 +185,12 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 		},
 		discovery: discoveryState{
 			enabled:              a.Discover,
+			hopsMode:             a.DiscoverHops,
 			flowBudget:           a.DiscoverFlows,
 			noNewPathsLimit:      a.DiscoverNoNewPathsRounds,
 			perProbeStableRounds: a.DiscoverPerProbeStableRounds,
 			allDiscoveredPaths:   make(map[string]discoveredPathInfo),
+			allDiscoveredIPs:     make(map[string]struct{}),
 			perProbeState:        make(map[uint16]*probeDiscoveryState),
 			activeProbes:         make(map[uint16]struct{}),
 			nextProbeID:          uint16(a.ParallelProbes),
@@ -478,6 +483,7 @@ func (pm *ProbeManager) createOutputs() (*output.BubbleTUIOutput, *output.Output
 		TUIRefresh:     pm.outputConfig.tuiRefresh,
 		NoStyle:        pm.outputConfig.noStyle,
 		DiscoverMode:   pm.discovery.enabled,
+		DiscoverHops:   pm.discovery.hopsMode,
 		DiscoMode:      pm.args.Disco,
 	}
 	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {

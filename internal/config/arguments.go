@@ -31,6 +31,7 @@ type Args struct {
 
 	// Discovery mode
 	Discover                     bool
+	DiscoverHops                 bool // discover unique hops instead of unique paths
 	Disco                        bool // easter egg: discovery with disco visuals
 	DiscoverFlows                uint // Max source ports to probe (0 = unlimited)
 	DiscoverNoNewPathsRounds     uint // Stop after N rounds with no new paths
@@ -108,6 +109,7 @@ func ParseArgs() (Args, error) {
 	flag.UintVarP(&args.MaxTTL, "max-ttl", "m", 30, "Maximum TTL hops")
 	// Discovery mode
 	flag.BoolVarP(&args.Discover, "discover", "D", false, "Discover ECMP paths and exit (see --discover-help)")
+	flag.BoolVarP(&args.DiscoverHops, "discover-hops", "H", false, "Discover unique hops and exit (see --discover-help)")
 	flag.BoolVar(&showDiscoverHelp, "discover-help", false, "Show discovery mode help and exit")
 	_ = flag.CommandLine.MarkHidden("discover-help")
 	flag.BoolVar(&args.Disco, "disco", false, "")
@@ -143,13 +145,19 @@ func ParseArgs() (Args, error) {
 
 	// Handle discover help flag
 	if showDiscoverHelp {
-		println("Discovery mode (--discover):")
+		println("Discovery mode:")
 		println()
-		println("  Probes with sequential source ports to discover ECMP paths.")
+		println("  -D, --discover        Discover unique ECMP paths")
+		println("  -H, --discover-hops   Discover unique hops (stops when no new IPs found)")
+		println()
+		println("  Probes with sequential source ports to discover ECMP diversity.")
 		println("  Each source port gets its own probe with independent statistics.")
 		println("  A path is confirmed once its hash is stable for 2 consecutive rounds")
 		println("  where all hops responded, OR 10 rounds when some hops timed out.")
 		println("  Once confirmed, the probe is retired and a new one is spawned.")
+		println()
+		println("  -D stops when no new path combinations are found.")
+		println("  -H stops when no new hop IPs are found (faster for topology mapping).")
 		println()
 		println("  Defaults adjusted for discovery (override with explicit flags):")
 		println("    -P 2        Fewer parallel probes reduces ICMP pressure on routers")
@@ -157,12 +165,12 @@ func ParseArgs() (Args, error) {
 		println()
 		println("  Tuning flags:")
 		println("    --discover-flows uint                      Max source ports to try (default unlimited)")
-		println("    --discover-no-new-paths-rounds uint        Stop after N confirmed probes with no new path (default 20)")
+		println("    --discover-no-new-paths-rounds uint        Stop after N confirmed probes with no new discovery (default 20)")
 		println("    --discover-per-probe-stable-rounds uint    Rounds with timeouts before confirming path (default 10)")
 		println()
 		println("  Stopping conditions (OR):")
-		println("    --discover-no-new-paths-rounds consecutive confirmed probes with no new path")
-		println("    --discover-flows exhausted AND at least 1 no-new-paths confirmation")
+		println("    --discover-no-new-paths-rounds consecutive confirmed probes with no new discovery")
+		println("    --discover-flows exhausted AND at least 1 no-new confirmation")
 		os.Exit(0)
 	}
 
@@ -197,6 +205,9 @@ func ParseArgs() (Args, error) {
 	}
 
 	if args.Disco {
+		args.Discover = true
+	}
+	if args.DiscoverHops {
 		args.Discover = true
 	}
 
