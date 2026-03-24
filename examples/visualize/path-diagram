@@ -121,7 +121,9 @@ def build_dag(paths, show_ptr=False, show_asn=False):
         for ttl_idx, hop in enumerate(hops):
             ttl = ttl_idx + 1
             ip = hop['ip']
-            node_id = f't{ttl}_{ip}'
+            # Sanitize node ID for Graphviz (colons in IPv6 break DOT syntax)
+            safe_ip = ip.replace(':', '_').replace('.', '_')
+            node_id = f't{ttl}_{safe_ip}'
 
             # Build label
             if node_id not in nodes:
@@ -149,7 +151,8 @@ def build_dag(paths, show_ptr=False, show_asn=False):
 
     # Enrich labels with PTR/ASN
     for (ttl, ip), meta in hop_meta.items():
-        node_id = f't{ttl}_{ip}'
+        safe_ip = ip.replace(':', '_').replace('.', '_')
+        node_id = f't{ttl}_{safe_ip}'
         if node_id in nodes and ip != '*':
             parts = [ip]
             if show_ptr and meta['ptr']:
