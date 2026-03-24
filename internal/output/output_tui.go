@@ -698,23 +698,20 @@ func (m *tuiModel) View() string {
 	}
 	m.mu.RUnlock()
 
-	summaryWant := probeCount + 3 + 2  // content(rows + header) + border
 	detailWant := selectedHops + 3 + 2 // content(hops + header) + border
-	minPane := 5
+	summaryMax := probeCount + 3 + 2   // no more rows than probes + header + border
 
-	// Always fill contentHeight. Summary gets what it needs (capped),
-	// detail gets the rest. contentHeight = summaryHeight + probeHeight.
-	var summaryHeight, probeHeight int
-	totalWant := summaryWant + detailWant
-	if totalWant <= contentHeight {
-		summaryHeight = summaryWant
-	} else {
-		ratio := float64(summaryWant) / float64(totalWant)
-		summaryHeight = int(ratio * float64(contentHeight))
-		summaryHeight = max(summaryHeight, minPane)
-		summaryHeight = min(summaryHeight, contentHeight-minPane)
-	}
-	probeHeight = contentHeight - summaryHeight
+	// Detail gets what it needs (capped at half), summary gets the rest
+	// but never more than needed for its probe count.
+	// On tiny terminals, split evenly so both panes get something.
+	minPane := min(7, contentHeight/2)
+	detailHeight := min(detailWant, max(contentHeight/2, minPane))
+	detailHeight = max(detailHeight, minPane)
+	summaryHeight := contentHeight - detailHeight
+	summaryHeight = min(summaryHeight, summaryMax)
+	summaryHeight = max(summaryHeight, minPane)
+	detailHeight = contentHeight - summaryHeight
+	probeHeight := detailHeight
 
 	// Render summary pane
 	summary := m.renderNormalSummary(summaryHeight)
