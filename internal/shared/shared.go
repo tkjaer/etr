@@ -47,6 +47,7 @@ type OutputInfo struct {
 	TUIRefresh     time.Duration
 	NoStyle        bool
 	DiscoverMode   bool
+	DiscoverHops   bool
 	DiscoMode      bool
 }
 

@@ -34,7 +34,10 @@ except ImportError:
 
 
 def parse_input(filename):
-    """Parse ETR JSON, returning a list of paths as [(hash, port, [hop_ips])]."""
+    """Parse ETR JSON, returning a list of paths as [(hash, port, [hop_dicts])].
+
+    Each hop_dict has keys: ip, ptr (optional), asn (optional).
+    """
     if filename == '-':
         data = sys.stdin.read()
     else:
@@ -53,11 +56,15 @@ def parse_input(filename):
             obj = json.loads(line)
             if 'paths' in obj and isinstance(obj['paths'], list):
                 for p in obj['paths']:
-                    paths.append((
-                        p.get('path_hash', ''),
-                        p.get('source_port', 0),
-                        p.get('hops', []),
-                    ))
+                    raw_hops = p.get('hops', [])
+                    hops = []
+                    for h in raw_hops:
+                        if isinstance(h, dict):
+                            ip = h.get('ip', '*') or '*'
+                            hops.append({'ip': ip, 'ptr': h.get('ptr', ''), 'asn': h.get('asn', '')})
+                        else:
+                            hops.append({'ip': h if h else '*', 'ptr': '', 'asn': ''})
+                    paths.append((p.get('path_hash', ''), p.get('source_port', 0), hops))
                 return paths
         except json.JSONDecodeError:
             continue
@@ -77,9 +84,9 @@ def parse_input(filename):
             for hop in obj['hops']:
                 ip = hop.get('ip', '')
                 if hop.get('timeout') or not ip:
-                    hops.append('*')
+                    hops.append({'ip': '*', 'ptr': '', 'asn': ''})
                 else:
-                    hops.append(ip)
+                    hops.append({'ip': ip, 'ptr': hop.get('ptr', ''), 'asn': hop.get('asn', '')})
             paths.append((h, obj.get('source_port', 0), hops))
         except json.JSONDecodeError:
             continue
@@ -87,7 +94,7 @@ def parse_input(filename):
     return paths
 
 
-def build_dag(paths):
+def build_dag(paths, show_ptr=False, show_asn=False):
     """Build a DAG as adjacency list from paths.
 
     Returns (nodes, edges, root, leaves) where:
@@ -106,13 +113,30 @@ def build_dag(paths):
     nodes[root] = 'src'
     leaves = set()
 
+    # Collect best metadata per (ttl, ip) across all paths
+    hop_meta = {}  # (ttl, ip) -> {ptr, asn}
+
     for path_hash, port, hops in paths:
         prev = root
-        for ttl_idx, ip in enumerate(hops):
+        for ttl_idx, hop in enumerate(hops):
             ttl = ttl_idx + 1
+            ip = hop['ip']
             node_id = f't{ttl}_{ip}'
+
+            # Build label
             if node_id not in nodes:
-                nodes[node_id] = f'{ip}' if ip != '*' else f'* (ttl {ttl})'
+                if ip == '*':
+                    nodes[node_id] = f'* (ttl {ttl})'
+                else:
+                    nodes[node_id] = ip
+            # Track best metadata (first non-empty wins)
+            key = (ttl, ip)
+            if key not in hop_meta:
+                hop_meta[key] = {'ptr': '', 'asn': ''}
+            if hop.get('ptr') and not hop_meta[key]['ptr']:
+                hop_meta[key]['ptr'] = hop['ptr']
+            if hop.get('asn') and not hop_meta[key]['asn']:
+                hop_meta[key]['asn'] = hop['asn']
 
             edge = (prev, node_id)
             if edge not in edges:
@@ -123,16 +147,27 @@ def build_dag(paths):
 
         leaves.add(prev)
 
+    # Enrich labels with PTR/ASN
+    for (ttl, ip), meta in hop_meta.items():
+        node_id = f't{ttl}_{ip}'
+        if node_id in nodes and ip != '*':
+            parts = [ip]
+            if show_ptr and meta['ptr']:
+                parts.append(f"({meta['ptr'][:40]})")
+            if show_asn and meta['asn']:
+                parts.append(f"[{meta['asn']}]")
+            nodes[node_id] = '\\n'.join(parts)
+
     return nodes, edges, root, leaves
 
 
-def create_image(paths, output_file='etr-paths', dark_mode=False):
+def create_image(paths, output_file='etr-paths', dark_mode=False, show_ptr=False, show_asn=False, show_labels=False):
     """Render the DAG as a Graphviz image."""
     if not paths:
         print("No path data found", file=sys.stderr)
         return
 
-    nodes, edges, root, leaves = build_dag(paths)
+    nodes, edges, root, leaves = build_dag(paths, show_ptr=show_ptr, show_asn=show_asn)
     total = len(paths)
 
     # Determine output format
@@ -174,8 +209,14 @@ def create_image(paths, output_file='etr-paths', dark_mode=False):
         if len(hashes) == total:
             dot.edge(src, dst, penwidth='2')
         else:
-            tags = ','.join(h[:5] for h in sorted(hashes))
-            dot.edge(src, dst, label=tags, style='dashed', penwidth='1')
+            kwargs = {'style': 'dashed', 'penwidth': '1'}
+            if show_labels:
+                n = len(hashes)
+                if n > 10:
+                    kwargs['label'] = f'{n}/{total} paths'
+                else:
+                    kwargs['label'] = ','.join(h[:5] for h in sorted(hashes))
+            dot.edge(src, dst, **kwargs)
 
     try:
         out = dot.render(output_file, cleanup=True)
@@ -187,6 +228,60 @@ def create_image(paths, output_file='etr-paths', dark_mode=False):
         sys.exit(1)
 
 
+def create_mermaid(paths, output_file=None, show_ptr=False, show_asn=False, show_labels=False):
+    """Render the DAG as Mermaid markdown."""
+    if not paths:
+        print("No path data found", file=sys.stderr)
+        return
+
+    nodes, edges, root, leaves = build_dag(paths, show_ptr=show_ptr, show_asn=show_asn)
+    total = len(paths)
+
+    lines = ['graph TD']
+
+    # Sanitize labels for mermaid (replace newlines, escape quotes)
+    def safe(label):
+        return label.replace('\\n', '<br/>').replace('"', "'")
+
+    # Emit nodes
+    for node_id, label in nodes.items():
+        if node_id == root:
+            lines.append(f'    {node_id}(("{safe(label)}"))')
+        elif '*' in label:
+            lines.append(f'    {node_id}[/"{safe(label)}"\\]')
+        else:
+            lines.append(f'    {node_id}["{safe(label)}"]')
+
+    # Emit edges
+    for (src, dst), hashes in edges.items():
+        if len(hashes) == total:
+            lines.append(f'    {src} ==> {dst}')
+        else:
+            if show_labels:
+                n = len(hashes)
+                if n > 10:
+                    label = f'{n}/{total} paths'
+                else:
+                    label = ','.join(h[:5] for h in sorted(hashes))
+                lines.append(f'    {src} -."{safe(label)}".- {dst}')
+            else:
+                lines.append(f'    {src} -.-> {dst}')
+
+    output = '\n'.join(lines)
+
+    # Wrap in markdown fenced code block if output is .md
+    wrap_md = output_file and output_file.endswith('.md')
+    if wrap_md:
+        output = f'```mermaid\n{output}\n```'
+
+    if output_file:
+        with open(output_file, 'w') as f:
+            f.write(output + '\n')
+        print(f"Saved to {output_file}", file=sys.stderr)
+    else:
+        print(output)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Generate merged path DAG from ETR JSON output',
@@ -194,10 +289,19 @@ def main():
     parser.add_argument('input', help='ETR JSON file (- for stdin)')
     parser.add_argument('-o', '--output', help='Output file (default: etr-paths.png)')
     parser.add_argument('--dark', action='store_true', help='Dark mode color scheme')
+    parser.add_argument('--ptr', action='store_true', help='Show PTR (hostname) in node labels')
+    parser.add_argument('--asn', action='store_true', help='Show ASN in node labels')
+    parser.add_argument('--labels', action='store_true', help='Show path hash labels on edges')
+    parser.add_argument('--mermaid', action='store_true', help='Output Mermaid markdown instead of image')
 
     args = parser.parse_args()
     paths = parse_input(args.input)
-    create_image(paths, args.output or 'etr-paths', dark_mode=args.dark)
+    if args.mermaid:
+        create_mermaid(paths, args.output, show_ptr=args.ptr, show_asn=args.asn,
+                       show_labels=args.labels)
+    else:
+        create_image(paths, args.output or 'etr-paths', dark_mode=args.dark,
+                     show_ptr=args.ptr, show_asn=args.asn, show_labels=args.labels)
 
 
 if __name__ == '__main__':

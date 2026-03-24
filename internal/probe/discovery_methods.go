@@ -45,27 +45,43 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 		if probeState.stableRoundsCount >= requiredRounds {
 			// Path confirmed stable — record it and check convergence
 			srcPort := pm.probeConfig.srcPort + probeID
-			newPath := false
+			foundNew := false
+
+			// Always record the path (first port per hash wins)
 			if pathHash != "" {
 				if _, seen := pm.discovery.allDiscoveredPaths[pathHash]; !seen {
-					newPath = true
-					hopIPs := make([]string, len(hops))
+					dHops := make([]discoveredHop, len(hops))
 					for i, h := range hops {
 						if h.Timeout {
-							hopIPs[i] = "*"
+							dHops[i] = discoveredHop{IP: "*"}
 						} else {
-							hopIPs[i] = h.IP
+							dHops[i] = discoveredHop{IP: h.IP, PTR: h.PTR, ASN: h.ASN}
 						}
 					}
 					pm.discovery.allDiscoveredPaths[pathHash] = discoveredPathInfo{
 						sourcePort: srcPort,
-						hops:       hopIPs,
+						hops:       dHops,
+					}
+					if !pm.discovery.hopsMode {
+						foundNew = true
+					}
+				}
+			}
+
+			// In hops mode, check for new IPs instead of new paths
+			if pm.discovery.hopsMode {
+				for _, h := range hops {
+					if !h.Timeout && h.IP != "" {
+						if _, seen := pm.discovery.allDiscoveredIPs[h.IP]; !seen {
+							pm.discovery.allDiscoveredIPs[h.IP] = struct{}{}
+							foundNew = true
+						}
 					}
 				}
 			}
 
 			pm.discovery.confirmedProbes++
-			if newPath {
+			if foundNew {
 				pm.discovery.noNewPathsCount = 0
 			} else {
 				pm.discovery.noNewPathsCount++
@@ -105,6 +121,8 @@ func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
 	}
 	nextID := pm.discovery.nextProbeID
 	if uint32(pm.probeConfig.srcPort)+uint32(nextID) > 65535 {
+		pm.discovery.stoppedByPortLimit = true
+		slog.Warn("Discovery: ran out of source ports", "last_port", pm.probeConfig.srcPort+nextID-1)
 		return
 	}
 
@@ -134,21 +152,31 @@ func (pm *ProbeManager) shouldStopDiscoveryNoLock() bool {
 	return false
 }
 
+// DiscoveredHop describes a single hop in a discovered path.
+type DiscoveredHop struct {
+	IP  string `json:"ip"`
+	PTR string `json:"ptr,omitempty"`
+	ASN string `json:"asn,omitempty"`
+}
+
 // DiscoveredPath describes one unique path found during discovery.
 type DiscoveredPath struct {
-	PathHash   string   `json:"path_hash"`
-	SourcePort uint16   `json:"source_port"`
-	Hops       []string `json:"hops"`
+	PathHash   string          `json:"path_hash"`
+	SourcePort uint16          `json:"source_port"`
+	Hops       []DiscoveredHop `json:"hops"`
 }
 
 // DiscoverySummary holds end-of-run discovery statistics.
 type DiscoverySummary struct {
-	Enabled         bool             `json:"-"`
-	DistinctPaths   uint             `json:"distinct_paths"`
-	FlowsUsed       uint             `json:"flows_used"`
-	FlowBudget      uint             `json:"flow_budget"`
-	ProbesConfirmed uint             `json:"probes_confirmed"`
-	Paths           []DiscoveredPath `json:"paths"`
+	Enabled            bool             `json:"-"`
+	HopsMode           bool             `json:"hops_mode,omitempty"`
+	DistinctPaths      uint             `json:"distinct_paths"`
+	UniqueHops         uint             `json:"unique_hops,omitempty"`
+	FlowsUsed          uint             `json:"flows_used"`
+	FlowBudget         uint             `json:"flow_budget"`
+	ProbesConfirmed    uint             `json:"probes_confirmed"`
+	StoppedByPortLimit bool             `json:"stopped_by_port_limit,omitempty"`
+	Paths              []DiscoveredPath `json:"paths"`
 }
 
 // GetDiscoverySummary returns end-of-run discovery statistics.
@@ -158,16 +186,23 @@ func (pm *ProbeManager) GetDiscoverySummary() DiscoverySummary {
 
 	paths := make([]DiscoveredPath, 0, len(pm.discovery.allDiscoveredPaths))
 	for hash, info := range pm.discovery.allDiscoveredPaths {
-		paths = append(paths, DiscoveredPath{PathHash: hash, SourcePort: info.sourcePort, Hops: info.hops})
+		dHops := make([]DiscoveredHop, len(info.hops))
+		for i, h := range info.hops {
+			dHops[i] = DiscoveredHop(h)
+		}
+		paths = append(paths, DiscoveredPath{PathHash: hash, SourcePort: info.sourcePort, Hops: dHops})
 	}
 
 	return DiscoverySummary{
-		Enabled:         pm.discovery.enabled,
-		DistinctPaths:   uint(len(pm.discovery.allDiscoveredPaths)),
-		FlowsUsed:       pm.discovery.flowsUsed,
-		FlowBudget:      pm.discovery.flowBudget,
-		ProbesConfirmed: pm.discovery.confirmedProbes,
-		Paths:           paths,
+		Enabled:            pm.discovery.enabled,
+		HopsMode:           pm.discovery.hopsMode,
+		DistinctPaths:      uint(len(pm.discovery.allDiscoveredPaths)),
+		UniqueHops:         uint(len(pm.discovery.allDiscoveredIPs)),
+		FlowsUsed:          pm.discovery.flowsUsed,
+		FlowBudget:         pm.discovery.flowBudget,
+		ProbesConfirmed:    pm.discovery.confirmedProbes,
+		StoppedByPortLimit: pm.discovery.stoppedByPortLimit,
+		Paths:              paths,
 	}
 }
 
