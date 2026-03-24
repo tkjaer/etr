@@ -159,6 +159,29 @@ type Probe struct {
 	wg            *sync.WaitGroup
 }
 
+// sleepOrStop sleeps for the given duration, but returns true immediately
+// if the probe's stop or discoveryStop channel is closed.
+func (p *Probe) sleepOrStop(d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	if p.discoveryStop != nil {
+		select {
+		case <-p.stop:
+			return true
+		case <-p.discoveryStop:
+			return true
+		case <-timer.C:
+			return false
+		}
+	}
+	select {
+	case <-p.stop:
+		return true
+	case <-timer.C:
+		return false
+	}
+}
+
 func (p *Probe) Run() {
 	probeConfig := p.config
 	protocolConfig := probeConfig.protocolConfig
@@ -365,12 +388,16 @@ func (p *Probe) Run() {
 		}
 		// If this is the first probe run, we'll sleep for timeout to allow responses to arrive
 		if n == 0 {
-			time.Sleep(probeConfig.timeout)
+			if p.sleepOrStop(probeConfig.timeout) {
+				return
+			}
 		} else {
 			// Sleep for interProbeDelay if we haven't already spent that much time
 			// sending the probe.
-			if time.Since(lastProbeStart) < probeConfig.interProbeDelay {
-				time.Sleep(probeConfig.interProbeDelay - time.Since(lastProbeStart))
+			if remaining := probeConfig.interProbeDelay - time.Since(lastProbeStart); remaining > 0 {
+				if p.sleepOrStop(remaining) {
+					return
+				}
 			}
 		}
 
