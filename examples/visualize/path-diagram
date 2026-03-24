@@ -161,7 +161,7 @@ def build_dag(paths, show_ptr=False, show_asn=False):
     return nodes, edges, root, leaves
 
 
-def create_image(paths, output_file='etr-paths', dark_mode=False, show_ptr=False, show_asn=False, show_labels=False):
+def create_image(paths, output_file='etr-paths', dark_mode=False, show_ptr=False, show_asn=False, show_labels=False, horizontal=False):
     """Render the DAG as a Graphviz image."""
     if not paths:
         print("No path data found", file=sys.stderr)
@@ -186,7 +186,8 @@ def create_image(paths, output_file='etr-paths', dark_mode=False, show_ptr=False
             'white', 'black', '#d4edda', '#f8d7da', '#333333')
 
     dot = Digraph(format=fmt)
-    dot.attr(bgcolor=bg, rankdir='TB', nodesep='0.4', ranksep='0.6')
+    direction = 'LR' if horizontal else 'TB'
+    dot.attr(bgcolor=bg, rankdir=direction, nodesep='0.4', ranksep='0.6')
     dot.attr('node', shape='box', style='rounded,filled',
              fontname='monospace', fontsize='10', fontcolor=fg)
     dot.attr('edge', fontname='monospace', fontsize='8',
@@ -228,7 +229,7 @@ def create_image(paths, output_file='etr-paths', dark_mode=False, show_ptr=False
         sys.exit(1)
 
 
-def create_mermaid(paths, output_file=None, show_ptr=False, show_asn=False, show_labels=False):
+def create_mermaid(paths, output_file=None, show_ptr=False, show_asn=False, show_labels=False, horizontal=False):
     """Render the DAG as Mermaid markdown."""
     if not paths:
         print("No path data found", file=sys.stderr)
@@ -237,7 +238,8 @@ def create_mermaid(paths, output_file=None, show_ptr=False, show_asn=False, show
     nodes, edges, root, leaves = build_dag(paths, show_ptr=show_ptr, show_asn=show_asn)
     total = len(paths)
 
-    lines = ['graph TD']
+    direction = 'LR' if horizontal else 'TD'
+    lines = [f'graph {direction}']
 
     # Sanitize labels for mermaid (replace newlines, escape quotes)
     def safe(label):
@@ -293,15 +295,17 @@ def main():
     parser.add_argument('--asn', action='store_true', help='Show ASN in node labels')
     parser.add_argument('--labels', action='store_true', help='Show path hash labels on edges')
     parser.add_argument('--mermaid', action='store_true', help='Output Mermaid markdown instead of image')
+    parser.add_argument('--horizontal', action='store_true', help='Left-to-right layout instead of top-down')
 
     args = parser.parse_args()
     paths = parse_input(args.input)
     if args.mermaid:
         create_mermaid(paths, args.output, show_ptr=args.ptr, show_asn=args.asn,
-                       show_labels=args.labels)
+                       show_labels=args.labels, horizontal=args.horizontal)
     else:
         create_image(paths, args.output or 'etr-paths', dark_mode=args.dark,
-                     show_ptr=args.ptr, show_asn=args.asn, show_labels=args.labels)
+                     show_ptr=args.ptr, show_asn=args.asn, show_labels=args.labels,
+                     horizontal=args.horizontal)
 
 
 if __name__ == '__main__':
