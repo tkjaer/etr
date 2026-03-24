@@ -174,8 +174,12 @@ def create_image(paths, output_file='etr-paths', dark_mode=False):
         if len(hashes) == total:
             dot.edge(src, dst, penwidth='2')
         else:
-            tags = ','.join(h[:5] for h in sorted(hashes))
-            dot.edge(src, dst, label=tags, style='dashed', penwidth='1')
+            n = len(hashes)
+            if n > 10:
+                label = f'{n}/{total} paths'
+            else:
+                label = ','.join(h[:5] for h in sorted(hashes))
+            dot.edge(src, dst, label=label, style='dashed', penwidth='1')
 
     try:
         out = dot.render(output_file, cleanup=True)
