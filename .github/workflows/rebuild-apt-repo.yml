@@ -1,0 +1,18 @@
+name: Rebuild APT Repository
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apt-repo:
+    uses: ./.github/workflows/reusable-apt-pages.yml
+    with:
+      package_name: etr
+      suite: stable
+      component: main
+      architectures: amd64 arm64
+      key_expiry_warn_days: 90
+      key_expiry_fail_days: 14
+    secrets:
+      APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+      APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
