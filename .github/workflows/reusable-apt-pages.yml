@@ -135,6 +135,7 @@ jobs:
       - name: Build signed APT repository
         env:
           GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p repo/pool/main
 
@@ -142,7 +143,14 @@ jobs:
             mkdir -p "repo/dists/${{ inputs.suite }}/${{ inputs.component }}/binary-${arch}"
           done
 
-          find artifacts -name '*.deb' -exec cp {} repo/pool/main/ \;
+          # Download .deb files from the last 10 releases for version pinning
+          echo "Downloading .deb packages from recent releases..."
+          for tag in $(gh release list --repo "${{ github.repository }}" --limit 10 --json tagName -q '.[].tagName'); do
+            gh release download "$tag" --repo "${{ github.repository }}" --pattern '*.deb' --dir repo/pool/main/ --skip-existing 2>/dev/null || true
+          done
+
+          # Copy current build artifacts (overwrite if same version)
+          find artifacts -name '*.deb' -exec cp -f {} repo/pool/main/ \;
 
           cd repo
           for arch in ${{ inputs.architectures }}; do
