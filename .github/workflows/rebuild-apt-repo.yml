@@ -3,6 +3,11 @@ name: Rebuild APT Repository
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   apt-repo:
     uses: ./.github/workflows/reusable-apt-pages.yml
