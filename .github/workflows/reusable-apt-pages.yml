@@ -158,7 +158,7 @@ jobs:
 
           cd repo
           for arch in ${{ inputs.architectures }}; do
-            dpkg-scanpackages --arch "$arch" pool/main > "dists/${{ inputs.suite }}/${{ inputs.component }}/binary-${arch}/Packages"
+            dpkg-scanpackages --multiversion --arch "$arch" pool/main > "dists/${{ inputs.suite }}/${{ inputs.component }}/binary-${arch}/Packages"
             gzip -fk "dists/${{ inputs.suite }}/${{ inputs.component }}/binary-${arch}/Packages"
           done
 
