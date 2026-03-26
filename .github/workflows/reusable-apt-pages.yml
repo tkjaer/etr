@@ -54,10 +54,14 @@ jobs:
           sudo apt-get install -y dpkg-dev apt-utils gnupg
 
       - name: Download package artifacts
+        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Ensure artifacts directory exists
+        run: mkdir -p artifacts
 
       - name: Import required GPG signing key
         env:
