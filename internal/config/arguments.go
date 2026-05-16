@@ -45,6 +45,7 @@ type Args struct {
 	// Output
 	Json       bool          // output json to stdout
 	JsonFile   string        // output json to file while showing TUI
+	NoTUI      bool          // disable TUI entirely (silent mode)
 	TUIRefresh time.Duration // TUI refresh interval
 	NoStyle    bool          // disable TUI styling
 
@@ -129,6 +130,7 @@ func ParseArgs() (Args, error) {
 	// Output and logging
 	flag.BoolVarP(&args.Json, "json", "J", false, "Write JSON output to stdout (disables TUI)")
 	flag.StringVarP(&args.JsonFile, "json-file", "j", "", "Write JSON output to file (keeps TUI)")
+	flag.BoolVar(&args.NoTUI, "no-tui", false, "Disable TUI (silent mode, use with -j to collect results)")
 	flag.DurationVar(&args.TUIRefresh, "tui-refresh", 60*time.Millisecond, "TUI refresh interval (0 disables periodic refresh)")
 	flag.StringVar(&args.LogLevel, "log-level", "error", "Log level: debug, info, warn, error")
 	flag.StringVarP(&args.Log, "log", "l", "", "Diagnostic log file (empty = no logging)")
@@ -226,6 +228,11 @@ func ParseArgs() (Args, error) {
 		if !flag.CommandLine.Changed("inter-probe-delay") {
 			args.InterProbeDelay = 500 * time.Millisecond
 		}
+	}
+
+	// Warn if --no-tui is used without any output sink
+	if args.NoTUI && !args.Json && args.JsonFile == "" {
+		fmt.Fprintln(os.Stderr, "Warning: --no-tui without -j or -J produces no output")
 	}
 
 	// Set protocol-specific default destination port if not specified

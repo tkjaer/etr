@@ -61,6 +61,7 @@ type ProbeEventDataIterationComplete struct {
 type outputConfig struct {
 	jsonOutput    bool
 	jsonFile      string
+	noTUI         bool
 	hashAlgorithm string
 	tuiRefresh    time.Duration
 	noStyle       bool
@@ -186,6 +187,7 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 		outputConfig: outputConfig{
 			jsonOutput:    a.Json,
 			jsonFile:      a.JsonFile,
+			noTUI:         a.NoTUI,
 			hashAlgorithm: a.HashAlgorithm,
 			tuiRefresh:    a.TUIRefresh,
 			noStyle:       a.NoStyle,
@@ -505,7 +507,7 @@ func (pm *ProbeManager) createOutputs() (*output.BubbleTUIOutput, *output.Output
 		if err == nil {
 			om.Register(jsonOut)
 		}
-	} else {
+	} else if !pm.outputConfig.noTUI {
 		// TUI mode: show interactive interface
 		bubbleTUI = output.NewBubbleTUIOutput(info)
 		bubbleTUI.Start()
