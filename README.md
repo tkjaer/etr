@@ -20,7 +20,7 @@ ETR discovers multiple network paths by running parallel traceroute probes with 
 
 ## Demo
 
-![etr tui demo](https://github.com/user-attachments/assets/f5803a12-a4f1-4fa1-82a9-8526ba85d5af)
+<img width="1250" height="600" alt="etr tui demo" src="https://github.com/user-attachments/assets/13888032-13fc-451a-acb3-09978c2bd574" />
 
 ## Installation
 
