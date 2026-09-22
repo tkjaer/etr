@@ -1,6 +1,6 @@
 module github.com/tkjaer/etr
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
@@ -9,7 +9,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/juruen/goarp v0.0.0-20180716135452-3ab95825448f
 	github.com/mdlayher/ndp v1.1.0
-	golang.org/x/net v0.38.0
+	golang.org/x/net v0.55.0
 )
 
 require (
@@ -33,13 +33,13 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 )
 
 require (
 	github.com/jellydator/ttlcache/v3 v3.1.1
 	github.com/jsimonetti/rtnetlink v1.4.1
 	github.com/spf13/pflag v1.0.10
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/sys v0.36.0
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.45.0
 )
