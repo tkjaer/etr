@@ -1,0 +1,24 @@
+# Maps probe sources and targets to sites for the fleet metrics
+# (etr_target_*, etr_hop_transit_*) and the "ETR · Fleet" dashboard.
+#
+#   <ip or prefix>   <site>   [class]
+#
+# The longest matching prefix wins. Addresses without a match are their own
+# site with class "other". Replace these with your own locations.
+
+# Fleet demo: WAN sites (docker compose --profile fleet)
+10.1.0.0/16      fra        wan
+10.2.0.0/16      ams        wan
+10.3.0.0/16      lon        wan
+10.4.0.0/16      nyc        wan
+10.5.0.0/16      sin        wan
+10.6.0.0/16      syd        wan
+
+# Public destinations
+203.0.113.50     www        public
+198.18.1.80      saas-api   public
+198.18.0.53      ns1        public
+
+# Small demo sources (docker compose --profile demo)
+192.168.1.0/24   home       lan
+10.20.0.0/16     office     lan

@@ -1,57 +1,84 @@
+name: etr-monitoring
+
 services:
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.14.0
     container_name: etr-prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
       - '--web.enable-lifecycle'
-    networks:
-      - etr-monitoring
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.2.2
     container_name: etr-grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_PLUGINS_PREINSTALL_SYNC=yesoreyeram-infinity-datasource@4.0.0
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
-    networks:
-      - etr-monitoring
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     restart: unless-stopped
     depends_on:
       - prometheus
+      - etr-exporter
 
   etr-exporter:
-    build:
-      context: ./exporter
-      dockerfile: Dockerfile
+    build: ./exporter
+    image: etr-exporter
     container_name: etr-exporter
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
+    environment:
+      - ETR_JSON_FILE=/data/*.json
+      - ETR_SITES=/etc/etr/sites.txt
     volumes:
       - ./data:/data
-    networks:
-      - etr-monitoring
+      - ./sites.txt:/etc/etr/sites.txt:ro
     restart: unless-stopped
 
-networks:
-  etr-monitoring:
-    driver: bridge
+  # Synthetic etr output for trying the dashboard without a real target:
+  #   docker compose --profile demo up -d
+  etr-demo:
+    profiles: [demo]
+    build: ./exporter
+    image: etr-exporter
+    container_name: etr-demo
+    command: ["./etr-exporter", "demo", "-out", "/data/demo.json"]
+    volumes:
+      - ./data:/data
+    depends_on:
+      - etr-exporter
+    restart: unless-stopped
+
+  # A company WAN: 6 sites probing each other plus public targets from each
+  # site (42 targets), for the "ETR · Fleet" dashboard:
+  #   docker compose --profile fleet up -d
+  etr-demo-fleet:
+    profiles: [fleet]
+    build: ./exporter
+    image: etr-exporter
+    container_name: etr-demo-fleet
+    command: ["./etr-exporter", "demo", "-scenario", "fleet", "-out", "/data/fleet.json"]
+    volumes:
+      - ./data:/data
+    depends_on:
+      - etr-exporter
+    restart: unless-stopped
 
 volumes:
   prometheus-data:
