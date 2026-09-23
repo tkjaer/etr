@@ -24,4 +24,5 @@ go.work
 ^etr
 
 # Temporary files suggested by the project
-^examples/monitoring/data
+/examples/monitoring/data/
+/examples/monitoring/exporter/etr-exporter

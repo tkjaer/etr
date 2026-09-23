@@ -5,7 +5,7 @@ This directory contains practical examples and tools that complement ETR for net
 ## Examples
 
 ### `/monitoring`
-Prometheus + Grafana monitoring stack for visualizing ETR data in real-time. Shows how to collect and display ECMP path metrics using Docker containers.
+Prometheus + Grafana stack that visualizes ECMP paths from ETR JSON output: a live hop topology (Node Graph) colored by loss, per-flow path changes over time, and latency, loss and jitter per flow and per hop. Includes a demo mode with synthetic data, so no root or real target is needed.
 
 ### `/request`
 Simple HTTP client that binds to specific source ports. Useful for testing HTTP traffic on ECMP paths discovered by ETR.

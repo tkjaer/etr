@@ -1,108 +1,145 @@
 {
+  "uid": "etr-paths",
+  "title": "ETR \u00b7 ECMP paths",
+  "description": "Path topology, path changes, latency and loss from etr JSON output.",
+  "tags": [
+    "etr",
+    "network",
+    "traceroute",
+    "ecmp"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "version": 1,
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "destination",
+        "label": "Destination",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(etr_probe_runs_total, destination)",
+        "query": {
+          "query": "label_values(etr_probe_runs_total, destination)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 3,
+        "regex": "",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      },
+      {
+        "name": "src_port",
+        "label": "Flow (source port)",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(etr_probe_runs_total{destination=~\"$destination\"}, src_port)",
+        "query": {
+          "query": "label_values(etr_probe_runs_total{destination=~\"$destination\"}, src_port)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 3,
+        "regex": "",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      }
+    ]
+  },
   "annotations": {
     "list": [
       {
         "builtIn": 1,
         "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
+          "type": "grafana",
+          "uid": "-- Grafana --"
         },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
         "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "name": "Path changes",
+        "expr": "sum by (src_port) (changes(etr_flow_path_index{destination=~\"$destination\", src_port=~\"$src_port\"}[30s])) > 0",
+        "step": "30s",
+        "titleFormat": "Path change",
+        "textFormat": "flow :{{src_port}}",
+        "tagKeys": "src_port",
+        "useValueForTime": false
       }
     ]
   },
-  "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 1,
-  "id": null,
-  "links": [],
   "panels": [
     {
+      "id": 1,
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "End-to-end loss",
+      "description": "Share of probes that did not get a reply from the destination over the last minute.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "RTT (ms)",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "ms"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "last",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
       },
       "targets": [
         {
@@ -110,50 +147,19 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "editorMode": "code",
-          "expr": "etr_hop_rtt_ms{destination=~\"$destination\", hop_ip=~\"$hop_ip\", ttl=~\"$ttl\", path_hash=~\"$path_hash\"}",
-          "legendFormat": "{{destination_ptr}} - TTL {{ttl}} - {{hop_ip}} {{hop_ptr}}",
-          "range": true,
-          "refId": "A"
+          "expr": "clamp_min(100 * (1 - sum(increase(etr_destination_reached_total{destination=~\"$destination\", src_port=~\"$src_port\"}[1m])) / sum(increase(etr_probe_runs_total{destination=~\"$destination\", src_port=~\"$src_port\"}[1m]))), 0)",
+          "legendFormat": "",
+          "refId": "A",
+          "range": false,
+          "instant": true
         }
       ],
-      "title": "Hop Round-Trip Time (RTT)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
       "fieldConfig": {
         "defaults": {
+          "unit": "percent",
           "color": {
             "mode": "thresholds"
           },
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "color-text"
-            },
-            "inspect": false
-          },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "color": "green",
-                  "index": 0,
-                  "text": "OK"
-                },
-                "1": {
-                  "color": "red",
-                  "index": 1,
-                  "text": "TIMEOUT"
-                }
-              },
-              "type": "value"
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -162,10 +168,1786 @@
                 "value": null
               },
               {
+                "color": "orange",
+                "value": 1
+              },
+              {
                 "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Median RTT",
+      "description": "Median end-to-end RTT over the last minute, all selected flows.",
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(etr_destination_rtt_seconds_bucket{destination=~\"$destination\", src_port=~\"$src_port\"}[1m])))",
+          "legendFormat": "",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "p95 RTT",
+      "description": "95th percentile end-to-end RTT over the last minute.",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(etr_destination_rtt_seconds_bucket{destination=~\"$destination\", src_port=~\"$src_port\"}[1m])))",
+          "legendFormat": "",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Jitter",
+      "description": "Smoothed RTT variation between consecutive probes (RFC 3550 style), averaged over flows.",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "avg(etr_destination_jitter_seconds{destination=~\"$destination\", src_port=~\"$src_port\"})",
+          "legendFormat": "",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Paths in use",
+      "description": "Distinct paths currently used by the flows (ECMP spread).",
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(etr_destination_active_paths{destination=~\"$destination\"})",
+          "legendFormat": "",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Path changes",
+      "description": "Times a flow moved to a different path in the selected time range.",
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(etr_flow_path_changes_total{destination=~\"$destination\", src_port=~\"$src_port\"}[$__range])) or vector(0)",
+          "legendFormat": "",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
                 "value": 1
               }
             ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Topology",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "nodeGraph",
+      "title": "Path topology",
+      "description": "All hops seen in the selected time range, laid out by TTL.\n\n**Nodes**: average RTT and reply loss. Ring: green = replies, red = lost, grey = never replies, dark = only on paths no longer in use. Red outline = forwarding loss (loss that persists to later hops).\n\n**Edges**: label is the RTT added by the hop, width is the number of flows, color is forwarding loss at the target (green < 1% < orange < 5% < red). Dashed grey edges belong to paths no longer in use.\n\nLoss at a hop that does not carry on to the hops behind it is usually ICMP rate limiting, not real loss.",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 17
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "infinity"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity"
+          },
+          "refId": "nodes",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://etr-exporter:8080/api/graph/nodes",
+          "url_options": {
+            "method": "GET",
+            "data": "",
+            "params": [
+              {
+                "key": "destination",
+                "value": "${destination:csv}"
+              },
+              {
+                "key": "src_port",
+                "value": "${src_port:csv}"
+              },
+              {
+                "key": "from",
+                "value": "${__from}"
+              },
+              {
+                "key": "to",
+                "value": "${__to}"
+              }
+            ]
+          },
+          "root_selector": "",
+          "columns": [],
+          "filters": []
+        },
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity"
+          },
+          "refId": "edges",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://etr-exporter:8080/api/graph/edges",
+          "url_options": {
+            "method": "GET",
+            "data": "",
+            "params": [
+              {
+                "key": "destination",
+                "value": "${destination:csv}"
+              },
+              {
+                "key": "src_port",
+                "value": "${src_port:csv}"
+              },
+              {
+                "key": "from",
+                "value": "${__from}"
+              },
+              {
+                "key": "to",
+                "value": "${__to}"
+              }
+            ]
+          },
+          "root_selector": "",
+          "columns": [],
+          "filters": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "mainstat": "RTT",
+              "secondarystat": "Loss / flows",
+              "arc__ok": "replies",
+              "arc__loss": "lost",
+              "arc__silent": "no reply",
+              "arc__idle": "not in use",
+              "detail__ip": "IP",
+              "detail__ptr": "PTR",
+              "detail__asn": "ASN",
+              "detail__ttl": "TTL",
+              "detail__avg": "Avg RTT",
+              "detail__p95": "p95 RTT",
+              "detail__jitter": "Jitter",
+              "detail__loss": "Reply loss",
+              "detail__fwd_loss": "Forwarding loss",
+              "detail__sent": "Probes",
+              "detail__flows": "Flows",
+              "detail__paths": "Paths",
+              "detail__in_use": "In use",
+              "detail__last_seen": "Last seen"
+            }
+          }
+        }
+      ],
+      "options": {
+        "nodes": {
+          "arcs": [
+            {
+              "field": "arc__ok",
+              "color": "green"
+            },
+            {
+              "field": "arc__loss",
+              "color": "red"
+            },
+            {
+              "field": "arc__silent",
+              "color": "#8e8e8e"
+            },
+            {
+              "field": "arc__idle",
+              "color": "#3d3d3d"
+            }
+          ]
+        },
+        "edges": {},
+        "zoomMode": "cooperative"
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Path changes",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "state-timeline",
+      "title": "Path per flow",
+      "description": "Which path (#N, see the Paths table) each flow used over time. A color change is a path change; gaps mean the flow was not running.",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (destination, protocol, src_port) (etr_flow_path_index{destination=~\"$destination\", src_port=~\"$src_port\"})",
+          "legendFormat": "{{protocol}}:{{src_port}} \u2192 {{destination}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "#1",
+                  "color": "green",
+                  "index": 0
+                },
+                "2": {
+                  "text": "#2",
+                  "color": "blue",
+                  "index": 1
+                },
+                "3": {
+                  "text": "#3",
+                  "color": "orange",
+                  "index": 2
+                },
+                "4": {
+                  "text": "#4",
+                  "color": "purple",
+                  "index": 3
+                },
+                "5": {
+                  "text": "#5",
+                  "color": "yellow",
+                  "index": 4
+                },
+                "6": {
+                  "text": "#6",
+                  "color": "red",
+                  "index": 5
+                },
+                "7": {
+                  "text": "#7",
+                  "color": "#56A64B",
+                  "index": 6
+                },
+                "8": {
+                  "text": "#8",
+                  "color": "#3274D9",
+                  "index": 7
+                },
+                "9": {
+                  "text": "#9",
+                  "color": "#FF780A",
+                  "index": 8
+                },
+                "10": {
+                  "text": "#10",
+                  "color": "#A352CC",
+                  "index": 9
+                },
+                "11": {
+                  "text": "#11",
+                  "color": "#F2CC0C",
+                  "index": 10
+                },
+                "12": {
+                  "text": "#12",
+                  "color": "#E02F44",
+                  "index": 11
+                }
+              }
+            }
+          ],
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "auto",
+        "mergeValues": true,
+        "alignValue": "center",
+        "rowHeight": 0.85,
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Path change log",
+      "description": "Every time a flow moved to a different path, newest first. TTL is where the old and new path diverge.",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "infinity"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity"
+          },
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://etr-exporter:8080/api/events",
+          "url_options": {
+            "method": "GET",
+            "data": "",
+            "params": [
+              {
+                "key": "destination",
+                "value": "${destination:csv}"
+              },
+              {
+                "key": "src_port",
+                "value": "${src_port:csv}"
+              },
+              {
+                "key": "from",
+                "value": "${__from}"
+              },
+              {
+                "key": "to",
+                "value": "${__to}"
+              }
+            ]
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "time",
+              "text": "Time",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "src_port",
+              "text": "Flow",
+              "type": "number"
+            },
+            {
+              "selector": "change",
+              "text": "Change",
+              "type": "string"
+            },
+            {
+              "selector": "ttl",
+              "text": "TTL",
+              "type": "number"
+            },
+            {
+              "selector": "old_hop",
+              "text": "From hop",
+              "type": "string"
+            },
+            {
+              "selector": "new_hop",
+              "text": "To hop",
+              "type": "string"
+            },
+            {
+              "selector": "old_route",
+              "text": "Old route",
+              "type": "string"
+            },
+            {
+              "selector": "new_route",
+              "text": "New route",
+              "type": "string"
+            },
+            {
+              "selector": "destination",
+              "text": "Destination",
+              "type": "string"
+            }
+          ],
+          "filters": []
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Time": 0,
+              "Flow": 1,
+              "Change": 2,
+              "TTL": 3,
+              "From hop": 4,
+              "To hop": 5,
+              "Old route": 6,
+              "New route": 7,
+              "Destination": 8
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flow"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TTL"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 50
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Old route"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "New route"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Paths",
+      "description": "Distinct paths seen in the time range. Numbers are assigned per destination in order of discovery. RTT and loss are end-to-end for probes that took the path.",
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 24,
+        "h": 7
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "infinity"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity"
+          },
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://etr-exporter:8080/api/paths",
+          "url_options": {
+            "method": "GET",
+            "data": "",
+            "params": [
+              {
+                "key": "destination",
+                "value": "${destination:csv}"
+              },
+              {
+                "key": "src_port",
+                "value": "${src_port:csv}"
+              },
+              {
+                "key": "from",
+                "value": "${__from}"
+              },
+              {
+                "key": "to",
+                "value": "${__to}"
+              }
+            ]
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "path",
+              "text": "Path",
+              "type": "string"
+            },
+            {
+              "selector": "route",
+              "text": "Route",
+              "type": "string"
+            },
+            {
+              "selector": "hops",
+              "text": "Hops",
+              "type": "number"
+            },
+            {
+              "selector": "flows_now",
+              "text": "Flows now",
+              "type": "number"
+            },
+            {
+              "selector": "flows",
+              "text": "Flows on path",
+              "type": "string"
+            },
+            {
+              "selector": "share_pct",
+              "text": "Share",
+              "type": "number"
+            },
+            {
+              "selector": "avg_ms",
+              "text": "Avg RTT",
+              "type": "number"
+            },
+            {
+              "selector": "p95_ms",
+              "text": "p95 RTT",
+              "type": "number"
+            },
+            {
+              "selector": "loss_pct",
+              "text": "Loss",
+              "type": "number"
+            },
+            {
+              "selector": "first_seen",
+              "text": "First seen",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "last_seen",
+              "text": "Last seen",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "destination",
+              "text": "Destination",
+              "type": "string"
+            }
+          ],
+          "filters": []
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Path": 0,
+              "Route": 1,
+              "Hops": 2,
+              "Flows now": 3,
+              "Flows on path": 4,
+              "Share": 5,
+              "Avg RTT": 6,
+              "p95 RTT": 7,
+              "Loss": 8,
+              "First seen": 9,
+              "Last seen": 10,
+              "Destination": 11
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Path"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hops"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flows now"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Route"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 520
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flows on path"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg RTT"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Avg RTT"
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95 RTT"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "p95 RTT"
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Loss"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": []
+      }
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Latency and loss per flow",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "End-to-end RTT per flow",
+      "description": "Average RTT to the destination per flow (source port). Flows on different ECMP paths separate here; path changes are marked as annotations.",
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (src_port) (rate(etr_destination_rtt_seconds_sum{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval])) / sum by (src_port) (rate(etr_destination_rtt_seconds_count{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval]))",
+          "legendFormat": ":{{src_port}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "gradientMode": "none",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "End-to-end loss per flow",
+      "description": "Share of probes per flow without a reply from the destination.",
+      "gridPos": {
+        "x": 12,
+        "y": 41,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "clamp_min(100 * (1 - sum by (src_port) (increase(etr_destination_reached_total{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval])) / sum by (src_port) (increase(etr_probe_runs_total{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval]))), 0)",
+          "legendFormat": ":{{src_port}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "gradientMode": "none",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "heatmap",
+      "title": "End-to-end RTT distribution",
+      "description": "Histogram of destination RTT over time. Bimodal bands usually mean flows on paths with different latency.",
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (le) (increase(etr_destination_rtt_seconds_bucket{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval]))",
+          "legendFormat": "{{le}}",
+          "refId": "A",
+          "range": true,
+          "format": "heatmap"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "calculate": false,
+        "yAxis": {
+          "unit": "s",
+          "axisPlacement": "left"
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "color": {
+          "mode": "scheme",
+          "scheme": "Oranges",
+          "steps": 64,
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "scale": "exponential"
+        },
+        "cellGap": 1,
+        "filterValues": {
+          "le": 1e-09
+        },
+        "showValue": "never",
+        "tooltip": {
+          "mode": "single",
+          "yHistogram": false,
+          "showColorScale": false
+        },
+        "legend": {
+          "show": true
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Jitter per flow",
+      "description": "Smoothed variation between consecutive end-to-end RTT samples (RFC 3550 style).",
+      "gridPos": {
+        "x": 12,
+        "y": 50,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (src_port) (etr_destination_jitter_seconds{destination=~\"$destination\", src_port=~\"$src_port\"})",
+          "legendFormat": ":{{src_port}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "gradientMode": "none",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Hops",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "RTT by hop",
+      "description": "Average RTT to each hop. Hop RTT includes the router's own ICMP generation time, which can be much slower than forwarding.",
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (ttl, hop_ip) (rate(etr_hop_rtt_seconds_sum{destination=~\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval])) / sum by (ttl, hop_ip) (rate(etr_hop_rtt_seconds_count{destination=~\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval]))",
+          "legendFormat": "TTL {{ttl}} {{hop_ip}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "gradientMode": "none",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Reply loss by hop",
+      "description": "Share of probes each hop did not answer. Loss that only shows up at one hop (and not the hops behind it) is ICMP rate limiting; compare with the Forwarding loss column below.",
+      "gridPos": {
+        "x": 12,
+        "y": 59,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "clamp_min(100 * (1 - sum by (ttl, hop_ip) (increase(etr_hop_received_total{destination=~\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval])) / sum by (ttl, hop_ip) (increase(etr_hop_sent_total{destination=~\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval]))), 0)",
+          "legendFormat": "TTL {{ttl}} {{hop_ip}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "gradientMode": "none",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ],
+          "showLegend": true,
+          "sortBy": "Mean",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "table",
+      "title": "Hop report",
+      "description": "MTR-style report for the selected time range. Reply loss = hop did not answer. Fwd loss = lowest loss at this or any later hop for the flows crossing it: an estimate of loss that is actually forwarded, with ICMP rate limiting filtered out.",
+      "gridPos": {
+        "x": 0,
+        "y": 69,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "infinity"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity"
+          },
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "http://etr-exporter:8080/api/hops",
+          "url_options": {
+            "method": "GET",
+            "data": "",
+            "params": [
+              {
+                "key": "destination",
+                "value": "${destination:csv}"
+              },
+              {
+                "key": "src_port",
+                "value": "${src_port:csv}"
+              },
+              {
+                "key": "from",
+                "value": "${__from}"
+              },
+              {
+                "key": "to",
+                "value": "${__to}"
+              }
+            ]
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "ttl",
+              "text": "TTL",
+              "type": "number"
+            },
+            {
+              "selector": "ip",
+              "text": "Hop",
+              "type": "string"
+            },
+            {
+              "selector": "ptr",
+              "text": "PTR",
+              "type": "string"
+            },
+            {
+              "selector": "asn",
+              "text": "ASN",
+              "type": "string"
+            },
+            {
+              "selector": "loss_pct",
+              "text": "Reply loss",
+              "type": "number"
+            },
+            {
+              "selector": "fwd_loss_pct",
+              "text": "Fwd loss",
+              "type": "number"
+            },
+            {
+              "selector": "sent",
+              "text": "Sent",
+              "type": "number"
+            },
+            {
+              "selector": "avg_ms",
+              "text": "Avg",
+              "type": "number"
+            },
+            {
+              "selector": "best_ms",
+              "text": "Best",
+              "type": "number"
+            },
+            {
+              "selector": "worst_ms",
+              "text": "Worst",
+              "type": "number"
+            },
+            {
+              "selector": "p95_ms",
+              "text": "p95",
+              "type": "number"
+            },
+            {
+              "selector": "jitter_ms",
+              "text": "Jitter",
+              "type": "number"
+            },
+            {
+              "selector": "flows",
+              "text": "Flows",
+              "type": "number"
+            },
+            {
+              "selector": "paths",
+              "text": "Paths",
+              "type": "string"
+            },
+            {
+              "selector": "in_use",
+              "text": "In use",
+              "type": "boolean"
+            },
+            {
+              "selector": "destination",
+              "text": "Destination",
+              "type": "string"
+            }
+          ],
+          "filters": []
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "TTL": 0,
+              "Hop": 1,
+              "PTR": 2,
+              "ASN": 3,
+              "Reply loss": 4,
+              "Fwd loss": 5,
+              "Sent": 6,
+              "Avg": 7,
+              "Best": 8,
+              "Worst": 9,
+              "p95": 10,
+              "Jitter": 11,
+              "Flows": 12,
+              "Paths": 13,
+              "In use": 14,
+              "Destination": 15
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            }
           }
         },
         "overrides": [
@@ -177,680 +1959,568 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 80
+                "value": 50
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "Destination"
+              "options": "Reply loss"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fwd loss"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Avg"
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Best"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Best"
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Worst"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Worst"
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "p95"
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Jitter"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Jitter"
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Flows"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In use"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
               }
             ]
           }
         ]
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 9
-      },
-      "id": 2,
       "options": {
+        "showHeader": true,
         "cellHeight": "sm",
         "footer": {
-          "countRows": false,
-          "fields": "",
+          "show": false,
           "reducer": [
             "sum"
           ],
-          "show": false
+          "fields": ""
         },
-        "showHeader": true
+        "sortBy": []
+      }
+    },
+    {
+      "id": 23,
+      "type": "table",
+      "title": "Flows",
+      "description": "One row per flow (5-tuple). Use the source port with e.g. `iperf3 --cport` to put test traffic on the same ECMP path.",
+      "gridPos": {
+        "x": 0,
+        "y": 79,
+        "w": 24,
+        "h": 8
       },
-      "pluginVersion": "11.0.0",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "infinity"
+      },
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity"
           },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "etr_hop_timeout{destination=~\"$destination\", hop_ip=~\"$hop_ip\", ttl=~\"$ttl\", path_hash=~\"$path_hash\"}",
+          "refId": "A",
+          "type": "json",
+          "source": "url",
           "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "A"
+          "parser": "backend",
+          "url": "http://etr-exporter:8080/api/flows",
+          "url_options": {
+            "method": "GET",
+            "data": "",
+            "params": [
+              {
+                "key": "destination",
+                "value": "${destination:csv}"
+              },
+              {
+                "key": "src_port",
+                "value": "${src_port:csv}"
+              },
+              {
+                "key": "from",
+                "value": "${__from}"
+              },
+              {
+                "key": "to",
+                "value": "${__to}"
+              }
+            ]
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "protocol",
+              "text": "Proto",
+              "type": "string"
+            },
+            {
+              "selector": "src_port",
+              "text": "Src port",
+              "type": "number"
+            },
+            {
+              "selector": "dst_port",
+              "text": "Dst port",
+              "type": "number"
+            },
+            {
+              "selector": "path",
+              "text": "Path",
+              "type": "string"
+            },
+            {
+              "selector": "route",
+              "text": "Route",
+              "type": "string"
+            },
+            {
+              "selector": "hops",
+              "text": "Hops",
+              "type": "number"
+            },
+            {
+              "selector": "loss_pct",
+              "text": "Loss",
+              "type": "number"
+            },
+            {
+              "selector": "avg_ms",
+              "text": "Avg",
+              "type": "number"
+            },
+            {
+              "selector": "p95_ms",
+              "text": "p95",
+              "type": "number"
+            },
+            {
+              "selector": "jitter_ms",
+              "text": "Jitter",
+              "type": "number"
+            },
+            {
+              "selector": "last_ms",
+              "text": "Last",
+              "type": "number"
+            },
+            {
+              "selector": "path_changes",
+              "text": "Changes",
+              "type": "number"
+            },
+            {
+              "selector": "active",
+              "text": "Active",
+              "type": "boolean"
+            },
+            {
+              "selector": "destination",
+              "text": "Destination",
+              "type": "string"
+            }
+          ],
+          "filters": []
         }
       ],
-      "title": "Hop Status (Current)",
       "transformations": [
         {
           "id": "organize",
           "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "instance": true,
-              "job": true,
-              "protocol": false,
-              "service": true
-            },
             "indexByName": {
-              "Time": 0,
-              "Value": 5,
-              "__name__": 1,
-              "destination": 2,
-              "destination_ptr": 3,
-              "instance": 6,
-              "job": 7,
-              "protocol": 8,
-              "service": 9,
-              "ttl": 4
-            },
-            "renameByName": {
-              "Value": "Status",
-              "destination": "Destination",
-              "destination_ptr": "Destination PTR",
-              "protocol": "Protocol",
-              "ttl": "TTL"
+              "Proto": 0,
+              "Src port": 1,
+              "Dst port": 2,
+              "Path": 3,
+              "Route": 4,
+              "Hops": 5,
+              "Loss": 6,
+              "Avg": 7,
+              "p95": 8,
+              "Jitter": 9,
+              "Last": 10,
+              "Changes": 11,
+              "Active": 12,
+              "Destination": 13
             }
           }
         }
       ],
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "color": "red",
-                  "index": 1,
-                  "text": "NO"
-                },
-                "1": {
-                  "color": "green",
-                  "index": 0,
-                  "text": "YES"
+          "custom": {
+            "align": "auto",
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Loss"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
                 }
               },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
               {
-                "color": "green",
-                "value": null
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Avg"
               },
               {
-                "color": "red",
-                "value": 0
+                "id": "unit",
+                "value": "ms"
               },
               {
-                "color": "green",
+                "id": "decimals",
                 "value": 1
               }
             ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 9
-      },
-      "id": 3,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": ""
-        },
-        "showPercentChange": false,
-        "text": {},
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "11.0.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
           },
-          "editorMode": "code",
-          "expr": "etr_destination_reached{destination=~\"$destination\"}",
-          "legendFormat": "{{destination}} ({{destination_ptr}})",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Destination Reachable",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95"
+            },
+            "properties": [
               {
-                "color": "green",
-                "value": null
+                "id": "displayName",
+                "value": "p95"
               },
               {
-                "color": "yellow",
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
                 "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Jitter"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Jitter"
               },
               {
-                "color": "red",
-                "value": 5
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Last"
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Path"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Proto"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Route"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              },
+              {
+                "id": "custom.width",
+                "value": 520
               }
             ]
           }
-        },
-        "overrides": []
+        ]
       },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 9
-      },
-      "id": 4,
       "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "values": false,
-          "calcs": [
-            "lastNotNull"
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
           ],
           "fields": ""
         },
-        "showPercentChange": false,
-        "text": {},
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "11.0.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "rate(etr_path_changes_total{destination=~\"$destination\"}[5m]) * 300",
-          "legendFormat": "{{destination}} ({{destination_ptr}})",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Path Changes (5min)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "stepAfter",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 12,
-        "x": 12,
-        "y": 13
-      },
-      "id": 5,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "increase(etr_path_changes_total{destination=~\"$destination\"}[1m])",
-          "legendFormat": "{{destination}} ({{destination_ptr}})",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Path Changes Over Time",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "continuous-GrYlRd"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 17
-      },
-      "id": 6,
-      "options": {
-        "barRadius": 0,
-        "barWidth": 0.97,
-        "fullHighlight": false,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "orientation": "auto",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "(sum(etr_hop_timeout{destination=~\"$destination\"}) by (ttl) / count(etr_hop_timeout{destination=~\"$destination\"}) by (ttl)) * 100",
-          "legendFormat": "TTL {{ttl}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Packet Loss by TTL (%)",
-      "type": "barchart"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "ms"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 17
-      },
-      "id": 7,
-      "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "max",
-            "min"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "avg(etr_hop_rtt_ms{destination=~\"$destination\", hop_ip=~\"$hop_ip\", ttl=~\"$ttl\", path_hash=~\"$path_hash\"}) by (ttl, hop_ip)",
-          "legendFormat": "TTL {{ttl}} - {{hop_ip}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Average RTT by TTL",
-      "type": "timeseries"
-    }
-  ],
-  "schemaVersion": 39,
-  "tags": [
-    "networking",
-    "traceroute",
-    "etr"
-  ],
-  "templating": {
-    "list": [
-      {
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "definition": "label_values(etr_hop_rtt_ms, destination)",
-        "hide": 0,
-        "includeAll": true,
-        "multi": true,
-        "name": "destination",
-        "options": [],
-        "query": {
-          "query": "label_values(etr_hop_rtt_ms, destination)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 1,
-        "type": "query"
-      },
-      {
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "definition": "label_values(etr_hop_rtt_ms{destination=~\"$destination\"}, hop_ip)",
-        "hide": 0,
-        "includeAll": true,
-        "multi": true,
-        "name": "hop_ip",
-        "options": [],
-        "query": {
-          "query": "label_values(etr_hop_rtt_ms{destination=~\"$destination\"}, hop_ip)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 1,
-        "type": "query"
-      },
-      {
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "definition": "label_values(etr_hop_rtt_ms{destination=~\"$destination\"}, ttl)",
-        "hide": 0,
-        "includeAll": true,
-        "multi": true,
-        "name": "ttl",
-        "options": [],
-        "query": {
-          "query": "label_values(etr_hop_rtt_ms{destination=~\"$destination\"}, ttl)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 3,
-        "type": "query"
-      },
-      {
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "definition": "label_values(etr_hop_rtt_ms{destination=~\"$destination\"}, path_hash)",
-        "hide": 0,
-        "includeAll": true,
-        "multi": true,
-        "name": "path_hash",
-        "options": [],
-        "query": {
-          "query": "label_values(etr_hop_rtt_ms{destination=~\"$destination\"}, path_hash)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 1,
-        "type": "query"
+        "sortBy": []
       }
-    ]
-  },
-  "time": {
-    "from": "now-15m",
-    "to": "now"
-  },
-  "timepicker": {},
-  "timezone": "browser",
-  "title": "ETR - Enhanced Traceroute",
-  "uid": "etr-dashboard",
-  "version": 1,
-  "weekStart": ""
+    }
+  ]
 }

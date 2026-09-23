@@ -1,12 +1,22 @@
 apiVersion: 1
 
 datasources:
-- name: Prometheus
-  type: prometheus
-  access: proxy
-  orgId: 1
-  uid: prometheus
-  url: http://prometheus:9090
-  isDefault: true
-  version: 1
-  editable: false
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Matches the scrape interval so $__rate_interval is sized correctly.
+      timeInterval: 5s
+
+  # Serves the exporter's JSON API (topology, paths, path changes, hop report).
+  - name: ETR exporter
+    type: yesoreyeram-infinity-datasource
+    uid: infinity
+    editable: false
+    jsonData:
+      allowedHosts:
+        - http://etr-exporter:8080

@@ -1,90 +1,199 @@
-# ETR Monitoring Example
+# ETR monitoring example
 
-Example Prometheus + Grafana monitoring stack showing how to visualize ETR ECMP traceroute data.
+Prometheus + Grafana stack that turns `etr -j` output into a live view of the
+ECMP paths towards a destination and how they change over time: which hops
+each flow crosses, where latency is added, where packets are lost, and when a
+flow moves to a different path.
 
-## Quick Start
+![Path topology](images/topology.png)
 
-**1. Start the monitoring stack:**
+## Quick start (demo data)
+
+No root or real target needed. The `demo` profile writes synthetic etr output
+for 8 flows across a small ECMP topology and replays a 12-minute incident
+cycle: congestion on one border router, a core router outage (flows reroute),
+and a detour that adds a hop.
 
 ```bash
 cd examples/monitoring
-docker-compose up -d
+docker compose --profile demo up -d --build
 ```
 
-**2. Run ETR with JSON output:**
+Open <http://localhost:3000/d/etr-paths>. Anonymous users can view the
+dashboard; log in as admin/admin to edit it. Give it a few minutes to collect
+some history.
+
+## Monitoring a real destination
 
 ```bash
-# From the repo root
-# Build ETR first
-go build -o etr ./cmd/etr
+cd examples/monitoring
+docker compose up -d --build
 
-# Run with JSON output
+# from the repo root
+go build -o etr ./cmd/etr
 mkdir -p examples/monitoring/data
-sudo ./etr -j examples/monitoring/data/etr.json 192.0.2.1
+sudo ./etr -j examples/monitoring/data/etr.json -P 8 --no-tui 192.0.2.1
 ```
 
-**3. View metrics:**
+- Each parallel probe (`-P`) uses its own source port (from `-s`, default
+  50000), so it is a separate flow and can hash onto a different ECMP path.
+  More probes show more of the paths.
+- The exporter follows every `data/*.json` file, so you can run several etr
+  instances side by side, each writing its own file (for example, one per
+  destination or one TCP and one UDP).
+- `etr -j` truncates its file on start; the exporter notices and starts
+  reading the new file from the beginning.
+- `-a` adds ASN lookups, which show up in the node details and tables.
 
-- **Prometheus**: http://localhost:9090
-- **Grafana**: http://localhost:3000 (login: admin/admin)
-- **Raw metrics**: http://localhost:8080/metrics
+If you ran the previous version of this example, remove its old volumes first:
+`docker compose -p monitoring down -v`.
 
-Import the dashboard at `examples/monitoring/grafana/dashboards/etr-dashboard.json` into Grafana to visualize your data.
+## Dashboard
 
-## Metrics
+**Overview**: end-to-end loss, median and p95 RTT, jitter, the number of
+paths in use and the number of path changes in the selected time range.
 
-The exporter exposes these Prometheus metrics from ETR JSON output:
+**Path topology** (Node Graph): every hop seen in the time range, laid out by
+TTL, with the source on the left.
+
+- **Nodes** show average RTT and reply loss. The ring is green for replies and
+  red for lost probes. Grey nodes are hops that never answer (`*`). Hops that
+  only appear on paths no longer in use have a dark ring.
+- A **red node** means *forwarding loss*: loss that also shows up at every
+  later hop, so packets really are dropped at or behind it.
+- **Edges** are colored by forwarding loss at their target (green < 1% <
+  orange < 5% < red). Their width is the number of flows using them. Dashed
+  grey edges belong to paths that are no longer in use. Hover over an edge to
+  see the RTT the hop adds.
+- Click a node or an edge for details: PTR, ASN, p95, jitter, flows and paths.
+
+**Path changes**
+
+- *Path per flow* is a state timeline showing which path (`#N`) each flow used
+  over time.
+- The *Path change log* lists each change with the TTL where the old and new
+  paths diverge and the hop before and after.
+- The *Paths* table lists every distinct path with its route, the flows using
+  it, and its end-to-end RTT and loss.
+- Path changes also show up as annotations on the time series panels.
+
+**Latency and loss per flow**: end-to-end RTT, loss and jitter per source
+port, plus an RTT heatmap. Flows on paths with different latency separate
+clearly here.
+
+**Hops**
+
+- RTT and reply loss by hop over time.
+- An MTR-style *Hop report* table.
+- A *Flows* table with the current path of every flow. Use a flow's source
+  port, for example `iperf3 --cport 50003`, to send test traffic along the
+  same path.
+
+### Reply loss vs forwarding loss
+
+Many routers rate-limit the ICMP replies they generate. A hop that drops 15%
+of *replies* while every hop behind it answers fine is not dropping traffic.
+The exporter therefore also calculates forwarding loss for each hop: the
+lowest loss seen at that hop or any later hop, for the flows that cross it. In
+the demo, `core1` shows about 15% reply loss but almost no forwarding loss, while
+congestion on `border2` shows up as forwarding loss on it and everything
+behind it.
+
+### How paths are tracked
+
+- A path is the sequence of hop IPs for one flow (destination, protocol,
+  destination port and source port). Paths are numbered per destination in
+  the order they are first seen.
+- A single lost reply is not a path change. The exporter keeps the last IP
+  seen at each TTL, and probes where the answering hops agree with it count
+  as the same path.
+- A change is recorded when a hop answers from a different IP, or when the
+  path gets longer or shorter.
+
+## Exporter
+
+The exporter (`exporter/`) follows the etr JSON files like `tail -F`. It
+serves Prometheus metrics on `:8080/metrics` and a small JSON API that
+Grafana queries through the
+[Infinity](https://grafana.com/grafana/plugins/yesoreyeram-infinity-datasource/)
+data source.
+
+| Setting | Env | Default | |
+|---|---|---|---|
+| `-input` | `ETR_JSON_FILE` | `/data/*.json` | File or glob to follow |
+| `-listen` | `ETR_LISTEN` | `:8080` | HTTP listen address |
+| `-retention` | `ETR_RETENTION` | `1h` | Probe history kept in memory for the JSON API (topology, tables) |
+| `-stale` | `ETR_STALE` | `2m` | Flows silent this long are considered stopped |
+
+The topology and tables cover the last `ETR_RETENTION` at most. The time
+series come from Prometheus, which keeps 7 days.
+
+### Metrics
+
+Flow labels: `destination`, `protocol`, `dst_port`, `src_port`. Hop metrics
+add `ttl` and `hop_ip`. A hop that never answers has `hop_ip="*"`.
 
 | Metric | Type | Description |
-|--------|------|-------------|
-| `etr_hop_rtt_ms` | Gauge | Round-trip time to each hop (ms) |
-| `etr_hop_timeout` | Gauge | Hop timeout status (1=timeout, 0=ok) |
-| `etr_path_changes_total` | Counter | Path changes detected |
-| `etr_destination_reached` | Gauge | Destination reachability (1=yes, 0=no) |
-| `etr_probes_total` | Counter | Total probes sent |
-| `etr_last_probe_timestamp` | Gauge | Last probe timestamp |
+|---|---|---|
+| `etr_probe_runs_total` | counter | Completed probe iterations per flow |
+| `etr_destination_reached_total` | counter | Iterations that got a reply from the destination |
+| `etr_destination_rtt_seconds` | histogram | End-to-end RTT per flow |
+| `etr_destination_jitter_seconds` | gauge | Smoothed end-to-end RTT variation (RFC 3550) |
+| `etr_flow_path_index` | gauge | Current path number (`#N`) of the flow |
+| `etr_flow_path_changes_total` | counter | Times the flow moved to a different path |
+| `etr_flow_hops` | gauge | Hops in the flow's current path |
+| `etr_flow_last_probe_timestamp_seconds` | gauge | Time of the flow's last probe |
+| `etr_destination_active_paths` | gauge | Distinct paths in use towards a destination |
+| `etr_destination_info` | gauge | `destination_ptr`, `destination_asn` |
+| `etr_hop_sent_total` | counter | Probes per flow and TTL, attributed to the hop IP last seen there |
+| `etr_hop_received_total` | counter | Replies per flow, TTL and hop IP |
+| `etr_hop_rtt_seconds` | histogram | RTT to each hop per flow |
+| `etr_hop_jitter_seconds` | gauge | Smoothed hop RTT variation |
+| `etr_hop_info` | gauge | `hop_ptr`, `hop_asn` per `hop_ip` |
+| `etr_exporter_parse_errors_total` | counter | Input lines that could not be parsed |
 
-All metrics include labels: `destination`, `destination_ptr`, `protocol`. Hop metrics also include `ttl`, `hop_ip`, `hop_ptr`.
+Loss is `1 - received / sent`, for example:
 
-## Configuration
-
-**Change JSON file location** - Edit `docker-compose.yml`:
-```yaml
-etr-exporter:
-  environment:
-    - ETR_JSON_FILE=/data/custom.json
+```promql
+1 - sum by (src_port) (rate(etr_destination_reached_total[5m]))
+  / sum by (src_port) (rate(etr_probe_runs_total[5m]))
 ```
 
-**Continuous monitoring** - ETR runs infinitely by default (like mtr):
+Series are per flow and hop, so their number grows with
+`destinations × flows × hops`. That is fine for a handful of etr runs. For
+many targets, drop `src_port` with recording rules or `metric_relabel_configs`.
+
+### JSON API
+
+All endpoints take the optional query parameters `destination` and `src_port`
+(comma-separated lists) and `from`/`to` (Unix milliseconds; the default is
+the last 15 minutes).
+
+| Endpoint | Content |
+|---|---|
+| `/api/graph/nodes`, `/api/graph/edges` | Node Graph frames |
+| `/api/paths` | Distinct paths with route, flows, RTT and loss |
+| `/api/flows` | One row per flow with its current path |
+| `/api/events` | Path changes, newest first |
+| `/api/hops` | Per-hop report (reply and forwarding loss, RTT) |
+
+### Development
+
 ```bash
-sudo ./etr -j examples/monitoring/data/etr.json 192.0.2.1
+cd examples/monitoring/exporter
+go test -race ./...
+go run . -input '../data/*.json'           # exporter on :8080
+go run . demo -out ../data/demo.json       # synthetic etr output
 ```
 
-To run a specific number of probes, use `--count`:
+The dashboard JSON is provisioned from `grafana/dashboards/`. With
+`allowUiUpdates`, you can edit it in Grafana and export it back to that file.
+
+## Stop and clean up
+
 ```bash
-sudo ./etr -j examples/monitoring/data/etr.json --count 10 192.0.2.1
-```
-
-**Stop the stack:**
-```bash
-docker-compose down
-```
-
-## Cleanup
-
-**Remove all containers, volumes, and data:**
-```bash
-cd examples/monitoring
-docker-compose down -v
-rm -rf data/
-```
-
-This removes:
-- All containers (Prometheus, Grafana, exporter)
-- Named volumes (prometheus-data, grafana-data)
-- Local data directory with ETR JSON files
-
-To also remove the locally built etr-exporter image run:
-```bash
-docker rmi monitoring-etr-exporter
+docker compose --profile demo down       # stop, keep history
+docker compose --profile demo down -v    # also remove Prometheus/Grafana volumes
+rm -rf data/                             # remove etr/demo JSON files
+docker rmi etr-exporter                  # remove the locally built image
 ```
