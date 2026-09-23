@@ -6,12 +6,12 @@ RUN apk add --no-cache ca-certificates curl git build-base pkgconfig libpcap-dev
 
 WORKDIR /build
 COPY go.mod go.sum ./
-RUN GO_MINOR=$(awk '/^go /{print $2}' go.mod | sed 's/\.[0-9]*$//') && \
+RUN GO_MINOR=$(awk '/^go /{print $2}' go.mod | sed -E 's/^([0-9]+\.[0-9]+).*/\1/') && \
 		curl -fsSL "https://go.dev/dl/?mode=json&include=all" -o /tmp/go-releases.json && \
 		GO_VERSION=$(grep -m 1 -o "\"version\": \"go${GO_MINOR}\\.[0-9][0-9]*\"" /tmp/go-releases.json | \
 			sed -E 's/.*"go([0-9.]+)"/\1/') && \
 		rm /tmp/go-releases.json && \
-		test -n "$GO_VERSION" && \
+		{ test -n "$GO_VERSION" || { echo "Could not resolve a Go release for go${GO_MINOR}" >&2; exit 1; }; } && \
 		ARCH=${TARGETARCH:-amd64} && \
 		case "$ARCH" in \
 			amd64|arm64) GOARCH=$ARCH ;; \
