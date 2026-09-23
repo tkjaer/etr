@@ -9,6 +9,11 @@ var (
 	flowLabels = []string{"source", "destination", "protocol", "dst_port", "src_port"}
 	hopLabels  = append(append([]string{}, flowLabels...), "ttl", "hop_ip")
 
+	// Fleet metrics have no src_port/ttl: they are meant to be shipped to a
+	// central TSDB while the per-flow and per-hop detail stays at the site.
+	targetLabels  = []string{"source", "source_site", "destination", "target_site", "target_class"}
+	transitLabels = []string{"source_site", "hop_ip"}
+
 	// 0.25ms .. ~8s
 	rttBuckets = prometheus.ExponentialBuckets(0.00025, 2, 16)
 )
@@ -32,6 +37,15 @@ type Metrics struct {
 	hopJitter  *prometheus.GaugeVec
 	hopInfo    *prometheus.GaugeVec
 	parseError prometheus.Counter
+
+	targetProbes      *prometheus.CounterVec
+	targetReached     *prometheus.CounterVec
+	targetRTT         *prometheus.HistogramVec
+	targetPathChanges *prometheus.CounterVec
+	targetPaths       *prometheus.GaugeVec
+	transitProbes     *prometheus.CounterVec
+	transitReached    *prometheus.CounterVec
+	transitTargets    *prometheus.GaugeVec
 }
 
 func NewMetrics(reg prometheus.Registerer) *Metrics {
@@ -103,12 +117,48 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "etr_exporter_parse_errors_total",
 			Help: "Input lines that could not be parsed.",
 		}),
+
+		targetProbes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "etr_target_probes_total",
+			Help: "Probe iterations per target (source → destination), all flows.",
+		}, targetLabels),
+		targetReached: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "etr_target_reached_total",
+			Help: "Probe iterations per target that got a reply from the destination.",
+		}, targetLabels),
+		targetRTT: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "etr_target_rtt_seconds",
+			Help:    "End-to-end round-trip time per target, all flows.",
+			Buckets: rttBuckets,
+		}, targetLabels),
+		targetPathChanges: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "etr_target_path_changes_total",
+			Help: "Times a flow of the target moved to a different path.",
+		}, targetLabels),
+		targetPaths: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "etr_target_paths",
+			Help: "Distinct paths currently used by the flows of the target.",
+		}, targetLabels),
+		transitProbes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "etr_hop_transit_probes_total",
+			Help: "Probe iterations from a site whose path crosses the hop, over all targets.",
+		}, transitLabels),
+		transitReached: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "etr_hop_transit_reached_total",
+			Help: "Probe iterations crossing the hop that reached their destination. 1 - reached/probes is the end-to-end loss of the traffic through the hop.",
+		}, transitLabels),
+		transitTargets: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "etr_hop_transit_targets",
+			Help: "Targets whose current paths cross the hop.",
+		}, transitLabels),
 	}
 
 	reg.MustRegister(
 		m.runs, m.reached, m.destRTT, m.destJitter, m.pathIndex, m.pathChanges,
 		m.hopCount, m.lastProbe, m.distinctPaths, m.destInfo,
 		m.hopSent, m.hopRecv, m.hopRTT, m.hopJitter, m.hopInfo, m.parseError,
+		m.targetProbes, m.targetReached, m.targetRTT, m.targetPathChanges, m.targetPaths,
+		m.transitProbes, m.transitReached, m.transitTargets,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

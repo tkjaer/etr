@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"flag"
@@ -15,9 +16,9 @@ import (
 	"time"
 )
 
-// The demo writes synthetic etr output for a small network so the
-// dashboards can be explored without root privileges or a real target. It
-// traces three targets from two sources:
+// The demo writes synthetic etr output so the dashboards can be explored
+// without root privileges or a real target. The "small" scenario traces three
+// targets from two sources (the "fleet" scenario is in demo_fleet.go):
 //
 //	home → www:     gw ─ bras ─┬ core1 ┬─┬ border1 ┬─ * (silent IX) ─ edge1 ─ www
 //	                           └ core2 ┘ └ border2 ┘
@@ -75,6 +76,9 @@ type demoPhase struct {
 	coreDown   bool    // core2 down: everything via core1
 	officeLoss bool    // office uplink: 8% loss from pe1 on
 	detour     bool    // border1 maintenance: extra hop
+
+	// fleet scenario
+	tat2Loss, tat1Down, sinISPLoss, sydCongestion bool
 }
 
 var demoPhases = []demoPhase{
@@ -133,8 +137,9 @@ func demoTargets(flows int) []demoTarget {
 func runDemo(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("demo", flag.ExitOnError)
 	out := fs.String("out", "/data/demo.json", "file to write (truncated on start, like etr -j)")
-	interval := fs.Duration("interval", time.Second, "delay between probe iterations")
-	flows := fs.Int("flows", 8, "number of parallel flows (etr -P) towards the main target")
+	scenario := fs.String("scenario", "small", `"small" (3 targets, 2 sources) or "fleet" (6-site WAN mesh + public targets)`)
+	interval := fs.Duration("interval", 0, "delay between probe iterations (default 1s small, 5s fleet)")
+	flows := fs.Int("flows", 0, "parallel flows (etr -P) per target (default 8 towards the main small target, 2 fleet)")
 	basePort := fs.Int("src-port", 50000, "base source port (etr -s)")
 	cycle := fs.Duration("cycle", 12*time.Minute, "length of the scripted incident cycle")
 	_ = fs.Parse(args)
@@ -145,7 +150,19 @@ func runDemo(ctx context.Context, args []string) error {
 	}
 	defer f.Close()
 
-	targets := demoTargets(*flows)
+	var targets []demoTarget
+	phases := demoPhases
+	switch *scenario {
+	case "small":
+		targets = demoTargets(cmp.Or(*flows, 8))
+		*interval = cmp.Or(*interval, time.Second)
+	case "fleet":
+		targets = fleetTargets(cmp.Or(*flows, 2))
+		phases = fleetPhases
+		*interval = cmp.Or(*interval, 5*time.Second)
+	default:
+		return fmt.Errorf("unknown scenario %q", *scenario)
+	}
 	start := time.Now()
 	lastPhase := ""
 	var num uint
@@ -155,8 +172,8 @@ func runDemo(ctx context.Context, args []string) error {
 	for {
 		now := time.Now()
 		pos := math.Mod(now.Sub(start).Seconds(), cycle.Seconds()) / cycle.Seconds()
-		phase := demoPhases[len(demoPhases)-1]
-		for _, p := range demoPhases {
+		phase := phases[len(phases)-1]
+		for _, p := range phases {
 			if pos < p.until {
 				phase = p
 				break

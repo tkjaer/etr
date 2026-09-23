@@ -20,6 +20,18 @@
   "version": 1,
   "links": [
     {
+      "title": "Fleet",
+      "type": "link",
+      "url": "/d/etr-fleet",
+      "icon": "apps",
+      "keepTime": true,
+      "includeVars": false,
+      "asDropdown": false,
+      "tags": [],
+      "targetBlank": false,
+      "tooltip": ""
+    },
+    {
       "title": "Target details",
       "type": "link",
       "url": "/d/etr-paths",

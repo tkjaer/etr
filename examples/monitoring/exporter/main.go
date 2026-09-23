@@ -38,6 +38,7 @@ func main() {
 	listen := fs.String("listen", env("ETR_LISTEN", ":8080"), "HTTP listen address (env ETR_LISTEN)")
 	retention := fs.Duration("retention", envDuration("ETR_RETENTION", time.Hour), "how much probe history the JSON API keeps in memory (env ETR_RETENTION)")
 	stale := fs.Duration("stale", envDuration("ETR_STALE", 2*time.Minute), "flows silent for this long are considered stopped (env ETR_STALE)")
+	sitesFile := fs.String("sites", env("ETR_SITES", ""), "file mapping IP prefixes to sites for the fleet metrics (env ETR_SITES)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage:\n  etr-exporter [flags]\n  etr-exporter demo [flags]   write synthetic etr output\n\nFlags:\n")
 		fs.PrintDefaults()
@@ -46,6 +47,14 @@ func main() {
 
 	reg := prometheus.NewRegistry()
 	store := NewStore(NewMetrics(reg), *retention, *stale)
+	sites, err := LoadSites(*sitesFile)
+	if err != nil {
+		log.Fatalf("sites: %v", err)
+	}
+	store.SetSites(sites)
+	if sites.Len() > 0 {
+		log.Printf("loaded %d site prefixes from %s", sites.Len(), *sitesFile)
+	}
 
 	go NewWatcher(*input, store).Run(ctx)
 	go func() {

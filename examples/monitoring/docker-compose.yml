@@ -45,8 +45,10 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       - ETR_JSON_FILE=/data/*.json
+      - ETR_SITES=/etc/etr/sites.txt
     volumes:
       - ./data:/data
+      - ./sites.txt:/etc/etr/sites.txt:ro
     restart: unless-stopped
 
   # Synthetic etr output for trying the dashboard without a real target:
@@ -57,6 +59,21 @@ services:
     image: etr-exporter
     container_name: etr-demo
     command: ["./etr-exporter", "demo", "-out", "/data/demo.json"]
+    volumes:
+      - ./data:/data
+    depends_on:
+      - etr-exporter
+    restart: unless-stopped
+
+  # A company WAN: 6 sites probing each other plus public targets from each
+  # site (42 targets), for the "ETR · Fleet" dashboard:
+  #   docker compose --profile fleet up -d
+  etr-demo-fleet:
+    profiles: [fleet]
+    build: ./exporter
+    image: etr-exporter
+    container_name: etr-demo-fleet
+    command: ["./etr-exporter", "demo", "-scenario", "fleet", "-out", "/data/fleet.json"]
     volumes:
       - ./data:/data
     depends_on:

@@ -28,6 +28,20 @@ Open <http://localhost:3000/d/etr-overview> and click a target to drill down.
 Anonymous users can view the dashboards; log in as admin/admin to edit them.
 Give it a few minutes to collect some history.
 
+For a larger picture, the `fleet` profile simulates a company WAN. Six sites
+(fra, ams, lon, nyc, sin, syd) probe each other and two public services, for 42
+targets in total. It also has scripted incidents on shared links: a degraded
+and then a cut transatlantic link, loss on one site's internet breakout, and a
+congested backhaul. Open it in the [Fleet dashboard](#fleet):
+
+```bash
+docker compose --profile fleet up -d --build          # or: --profile demo --profile fleet
+```
+
+Probing many sites is a scaling problem of its own. See
+[SCALING.md](SCALING.md) for an architecture with one exporter per site
+feeding a central TSDB.
+
 ## Monitoring a real destination
 
 ```bash
@@ -73,6 +87,27 @@ All targets at a glance (`/d/etr-overview`, filterable by source):
 - End-to-end **RTT** and **loss**, **path changes** and **paths in use** per
   target. Click a series to open that target. Path changes on several targets
   at the same time usually point to a shared hop.
+
+### Fleet
+
+Every site at a glance (`/d/etr-fleet`, filterable by source site, target
+class and time window). It is built only from the low-cardinality
+`etr_target_*` and `etr_hop_transit_*` metrics, so it also works on a central
+TSDB that doesn't have the per-flow detail. It needs a [sites file](#sites).
+
+![Fleet](images/fleet.png)
+
+- **Site × site** matrices: end-to-end loss and average RTT from each source
+  site (rows) to each target site (columns). A bad row points at the source
+  site, a bad column at the target site, and a block of cells at a link
+  between regions.
+- **Worst targets**: the 20 targets with the most loss. Click a source or
+  destination to open the target.
+- **Shared hops**: routers crossed by several targets, ranked by the loss of
+  the traffic that goes through them. When many targets suffer at once, the
+  shared hop with the most loss is where to look first.
+- Loss, RTT and path changes per site pair, and loss through shared hops,
+  over time.
 
 ### Target details
 
@@ -155,9 +190,23 @@ data source.
 | `-listen` | `ETR_LISTEN` | `:8080` | HTTP listen address |
 | `-retention` | `ETR_RETENTION` | `1h` | Probe history kept in memory for the JSON API (topology, tables) |
 | `-stale` | `ETR_STALE` | `2m` | Flows silent this long are considered stopped |
+| `-sites` | `ETR_SITES` | | [Sites file](#sites) for the fleet metrics (compose mounts [`sites.txt`](sites.txt)) |
 
 The topology and tables cover the last `ETR_RETENTION` at most. The time
 series come from Prometheus, which keeps 7 days.
+
+### Sites
+
+The fleet metrics label sources and destinations with a site and a class,
+read from a text file of `<ip or prefix> <site> [class]` lines:
+
+```text
+10.1.0.0/16    fra        wan
+203.0.113.50   www        public
+```
+
+The longest matching prefix wins. Addresses without a match are their own
+site with class `other`. The exporter reads the file on start.
 
 ### Metrics
 
@@ -183,6 +232,25 @@ metrics add `ttl` and `hop_ip`. A hop that never answers has `hop_ip="*"`.
 | `etr_hop_info` | gauge | `hop_ptr`, `hop_asn` per `hop_ip` |
 | `etr_exporter_parse_errors_total` | counter | Input lines that could not be parsed |
 
+Fleet metrics are per target without flow or hop detail, labelled `source`,
+`source_site`, `destination`, `target_site` and `target_class`. Transit
+metrics are per `source_site` and `hop_ip`:
+
+| Metric | Type | Description |
+|---|---|---|
+| `etr_target_probes_total` | counter | Probe iterations per target, all flows |
+| `etr_target_reached_total` | counter | Iterations that reached the destination |
+| `etr_target_rtt_seconds` | histogram | End-to-end RTT per target |
+| `etr_target_path_changes_total` | counter | Times a flow of the target moved to a different path |
+| `etr_target_paths` | gauge | Distinct paths in use |
+| `etr_hop_transit_probes_total` | counter | Iterations whose path crossed the hop |
+| `etr_hop_transit_reached_total` | counter | Of those, iterations that reached their destination |
+| `etr_hop_transit_targets` | gauge | Targets whose current paths cross the hop |
+
+`1 - transit_reached / transit_probes` is the end-to-end loss of all traffic
+through a router. A router that only rate-limits its own ICMP replies doesn't
+show up there, but a router that drops traffic for several targets does.
+
 Loss is `1 - received / sent`, for example per target:
 
 ```promql
@@ -191,8 +259,10 @@ Loss is `1 - received / sent`, for example per target:
 ```
 
 Series are per flow and hop, so their number grows with
-`targets × flows × hops`. That is fine for a handful of etr runs. For
-many targets, drop `src_port` with recording rules or `metric_relabel_configs`.
+`targets × flows × hops` (about 2,850 per target with 8 flows and 15 hops).
+That is fine for a site. For many targets, keep the detail at the site and
+send only the fleet metrics (about 23 per target) to a central TSDB, as
+described in [SCALING.md](SCALING.md).
 
 ### JSON API
 
@@ -216,6 +286,7 @@ cd examples/monitoring/exporter
 go test -race ./...
 go run . -input '../data/*.json'           # exporter on :8080
 go run . demo -out ../data/demo.json       # synthetic etr output
+go run . demo -scenario fleet -out ../data/fleet.json   # 6-site WAN mesh
 ```
 
 The dashboards are provisioned from `grafana/dashboards/`. With
@@ -225,8 +296,8 @@ files.
 ## Stop and clean up
 
 ```bash
-docker compose --profile demo down       # stop, keep history
-docker compose --profile demo down -v    # also remove Prometheus/Grafana volumes
+docker compose --profile demo --profile fleet down      # stop, keep history
+docker compose --profile demo --profile fleet down -v   # also remove Prometheus/Grafana volumes
 rm -rf data/                             # remove etr/demo JSON files
 docker rmi etr-exporter                  # remove the locally built image
 ```

@@ -71,7 +71,13 @@ type destState struct {
 }
 
 type targetState struct {
-	paths []*pathEntry
+	paths  []*pathEntry
+	labels []string // fleet metric labels
+}
+
+type transitKey struct {
+	site string
+	hop  string
 }
 
 type flowState struct {
@@ -121,6 +127,8 @@ type Store struct {
 	flows   map[FlowKey]*flowState
 	dests   map[string]*destState
 	targets map[Target]*targetState
+	sites   *Sites
+	transit map[transitKey]map[Target]time.Time
 	hopMeta map[string]hopMeta
 	records []record
 	events  []PathEvent
@@ -138,6 +146,7 @@ func NewStore(m *Metrics, retention, stale time.Duration) *Store {
 		flows:     make(map[FlowKey]*flowState),
 		dests:     make(map[string]*destState),
 		targets:   make(map[Target]*targetState),
+		transit:   make(map[transitKey]map[Target]time.Time),
 		hopMeta:   make(map[string]hopMeta),
 	}
 }
@@ -247,15 +256,21 @@ func (s *Store) Process(pr *ProbeRun) bool {
 	})
 
 	s.updateMetrics(f, pr, obs, len(vec), live)
+	s.updateFleetMetrics(t, key, pr, obs, live)
 	s.updateActivePaths(key.target())
 	s.prune(now)
 	return true
 }
 
+// SetSites sets the IP → site mapping used for the fleet metrics. Call it
+// before processing any input.
+func (s *Store) SetSites(sites *Sites) { s.sites = sites }
+
 func (s *Store) target(t Target) *targetState {
 	ts := s.targets[t]
 	if ts == nil {
-		ts = &targetState{}
+		src, dst := s.sites.Lookup(t.Source), s.sites.Lookup(t.Destination)
+		ts = &targetState{labels: []string{t.Source, src.Name, t.Destination, dst.Name, dst.Class}}
 		s.targets[t] = ts
 	}
 	return ts
@@ -358,6 +373,7 @@ func (s *Store) updatePath(f *flowState, d *targetState, vec []string, ts time.T
 			})
 			if s.m != nil {
 				s.m.pathChanges.WithLabelValues(f.key.labels()...).Inc()
+				s.m.targetPathChanges.WithLabelValues(d.labels...).Inc()
 			}
 		}
 	}
@@ -508,6 +524,63 @@ func (s *Store) updateActivePaths(t Target) {
 		}
 	}
 	s.m.distinctPaths.WithLabelValues(t.Source, t.Destination).Set(float64(len(seen)))
+	s.m.targetPaths.WithLabelValues(s.target(t).labels...).Set(float64(len(seen)))
+}
+
+// updateFleetMetrics feeds the per-target and per-transit-hop aggregates.
+func (s *Store) updateFleetMetrics(t *targetState, key FlowKey, pr *ProbeRun, obs []hopObs, live bool) {
+	site := t.labels[1]
+	seen := map[string]bool{}
+	for _, o := range obs {
+		if o.IP == "" || o.IP == key.Destination || seen[o.IP] {
+			continue
+		}
+		seen[o.IP] = true
+		tk := transitKey{site, o.IP}
+		if s.transit[tk] == nil {
+			s.transit[tk] = map[Target]time.Time{}
+		}
+		s.transit[tk][key.target()] = pr.Timestamp
+	}
+	if s.m == nil || !live {
+		return
+	}
+	s.m.targetProbes.WithLabelValues(t.labels...).Inc()
+	s.m.targetReached.WithLabelValues(t.labels...).Add(0)
+	s.m.targetPathChanges.WithLabelValues(t.labels...).Add(0)
+	if pr.ReachedDest && len(obs) > 0 {
+		s.m.targetReached.WithLabelValues(t.labels...).Inc()
+		s.m.targetRTT.WithLabelValues(t.labels...).Observe(float64(obs[len(obs)-1].RTT) / 1e6)
+	}
+	for ip := range seen {
+		s.m.transitProbes.WithLabelValues(site, ip).Inc()
+		s.m.transitReached.WithLabelValues(site, ip).Add(0)
+		if pr.ReachedDest {
+			s.m.transitReached.WithLabelValues(site, ip).Inc()
+		}
+	}
+}
+
+// updateTransitTargets counts, per site and hop, the targets whose paths
+// crossed the hop recently.
+func (s *Store) updateTransitTargets(now time.Time) {
+	for tk, targets := range s.transit {
+		for t, ts := range targets {
+			if now.Sub(ts) >= s.stale {
+				delete(targets, t)
+			}
+		}
+		if len(targets) == 0 {
+			delete(s.transit, tk)
+			if s.m != nil {
+				s.m.transitTargets.DeleteLabelValues(tk.site, tk.hop)
+			}
+			continue
+		}
+		if s.m != nil {
+			s.m.transitTargets.WithLabelValues(tk.site, tk.hop).Set(float64(len(targets)))
+		}
+	}
 }
 
 // Expire drops gauges for flows that have gone quiet, so stopped etr runs do
@@ -541,6 +614,7 @@ func (s *Store) Expire() {
 	for t := range targets {
 		s.updateActivePaths(t)
 	}
+	s.updateTransitTargets(now)
 	s.prune(now)
 }
 
