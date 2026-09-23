@@ -19,6 +19,7 @@ import (
 
 type query struct {
 	from, to time.Time
+	sources  map[string]bool
 	dests    map[string]bool
 	ports    map[uint16]bool
 }
@@ -32,7 +33,9 @@ func parseQuery(r *http.Request, now time.Time) query {
 	if t, ok := parseMillis(v.Get("from")); ok {
 		q.from = t
 	}
-	q.dests = parseSet(v.Get("destination"), func(s string) (string, bool) { return s, true })
+	str := func(s string) (string, bool) { return s, true }
+	q.sources = parseSet(v.Get("source"), str)
+	q.dests = parseSet(v.Get("destination"), str)
 	q.ports = parseSet(v.Get("src_port"), func(s string) (uint16, bool) {
 		n, err := strconv.ParseUint(s, 10, 16)
 		return uint16(n), err == nil
@@ -69,7 +72,8 @@ func parseSet[T comparable](s string, conv func(string) (T, bool)) map[T]bool {
 }
 
 func (q query) matchFlow(k FlowKey) bool {
-	return (q.dests == nil || q.dests[k.Destination]) && (q.ports == nil || q.ports[k.SrcPort])
+	return (q.sources == nil || q.sources[k.Source]) && (q.dests == nil || q.dests[k.Destination]) &&
+		(q.ports == nil || q.ports[k.SrcPort])
 }
 
 // window returns the records in the query window, in arrival order.
@@ -201,9 +205,9 @@ type graph struct {
 	multi bool
 }
 
-func pathLabel(multi bool, dest string, idx int) string {
+func pathLabel(multi bool, t Target, idx int) string {
 	if multi {
-		return fmt.Sprintf("%s #%d", dest, idx)
+		return fmt.Sprintf("%s #%d", t, idx)
 	}
 	return fmt.Sprintf("#%d", idx)
 }
@@ -212,11 +216,11 @@ func (s *Store) buildGraph(q query) *graph {
 	recs := s.window(q)
 	last := s.lastPerFlow(recs, q)
 	g := &graph{nodes: map[string]*nodeAgg{}, edges: map[string]*edgeAgg{}, succ: map[string][]string{}}
-	dests := map[string]bool{}
+	targets := map[Target]bool{}
 	for _, r := range recs {
-		dests[r.Flow.Destination] = true
+		targets[r.Flow.target()] = true
 	}
-	g.multi = len(dests) > 1
+	g.multi = len(targets) > 1
 
 	node := func(id string, ttl int) *nodeAgg {
 		n := g.nodes[id]
@@ -230,9 +234,9 @@ func (s *Store) buildGraph(q query) *graph {
 	jt := jitterTracker{}
 	for _, r := range recs {
 		inUse := last[r.Flow] == r
-		pl := pathLabel(g.multi, r.Flow.Destination, r.PathIdx)
-		src := node(sourceNodeID(r.Source), 0)
-		src.source, src.ip = true, r.Source
+		pl := pathLabel(g.multi, r.Flow.target(), r.PathIdx)
+		src := node(sourceNodeID(r.Flow.Source), 0)
+		src.source, src.ip = true, r.Flow.Source
 		src.flows[r.Flow] = true
 		src.inUse = src.inUse || inUse
 		src.lastSeen = maxTime(src.lastSeen, r.TS)
@@ -503,6 +507,7 @@ func (s *Store) graphEdges(q query) []graphEdge {
 }
 
 type flowRow struct {
+	Source      string  `json:"source"`
 	Destination string  `json:"destination"`
 	Protocol    string  `json:"protocol"`
 	SrcPort     uint16  `json:"src_port"`
@@ -554,6 +559,7 @@ func (s *Store) flowRows(q query) []flowRow {
 	out := make([]flowRow, 0, len(byFlow))
 	for k, a := range byFlow {
 		row := flowRow{
+			Source:      k.Source,
 			Destination: k.Destination,
 			Protocol:    k.Protocol,
 			SrcPort:     k.SrcPort,
@@ -576,8 +582,8 @@ func (s *Store) flowRows(q query) []flowRow {
 		out = append(out, row)
 	}
 	slices.SortFunc(out, func(a, b flowRow) int {
-		return cmp.Or(cmp.Compare(a.Destination, b.Destination), cmp.Compare(a.Protocol, b.Protocol),
-			cmp.Compare(a.DstPort, b.DstPort), cmp.Compare(a.SrcPort, b.SrcPort))
+		return cmp.Or(cmp.Compare(a.Source, b.Source), cmp.Compare(a.Destination, b.Destination),
+			cmp.Compare(a.Protocol, b.Protocol), cmp.Compare(a.DstPort, b.DstPort), cmp.Compare(a.SrcPort, b.SrcPort))
 	})
 	return out
 }
@@ -591,6 +597,7 @@ func recordHops(r *record) []string {
 }
 
 type pathRow struct {
+	Source      string  `json:"source"`
 	Destination string  `json:"destination"`
 	Path        string  `json:"path"`
 	Index       int     `json:"index"`
@@ -610,19 +617,19 @@ func (s *Store) pathRows(q query) []pathRow {
 	recs := s.window(q)
 	last := s.lastPerFlow(recs, q)
 	type key struct {
-		dest string
-		idx  int
+		t   Target
+		idx int
 	}
 	st := map[key]*stats{}
-	total := map[string]int{}
+	total := map[Target]int{}
 	for _, r := range recs {
-		k := key{r.Flow.Destination, r.PathIdx}
+		k := key{r.Flow.target(), r.PathIdx}
 		a := st[k]
 		if a == nil {
 			a = &stats{}
 			st[k] = a
 		}
-		total[r.Flow.Destination]++
+		total[r.Flow.target()]++
 		if len(r.Hops) == 0 {
 			a.sent++
 			continue
@@ -633,32 +640,30 @@ func (s *Store) pathRows(q query) []pathRow {
 	}
 	now := map[key]map[FlowKey]bool{}
 	for fk, r := range last {
-		k := key{fk.Destination, r.PathIdx}
+		k := key{fk.target(), r.PathIdx}
 		if now[k] == nil {
 			now[k] = map[FlowKey]bool{}
 		}
 		now[k][fk] = true
 	}
 	var out []pathRow
-	for _, d := range s.dests {
-		if q.dests != nil && !q.dests[d.ip] {
-			continue
-		}
-		for _, p := range d.paths {
-			a := st[key{d.ip, p.Index}]
+	for t, ts := range s.targets {
+		for _, p := range ts.paths {
+			a := st[key{t, p.Index}]
 			if a == nil {
 				continue
 			}
-			flows := now[key{d.ip, p.Index}]
+			flows := now[key{t, p.Index}]
 			out = append(out, pathRow{
-				Destination: d.ip,
+				Source:      t.Source,
+				Destination: t.Destination,
 				Path:        fmt.Sprintf("#%d", p.Index),
 				Index:       p.Index,
 				Hops:        len(p.Hops),
 				Route:       s.route(p.Hops),
 				FlowsNow:    len(flows),
 				Flows:       flowList(flows),
-				Share:       round(100 * float64(a.sent) / float64(max(total[d.ip], 1))),
+				Share:       round(100 * float64(a.sent) / float64(max(total[t], 1))),
 				Loss:        round(a.loss() * 100),
 				Avg:         optNum(a.avg()),
 				P95:         optNum(a.quantile(0.95)),
@@ -668,13 +673,15 @@ func (s *Store) pathRows(q query) []pathRow {
 		}
 	}
 	slices.SortFunc(out, func(a, b pathRow) int {
-		return cmp.Or(cmp.Compare(a.Destination, b.Destination), cmp.Compare(a.Index, b.Index))
+		return cmp.Or(cmp.Compare(a.Source, b.Source), cmp.Compare(a.Destination, b.Destination),
+			cmp.Compare(a.Index, b.Index))
 	})
 	return out
 }
 
 type eventRow struct {
 	Time        int64  `json:"time"`
+	Source      string `json:"source"`
 	Destination string `json:"destination"`
 	Protocol    string `json:"protocol"`
 	SrcPort     uint16 `json:"src_port"`
@@ -695,6 +702,7 @@ func (s *Store) eventRows(q query) []eventRow {
 		}
 		out = append(out, eventRow{
 			Time:        e.Time.UnixMilli(),
+			Source:      e.Flow.Source,
 			Destination: e.Flow.Destination,
 			Protocol:    e.Flow.Protocol,
 			SrcPort:     e.Flow.SrcPort,
@@ -710,6 +718,7 @@ func (s *Store) eventRows(q query) []eventRow {
 }
 
 type hopRow struct {
+	Source      string  `json:"source"`
 	Destination string  `json:"destination"`
 	TTL         int     `json:"ttl"`
 	IP          string  `json:"ip"`
@@ -733,7 +742,7 @@ func (s *Store) hopRows(q query) []hopRow {
 	recs := s.window(q)
 	last := s.lastPerFlow(recs, q)
 	type key struct {
-		dest string
+		t    Target
 		ttl  uint8
 		node string
 	}
@@ -749,7 +758,7 @@ func (s *Store) hopRows(q query) []hopRow {
 	for _, r := range recs {
 		for i := range r.Hops {
 			o := &r.Hops[i]
-			k := key{r.Flow.Destination, o.TTL, o.Node}
+			k := key{r.Flow.target(), o.TTL, o.Node}
 			a := byHop[k]
 			if a == nil {
 				a = &acc{ip: o.IP, flows: map[FlowKey]bool{}, paths: map[int]bool{}}
@@ -766,7 +775,8 @@ func (s *Store) hopRows(q query) []hopRow {
 	for k, a := range byHop {
 		meta := s.hopMeta[a.ip]
 		row := hopRow{
-			Destination: k.dest,
+			Source:      k.t.Source,
+			Destination: k.t.Destination,
 			TTL:         int(k.ttl),
 			IP:          cmp.Or(a.ip, unknownHop),
 			PTR:         meta.ptr,
@@ -792,7 +802,7 @@ func (s *Store) hopRows(q query) []hopRow {
 		out = append(out, row)
 	}
 	slices.SortFunc(out, func(a, b hopRow) int {
-		return cmp.Or(cmp.Compare(a.Destination, b.Destination), cmp.Compare(a.TTL, b.TTL),
+		return cmp.Or(cmp.Compare(a.Source, b.Source), cmp.Compare(a.Destination, b.Destination), cmp.Compare(a.TTL, b.TTL),
 			-cmp.Compare(a.Sent, b.Sent), cmp.Compare(a.IP, b.IP))
 	})
 	return out
@@ -819,7 +829,8 @@ func setList(m map[string]bool) string {
 
 func flowList(m map[FlowKey]bool) string {
 	keys := slices.SortedFunc(maps.Keys(m), func(a, b FlowKey) int {
-		return cmp.Or(cmp.Compare(a.Destination, b.Destination), cmp.Compare(a.SrcPort, b.SrcPort))
+		return cmp.Or(cmp.Compare(a.Source, b.Source), cmp.Compare(a.Destination, b.Destination),
+			cmp.Compare(a.Protocol, b.Protocol), cmp.Compare(a.SrcPort, b.SrcPort))
 	})
 	parts := make([]string, len(keys))
 	for i, k := range keys {
@@ -896,6 +907,7 @@ func (s *Store) Handler() http.Handler {
 	endpoint("/api/paths", func(q query) any { return nonNil(s.pathRows(q)) })
 	endpoint("/api/events", func(q query) any { return s.eventRows(q) })
 	endpoint("/api/hops", func(q query) any { return s.hopRows(q) })
+	endpoint("/api/targets", func(q query) any { return s.targetRows(q) })
 	return mux
 }
 

@@ -15,17 +15,22 @@ import (
 	"time"
 )
 
-// The demo writes synthetic etr output for a small ECMP network so the
-// dashboard can be explored without root privileges or a real target:
+// The demo writes synthetic etr output for a small network so the
+// dashboards can be explored without root privileges or a real target. It
+// traces three targets from two sources:
 //
-//	              ┌ core1 ┐   ┌ border1 ┐
-//	gw ─ bras ────┤       ├───┤         ├── * (silent IX) ── edge ── www
-//	              └ core2 ┘   └ border2 ┘
+//	home → www:     gw ─ bras ─┬ core1 ┬─┬ border1 ┬─ * (silent IX) ─ edge1 ─ www
+//	                           └ core2 ┘ └ border2 ┘
+//	home → ns1:     gw ─ bras ─┬ core1 ┬─ transit1 ─ ns-edge ─ ns1
+//	                           └ core2 ┘
+//	office → www:   gw ─ pe1 ─┬ cr1 ┬─ edge2 ─ www
+//	                          └ cr2 ┘
 //
-// Flows are spread over the four paths by hashing the source port. A scripted
-// cycle of incidents exercises every panel: congestion (latency + loss on one
-// branch), a link outage (flows reroute = path changes), a detour (extra hop),
-// and a router that constantly rate-limits ICMP (loss that is not real).
+// Flows are spread over the ECMP branches by hashing the source port. A
+// scripted cycle of incidents exercises every panel: congestion (latency +
+// loss on one branch), a link outage shared by two targets (flows reroute =
+// path changes), loss on another source's uplink, a detour (extra hop), and a
+// router that constantly rate-limits ICMP (loss that is not real).
 
 type demoHop struct {
 	ip, ptr, asn string
@@ -36,8 +41,10 @@ type demoHop struct {
 }
 
 var (
-	demoSource = "192.168.1.10"
+	demoHome   = "192.168.1.10"
+	demoOffice = "10.20.0.5"
 	demoDest   = "203.0.113.50"
+	demoNSDest = "198.18.0.53"
 
 	hGW      = demoHop{ip: "192.168.1.1", ptr: "gw.home.lan", delay: 0.6}
 	hBRAS    = demoHop{ip: "100.64.0.1", ptr: "bras1.isp.example", asn: "AS64500", delay: 4.4}
@@ -49,38 +56,85 @@ var (
 	hIX      = demoHop{ip: "203.0.113.1", delay: 2, silent: true}
 	hEdge    = demoHop{ip: "203.0.113.9", ptr: "edge1.cdn.example", asn: "AS64496", delay: 2}
 	hDest    = demoHop{ip: demoDest, ptr: "www.example.com", asn: "AS64496", delay: 0.4}
+
+	hTransit = demoHop{ip: "198.51.100.65", ptr: "transit1.fra.isp.example", asn: "AS64500", delay: 1.2}
+	hNSEdge  = demoHop{ip: "198.18.0.1", ptr: "edge.ns.example.net", asn: "AS64499", delay: 1.5}
+	hNSDest  = demoHop{ip: demoNSDest, ptr: "ns1.example.net", asn: "AS64499", delay: 0.3}
+
+	hOfficeGW = demoHop{ip: "10.20.0.1", ptr: "gw.office.lan", delay: 0.4}
+	hPE1      = demoHop{ip: "192.0.2.1", ptr: "pe1.isp2.example", asn: "AS64511", delay: 2.1}
+	hCR1      = demoHop{ip: "192.0.2.5", ptr: "cr1.isp2.example", asn: "AS64511", delay: 6.5}
+	hCR2      = demoHop{ip: "192.0.2.9", ptr: "cr2.isp2.example", asn: "AS64511", delay: 7.4}
+	hEdge2    = demoHop{ip: "203.0.113.13", ptr: "edge2.cdn.example", asn: "AS64496", delay: 1.8}
 )
 
 type demoPhase struct {
-	name     string
-	until    float64 // fraction of the cycle
-	apply    func(core, border *demoHop, detour *bool)
-	coreDown bool
+	name       string
+	until      float64 // fraction of the cycle
+	congestion bool    // border2: +30 ms, 4% loss
+	coreDown   bool    // core2 down: everything via core1
+	officeLoss bool    // office uplink: 8% loss from pe1 on
+	detour     bool    // border1 maintenance: extra hop
 }
 
 var demoPhases = []demoPhase{
 	{name: "normal", until: 2.0 / 12},
-	{name: "congestion on border2 (+30 ms, 4% loss)", until: 4.5 / 12, apply: func(_, border *demoHop, _ *bool) {
-		if border.ip == hBorder2.ip {
-			border.delay += 30
-			border.fwdLoss = 0.04
-		}
-	}},
+	{name: "congestion on border2 (+30 ms, 4% loss)", until: 4.5 / 12, congestion: true},
 	{name: "normal", until: 6.0 / 12},
-	{name: "core2 outage (flows reroute via core1)", until: 8.5 / 12, coreDown: true},
-	{name: "normal", until: 10.0 / 12},
-	{name: "border1 maintenance (detour, +1 hop)", until: 1, apply: func(_, border *demoHop, detour *bool) {
-		if border.ip == hBorder1.ip {
-			*detour = true
+	{name: "core2 outage (home flows reroute via core1)", until: 8.5 / 12, coreDown: true},
+	{name: "office uplink loss (8% from pe1 on)", until: 10.0 / 12, officeLoss: true},
+	{name: "border1 maintenance (detour, +1 hop)", until: 1, detour: true},
+}
+
+type demoTarget struct {
+	source string
+	dest   demoHop
+	flows  int
+	path   func(port uint16, ph demoPhase) []demoHop
+}
+
+func pick(port uint16, salt string, hops ...demoHop) demoHop {
+	return hops[ecmp(port, salt, len(hops))]
+}
+
+func demoTargets(flows int) []demoTarget {
+	homeCore := func(port uint16, ph demoPhase) demoHop {
+		if ph.coreDown {
+			return hCore1
 		}
-	}},
+		return pick(port, "core", hCore1, hCore2)
+	}
+	return []demoTarget{
+		{source: demoHome, dest: hDest, flows: flows, path: func(port uint16, ph demoPhase) []demoHop {
+			border := pick(port, "border", hBorder1, hBorder2)
+			if ph.congestion && border.ip == hBorder2.ip {
+				border.delay += 30
+				border.fwdLoss = 0.04
+			}
+			path := []demoHop{hGW, hBRAS, homeCore(port, ph), border}
+			if ph.detour && border.ip == hBorder1.ip {
+				path = append(path, hDetour)
+			}
+			return append(path, hIX, hEdge, hDest)
+		}},
+		{source: demoHome, dest: hNSDest, flows: 4, path: func(port uint16, ph demoPhase) []demoHop {
+			return []demoHop{hGW, hBRAS, homeCore(port, ph), hTransit, hNSEdge, hNSDest}
+		}},
+		{source: demoOffice, dest: hDest, flows: 4, path: func(port uint16, ph demoPhase) []demoHop {
+			pe := hPE1
+			if ph.officeLoss {
+				pe.fwdLoss = 0.08
+			}
+			return []demoHop{hOfficeGW, pe, pick(port, "cr", hCR1, hCR2), hEdge2, hDest}
+		}},
+	}
 }
 
 func runDemo(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("demo", flag.ExitOnError)
 	out := fs.String("out", "/data/demo.json", "file to write (truncated on start, like etr -j)")
 	interval := fs.Duration("interval", time.Second, "delay between probe iterations")
-	flows := fs.Int("flows", 8, "number of parallel flows (etr -P)")
+	flows := fs.Int("flows", 8, "number of parallel flows (etr -P) towards the main target")
 	basePort := fs.Int("src-port", 50000, "base source port (etr -s)")
 	cycle := fs.Duration("cycle", 12*time.Minute, "length of the scripted incident cycle")
 	_ = fs.Parse(args)
@@ -91,12 +145,13 @@ func runDemo(ctx context.Context, args []string) error {
 	}
 	defer f.Close()
 
+	targets := demoTargets(*flows)
 	start := time.Now()
 	lastPhase := ""
-	nums := make([]uint, *flows)
+	var num uint
 	t := time.NewTicker(*interval)
 	defer t.Stop()
-	log.Printf("demo: writing %d flows to %s every %s (incident cycle %s)", *flows, *out, *interval, *cycle)
+	log.Printf("demo: writing %d targets to %s every %s (incident cycle %s)", len(targets), *out, *interval, *cycle)
 	for {
 		now := time.Now()
 		pos := math.Mod(now.Sub(start).Seconds(), cycle.Seconds()) / cycle.Seconds()
@@ -113,14 +168,17 @@ func runDemo(ctx context.Context, args []string) error {
 		}
 
 		var buf strings.Builder
-		for i := range *flows {
-			port := uint16(*basePort + i)
-			run := demoRun(uint16(i), nums[i], port, phase, now)
-			nums[i]++
-			b, _ := json.Marshal(run)
-			buf.Write(b)
-			buf.WriteByte('\n')
+		var id uint16
+		for _, tg := range targets {
+			for i := range tg.flows {
+				run := demoRun(tg, id, num, uint16(*basePort+i), phase, now)
+				id++
+				b, _ := json.Marshal(run)
+				buf.Write(b)
+				buf.WriteByte('\n')
+			}
 		}
+		num++
 		if _, err := f.WriteString(buf.String()); err != nil {
 			return err
 		}
@@ -144,34 +202,17 @@ func ecmp(port uint16, salt string, n int) int {
 	return int(v % uint32(n))
 }
 
-func demoRun(id uint16, num uint, port uint16, phase demoPhase, now time.Time) *ProbeRun {
-	cores := []demoHop{hCore1, hCore2}
-	borders := []demoHop{hBorder1, hBorder2}
-	core := cores[ecmp(port, "core", 2)]
-	if phase.coreDown {
-		core = hCore1
-	}
-	border := borders[ecmp(port, "border", 2)]
-	detour := false
-	if phase.apply != nil {
-		phase.apply(&core, &border, &detour)
-	}
-
-	path := []demoHop{hGW, hBRAS, core, border}
-	if detour {
-		path = append(path, hDetour)
-	}
-	path = append(path, hIX, hEdge, hDest)
-
+func demoRun(tg demoTarget, id uint16, num uint, port uint16, phase demoPhase, now time.Time) *ProbeRun {
+	path := tg.path(port, phase)
 	run := &ProbeRun{
 		ProbeID:         id,
 		ProbeNum:        num,
-		SourceIP:        demoSource,
+		SourceIP:        tg.source,
 		SourcePort:      port,
-		DestinationIP:   demoDest,
+		DestinationIP:   tg.dest.ip,
 		DestinationPort: 443,
-		DestinationPTR:  hDest.ptr,
-		DestinationASN:  hDest.asn,
+		DestinationPTR:  tg.dest.ptr,
+		DestinationASN:  tg.dest.asn,
 		Protocol:        "TCP",
 		Timestamp:       now,
 	}
@@ -194,7 +235,7 @@ func demoRun(id uint16, num uint, port uint16, phase demoPhase, now time.Time) *
 		run.Hops = append(run.Hops, hop)
 	}
 	last := run.Hops[len(run.Hops)-1]
-	run.ReachedDest = !last.Timeout && last.IP == demoDest
+	run.ReachedDest = !last.Timeout && last.IP == tg.dest.ip
 	run.PathHash = fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(strings.Join(ips, "|")+"|")))
 	return run
 }

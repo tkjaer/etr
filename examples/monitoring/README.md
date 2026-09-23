@@ -1,27 +1,32 @@
 # ETR monitoring example
 
 Prometheus + Grafana stack that turns `etr -j` output into a live view of the
-ECMP paths towards a destination and how they change over time: which hops
+ECMP paths towards your targets and how they change over time: which hops
 each flow crosses, where latency is added, where packets are lost, and when a
 flow moves to a different path.
+
+A *target* is a destination as traced from one source. The same destination
+probed from two machines is two targets, each with its own paths.
 
 ![Path topology](images/topology.png)
 
 ## Quick start (demo data)
 
 No root or real target needed. The `demo` profile writes synthetic etr output
-for 8 flows across a small ECMP topology and replays a 12-minute incident
-cycle: congestion on one border router, a core router outage (flows reroute),
-and a detour that adds a hop.
+for three targets from two sources (`home` to a web server and a name server,
+`office` to the same web server) across a small ECMP network. It replays a
+12-minute incident cycle: congestion on one border router, a core router
+outage that reroutes the flows of two targets, loss on the office uplink, and
+a detour that adds a hop.
 
 ```bash
 cd examples/monitoring
 docker compose --profile demo up -d --build
 ```
 
-Open <http://localhost:3000/d/etr-paths>. Anonymous users can view the
-dashboard; log in as admin/admin to edit it. Give it a few minutes to collect
-some history.
+Open <http://localhost:3000/d/etr-overview> and click a target to drill down.
+Anonymous users can view the dashboards; log in as admin/admin to edit them.
+Give it a few minutes to collect some history.
 
 ## Monitoring a real destination
 
@@ -40,7 +45,11 @@ sudo ./etr -j examples/monitoring/data/etr.json -P 8 --no-tui 192.0.2.1
   More probes show more of the paths.
 - The exporter follows every `data/*.json` file, so you can run several etr
   instances side by side, each writing its own file (for example, one per
-  destination or one TCP and one UDP).
+  destination or one TCP and one UDP). Give each run its own file: `etr -j`
+  truncates the file when it starts.
+- To add another source, run etr on that machine and have it write into
+  `data/` over a shared mount (NFS, sshfs, …). The source IP in the JSON keeps
+  its targets apart.
 - `etr -j` truncates its file on start; the exporter notices and starts
   reading the new file from the beginning.
 - `-a` adds ASN lookups, which show up in the node details and tables.
@@ -48,10 +57,32 @@ sudo ./etr -j examples/monitoring/data/etr.json -P 8 --no-tui 192.0.2.1
 If you ran the previous version of this example, remove its old volumes first:
 `docker compose -p monitoring down -v`.
 
-## Dashboard
+## Dashboards
 
-**Overview**: end-to-end loss, median and p95 RTT, jitter, the number of
-paths in use and the number of path changes in the selected time range.
+### Overview
+
+All targets at a glance (`/d/etr-overview`, filterable by source):
+
+![Overview](images/overview.png)
+
+- **Targets** table: one row per target with status (OK, degraded ≥ 1% loss,
+  down ≥ 50% loss, or stopped), loss and RTT over the last minute, the
+  number of flows and paths in use, path changes, and loss, RTT and jitter over
+  the selected time range. Click a destination or name to open the target.
+- **Loss per target**: a health timeline, one row per target.
+- End-to-end **RTT** and **loss**, **path changes** and **paths in use** per
+  target. Click a series to open that target. Path changes on several targets
+  at the same time usually point to a shared hop.
+
+### Target details
+
+The deep dive into one target (`/d/etr-paths`). Pick it with the
+*Destination* and *Source* variables, and narrow it down to some flows with
+*Flow (source port)*.
+
+**Summary**: the destination's name, end-to-end loss, median and p95 RTT,
+jitter, the number of paths in use and the number of path changes in the
+selected time range.
 
 **Path topology** (Node Graph): every hop seen in the time range, laid out by
 TTL, with the source on the left.
@@ -101,9 +132,9 @@ behind it.
 
 ### How paths are tracked
 
-- A path is the sequence of hop IPs for one flow (destination, protocol,
-  destination port and source port). Paths are numbered per destination in
-  the order they are first seen.
+- A path is the sequence of hop IPs for one flow (source and destination IP,
+  protocol, destination port and source port). Paths are numbered per target
+  in the order they are first seen.
 - A single lost reply is not a path change. The exporter keeps the last IP
   seen at each TTL, and probes where the answering hops agree with it count
   as the same path.
@@ -130,8 +161,8 @@ series come from Prometheus, which keeps 7 days.
 
 ### Metrics
 
-Flow labels: `destination`, `protocol`, `dst_port`, `src_port`. Hop metrics
-add `ttl` and `hop_ip`. A hop that never answers has `hop_ip="*"`.
+Flow labels: `source`, `destination`, `protocol`, `dst_port`, `src_port`. Hop
+metrics add `ttl` and `hop_ip`. A hop that never answers has `hop_ip="*"`.
 
 | Metric | Type | Description |
 |---|---|---|
@@ -143,7 +174,7 @@ add `ttl` and `hop_ip`. A hop that never answers has `hop_ip="*"`.
 | `etr_flow_path_changes_total` | counter | Times the flow moved to a different path |
 | `etr_flow_hops` | gauge | Hops in the flow's current path |
 | `etr_flow_last_probe_timestamp_seconds` | gauge | Time of the flow's last probe |
-| `etr_destination_active_paths` | gauge | Distinct paths in use towards a destination |
+| `etr_destination_active_paths` | gauge | Distinct paths in use per target (`source`, `destination`) |
 | `etr_destination_info` | gauge | `destination_ptr`, `destination_asn` |
 | `etr_hop_sent_total` | counter | Probes per flow and TTL, attributed to the hop IP last seen there |
 | `etr_hop_received_total` | counter | Replies per flow, TTL and hop IP |
@@ -152,25 +183,26 @@ add `ttl` and `hop_ip`. A hop that never answers has `hop_ip="*"`.
 | `etr_hop_info` | gauge | `hop_ptr`, `hop_asn` per `hop_ip` |
 | `etr_exporter_parse_errors_total` | counter | Input lines that could not be parsed |
 
-Loss is `1 - received / sent`, for example:
+Loss is `1 - received / sent`, for example per target:
 
 ```promql
-1 - sum by (src_port) (rate(etr_destination_reached_total[5m]))
-  / sum by (src_port) (rate(etr_probe_runs_total[5m]))
+1 - sum by (source, destination) (rate(etr_destination_reached_total[5m]))
+  / sum by (source, destination) (rate(etr_probe_runs_total[5m]))
 ```
 
 Series are per flow and hop, so their number grows with
-`destinations × flows × hops`. That is fine for a handful of etr runs. For
+`targets × flows × hops`. That is fine for a handful of etr runs. For
 many targets, drop `src_port` with recording rules or `metric_relabel_configs`.
 
 ### JSON API
 
-All endpoints take the optional query parameters `destination` and `src_port`
-(comma-separated lists) and `from`/`to` (Unix milliseconds; the default is
-the last 15 minutes).
+All endpoints take the optional query parameters `source`, `destination` and
+`src_port` (comma-separated lists) and `from`/`to` (Unix milliseconds; the
+default is the last 15 minutes).
 
 | Endpoint | Content |
 |---|---|
+| `/api/targets` | One row per target with status, loss, RTT and path counts |
 | `/api/graph/nodes`, `/api/graph/edges` | Node Graph frames |
 | `/api/paths` | Distinct paths with route, flows, RTT and loss |
 | `/api/flows` | One row per flow with its current path |
@@ -186,8 +218,9 @@ go run . -input '../data/*.json'           # exporter on :8080
 go run . demo -out ../data/demo.json       # synthetic etr output
 ```
 
-The dashboard JSON is provisioned from `grafana/dashboards/`. With
-`allowUiUpdates`, you can edit it in Grafana and export it back to that file.
+The dashboards are provisioned from `grafana/dashboards/`. With
+`allowUiUpdates`, you can edit them in Grafana and export them back to those
+files.
 
 ## Stop and clean up
 

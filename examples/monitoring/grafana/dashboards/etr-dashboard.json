@@ -1,7 +1,7 @@
 {
   "uid": "etr-paths",
-  "title": "ETR \u00b7 ECMP paths",
-  "description": "Path topology, path changes, latency and loss from etr JSON output.",
+  "title": "ETR \u00b7 Target details",
+  "description": "Path topology, path changes, latency and loss for one etr target (source \u2192 destination).",
   "tags": [
     "etr",
     "network",
@@ -18,7 +18,20 @@
   },
   "schemaVersion": 39,
   "version": 1,
-  "links": [],
+  "links": [
+    {
+      "title": "Overview",
+      "type": "link",
+      "url": "/d/etr-overview",
+      "icon": "arrow-left",
+      "keepTime": true,
+      "includeVars": false,
+      "asDropdown": false,
+      "tags": [],
+      "targetBlank": false,
+      "tooltip": ""
+    }
+  ],
   "templating": {
     "list": [
       {
@@ -35,19 +48,30 @@
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
-        "includeAll": true,
-        "multi": true,
+        "includeAll": false,
+        "multi": false,
         "sort": 3,
         "regex": "",
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
+        "options": []
+      },
+      {
+        "name": "source",
+        "label": "Source",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
         },
+        "definition": "label_values(etr_probe_runs_total{destination=\"$destination\"}, source)",
+        "query": {
+          "query": "label_values(etr_probe_runs_total{destination=\"$destination\"}, source)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "sort": 3,
+        "regex": "",
         "options": []
       },
       {
@@ -58,9 +82,9 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "definition": "label_values(etr_probe_runs_total{destination=~\"$destination\"}, src_port)",
+        "definition": "label_values(etr_probe_runs_total{source=\"$source\", destination=\"$destination\"}, src_port)",
         "query": {
-          "query": "label_values(etr_probe_runs_total{destination=~\"$destination\"}, src_port)",
+          "query": "label_values(etr_probe_runs_total{source=\"$source\", destination=\"$destination\"}, src_port)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -68,6 +92,7 @@
         "multi": true,
         "sort": 3,
         "regex": "",
+        "options": [],
         "current": {
           "selected": true,
           "text": [
@@ -76,8 +101,7 @@
           "value": [
             "$__all"
           ]
-        },
-        "options": []
+        }
       }
     ]
   },
@@ -103,7 +127,7 @@
         "enable": true,
         "iconColor": "orange",
         "name": "Path changes",
-        "expr": "sum by (src_port) (changes(etr_flow_path_index{destination=~\"$destination\", src_port=~\"$src_port\"}[30s])) > 0",
+        "expr": "sum by (src_port) (changes(etr_flow_path_index{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[30s])) > 0",
         "step": "30s",
         "titleFormat": "Path change",
         "textFormat": "flow :{{src_port}}",
@@ -114,9 +138,9 @@
   },
   "panels": [
     {
-      "id": 1,
+      "id": 13,
       "type": "row",
-      "title": "Overview",
+      "title": "Summary",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -127,14 +151,14 @@
       "panels": []
     },
     {
-      "id": 2,
+      "id": 14,
       "type": "stat",
-      "title": "End-to-end loss",
-      "description": "Share of probes that did not get a reply from the destination over the last minute.",
+      "title": "Target",
+      "description": "Reverse DNS name of the destination, as reported by etr (empty without PTR records).",
       "gridPos": {
         "x": 0,
         "y": 1,
-        "w": 4,
+        "w": 6,
         "h": 4
       },
       "datasource": {
@@ -147,7 +171,61 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "clamp_min(100 * (1 - sum(increase(etr_destination_reached_total{destination=~\"$destination\", src_port=~\"$src_port\"}[1m])) / sum(increase(etr_probe_runs_total{destination=~\"$destination\", src_port=~\"$src_port\"}[1m]))), 0)",
+          "expr": "max by (destination, destination_ptr) (etr_destination_info{destination=\"$destination\"})",
+          "legendFormat": "{{destination_ptr}}",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "name",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "End-to-end loss",
+      "description": "Share of probes that did not get a reply from the destination over the last minute.",
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "clamp_min(100 * (1 - sum(increase(etr_destination_reached_total{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[1m])) / (sum(increase(etr_probe_runs_total{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[1m])) > 0)), 0)",
           "legendFormat": "",
           "refId": "A",
           "range": false,
@@ -199,14 +277,14 @@
       }
     },
     {
-      "id": 3,
+      "id": 16,
       "type": "stat",
       "title": "Median RTT",
       "description": "Median end-to-end RTT over the last minute, all selected flows.",
       "gridPos": {
-        "x": 4,
+        "x": 9,
         "y": 1,
-        "w": 4,
+        "w": 3,
         "h": 4
       },
       "datasource": {
@@ -219,7 +297,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(etr_destination_rtt_seconds_bucket{destination=~\"$destination\", src_port=~\"$src_port\"}[1m])))",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(etr_destination_rtt_seconds_bucket{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[1m])))",
           "legendFormat": "",
           "refId": "A",
           "range": false,
@@ -262,14 +340,14 @@
       }
     },
     {
-      "id": 4,
+      "id": 17,
       "type": "stat",
       "title": "p95 RTT",
       "description": "95th percentile end-to-end RTT over the last minute.",
       "gridPos": {
-        "x": 8,
+        "x": 12,
         "y": 1,
-        "w": 4,
+        "w": 3,
         "h": 4
       },
       "datasource": {
@@ -282,7 +360,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(etr_destination_rtt_seconds_bucket{destination=~\"$destination\", src_port=~\"$src_port\"}[1m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(etr_destination_rtt_seconds_bucket{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[1m])))",
           "legendFormat": "",
           "refId": "A",
           "range": false,
@@ -325,14 +403,14 @@
       }
     },
     {
-      "id": 5,
+      "id": 18,
       "type": "stat",
       "title": "Jitter",
       "description": "Smoothed RTT variation between consecutive probes (RFC 3550 style), averaged over flows.",
       "gridPos": {
-        "x": 12,
+        "x": 15,
         "y": 1,
-        "w": 4,
+        "w": 3,
         "h": 4
       },
       "datasource": {
@@ -345,7 +423,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg(etr_destination_jitter_seconds{destination=~\"$destination\", src_port=~\"$src_port\"})",
+          "expr": "avg(etr_destination_jitter_seconds{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"})",
           "legendFormat": "",
           "refId": "A",
           "range": false,
@@ -388,14 +466,14 @@
       }
     },
     {
-      "id": 6,
+      "id": 19,
       "type": "stat",
       "title": "Paths in use",
       "description": "Distinct paths currently used by the flows (ECMP spread).",
       "gridPos": {
-        "x": 16,
+        "x": 18,
         "y": 1,
-        "w": 4,
+        "w": 3,
         "h": 4
       },
       "datasource": {
@@ -408,7 +486,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(etr_destination_active_paths{destination=~\"$destination\"})",
+          "expr": "sum(etr_destination_active_paths{source=\"$source\", destination=\"$destination\"})",
           "legendFormat": "",
           "refId": "A",
           "range": false,
@@ -452,14 +530,14 @@
       }
     },
     {
-      "id": 7,
+      "id": 20,
       "type": "stat",
       "title": "Path changes",
       "description": "Times a flow moved to a different path in the selected time range.",
       "gridPos": {
-        "x": 20,
+        "x": 21,
         "y": 1,
-        "w": 4,
+        "w": 3,
         "h": 4
       },
       "datasource": {
@@ -472,7 +550,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(etr_flow_path_changes_total{destination=~\"$destination\", src_port=~\"$src_port\"}[$__range])) or vector(0)",
+          "expr": "round(sum(increase(etr_flow_path_changes_total{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[$__range]))) or vector(0)",
           "legendFormat": "",
           "refId": "A",
           "range": false,
@@ -520,7 +598,7 @@
       }
     },
     {
-      "id": 8,
+      "id": 21,
       "type": "row",
       "title": "Topology",
       "collapsed": false,
@@ -533,7 +611,7 @@
       "panels": []
     },
     {
-      "id": 9,
+      "id": 22,
       "type": "nodeGraph",
       "title": "Path topology",
       "description": "All hops seen in the selected time range, laid out by TTL.\n\n**Nodes**: average RTT and reply loss. Ring: green = replies, red = lost, grey = never replies, dark = only on paths no longer in use. Red outline = forwarding loss (loss that persists to later hops).\n\n**Edges**: label is the RTT added by the hop, width is the number of flows, color is forwarding loss at the target (green < 1% < orange < 5% < red). Dashed grey edges belong to paths no longer in use.\n\nLoss at a hop that does not carry on to the hops behind it is usually ICMP rate limiting, not real loss.",
@@ -564,8 +642,12 @@
             "data": "",
             "params": [
               {
+                "key": "source",
+                "value": "${source}"
+              },
+              {
                 "key": "destination",
-                "value": "${destination:csv}"
+                "value": "${destination}"
               },
               {
                 "key": "src_port",
@@ -601,8 +683,12 @@
             "data": "",
             "params": [
               {
+                "key": "source",
+                "value": "${source}"
+              },
+              {
                 "key": "destination",
-                "value": "${destination:csv}"
+                "value": "${destination}"
               },
               {
                 "key": "src_port",
@@ -682,7 +768,7 @@
       }
     },
     {
-      "id": 10,
+      "id": 23,
       "type": "row",
       "title": "Path changes",
       "collapsed": false,
@@ -695,7 +781,7 @@
       "panels": []
     },
     {
-      "id": 11,
+      "id": 24,
       "type": "state-timeline",
       "title": "Path per flow",
       "description": "Which path (#N, see the Paths table) each flow used over time. A color change is a path change; gaps mean the flow was not running.",
@@ -715,8 +801,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (destination, protocol, src_port) (etr_flow_path_index{destination=~\"$destination\", src_port=~\"$src_port\"})",
-          "legendFormat": "{{protocol}}:{{src_port}} \u2192 {{destination}}",
+          "expr": "max by (protocol, src_port) (etr_flow_path_index{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"})",
+          "legendFormat": "{{protocol}}:{{src_port}}",
           "refId": "A",
           "range": true
         }
@@ -818,7 +904,7 @@
       }
     },
     {
-      "id": 12,
+      "id": 25,
       "type": "table",
       "title": "Path change log",
       "description": "Every time a flow moved to a different path, newest first. TTL is where the old and new path diverge.",
@@ -849,8 +935,12 @@
             "data": "",
             "params": [
               {
+                "key": "source",
+                "value": "${source}"
+              },
+              {
                 "key": "destination",
-                "value": "${destination:csv}"
+                "value": "${destination}"
               },
               {
                 "key": "src_port",
@@ -907,11 +997,6 @@
               "selector": "new_route",
               "text": "New route",
               "type": "string"
-            },
-            {
-              "selector": "destination",
-              "text": "Destination",
-              "type": "string"
             }
           ],
           "filters": []
@@ -929,8 +1014,7 @@
               "From hop": 4,
               "To hop": 5,
               "Old route": 6,
-              "New route": 7,
-              "Destination": 8
+              "New route": 7
             }
           }
         }
@@ -1034,10 +1118,10 @@
       }
     },
     {
-      "id": 13,
+      "id": 26,
       "type": "table",
       "title": "Paths",
-      "description": "Distinct paths seen in the time range. Numbers are assigned per destination in order of discovery. RTT and loss are end-to-end for probes that took the path.",
+      "description": "Distinct paths seen in the time range. Numbers are assigned per target in order of discovery. RTT and loss are end-to-end for probes that took the path.",
       "gridPos": {
         "x": 0,
         "y": 33,
@@ -1065,8 +1149,12 @@
             "data": "",
             "params": [
               {
+                "key": "source",
+                "value": "${source}"
+              },
+              {
                 "key": "destination",
-                "value": "${destination:csv}"
+                "value": "${destination}"
               },
               {
                 "key": "src_port",
@@ -1138,11 +1226,6 @@
               "selector": "last_seen",
               "text": "Last seen",
               "type": "timestamp_epoch"
-            },
-            {
-              "selector": "destination",
-              "text": "Destination",
-              "type": "string"
             }
           ],
           "filters": []
@@ -1163,8 +1246,7 @@
               "p95 RTT": 7,
               "Loss": 8,
               "First seen": 9,
-              "Last seen": 10,
-              "Destination": 11
+              "Last seen": 10
             }
           }
         }
@@ -1362,7 +1444,7 @@
       }
     },
     {
-      "id": 14,
+      "id": 27,
       "type": "row",
       "title": "Latency and loss per flow",
       "collapsed": false,
@@ -1375,7 +1457,7 @@
       "panels": []
     },
     {
-      "id": 15,
+      "id": 28,
       "type": "timeseries",
       "title": "End-to-end RTT per flow",
       "description": "Average RTT to the destination per flow (source port). Flows on different ECMP paths separate here; path changes are marked as annotations.",
@@ -1395,7 +1477,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (src_port) (rate(etr_destination_rtt_seconds_sum{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval])) / sum by (src_port) (rate(etr_destination_rtt_seconds_count{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval]))",
+          "expr": "sum by (src_port) (rate(etr_destination_rtt_seconds_sum{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[$__rate_interval])) / sum by (src_port) (rate(etr_destination_rtt_seconds_count{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[$__rate_interval]))",
           "legendFormat": ":{{src_port}}",
           "refId": "A",
           "range": true
@@ -1415,7 +1497,8 @@
             "spanNulls": false,
             "gradientMode": "none",
             "axisSoftMin": 0
-          }
+          },
+          "links": []
         },
         "overrides": []
       },
@@ -1439,7 +1522,7 @@
       }
     },
     {
-      "id": 16,
+      "id": 29,
       "type": "timeseries",
       "title": "End-to-end loss per flow",
       "description": "Share of probes per flow without a reply from the destination.",
@@ -1459,7 +1542,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "clamp_min(100 * (1 - sum by (src_port) (increase(etr_destination_reached_total{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval])) / sum by (src_port) (increase(etr_probe_runs_total{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval]))), 0)",
+          "expr": "clamp_min(100 * (1 - sum by (src_port) (increase(etr_destination_reached_total{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[$__rate_interval])) / (sum by (src_port) (increase(etr_probe_runs_total{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[$__rate_interval])) > 0)), 0)",
           "legendFormat": ":{{src_port}}",
           "refId": "A",
           "range": true
@@ -1479,7 +1562,8 @@
             "spanNulls": false,
             "gradientMode": "none",
             "axisSoftMin": 0
-          }
+          },
+          "links": []
         },
         "overrides": []
       },
@@ -1503,7 +1587,7 @@
       }
     },
     {
-      "id": 17,
+      "id": 30,
       "type": "heatmap",
       "title": "End-to-end RTT distribution",
       "description": "Histogram of destination RTT over time. Bimodal bands usually mean flows on paths with different latency.",
@@ -1523,7 +1607,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (le) (increase(etr_destination_rtt_seconds_bucket{destination=~\"$destination\", src_port=~\"$src_port\"}[$__rate_interval]))",
+          "expr": "sum by (le) (increase(etr_destination_rtt_seconds_bucket{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"}[$__rate_interval]))",
           "legendFormat": "{{le}}",
           "refId": "A",
           "range": true,
@@ -1576,7 +1660,7 @@
       }
     },
     {
-      "id": 18,
+      "id": 31,
       "type": "timeseries",
       "title": "Jitter per flow",
       "description": "Smoothed variation between consecutive end-to-end RTT samples (RFC 3550 style).",
@@ -1596,7 +1680,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (src_port) (etr_destination_jitter_seconds{destination=~\"$destination\", src_port=~\"$src_port\"})",
+          "expr": "max by (src_port) (etr_destination_jitter_seconds{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\"})",
           "legendFormat": ":{{src_port}}",
           "refId": "A",
           "range": true
@@ -1616,7 +1700,8 @@
             "spanNulls": false,
             "gradientMode": "none",
             "axisSoftMin": 0
-          }
+          },
+          "links": []
         },
         "overrides": []
       },
@@ -1640,7 +1725,7 @@
       }
     },
     {
-      "id": 19,
+      "id": 32,
       "type": "row",
       "title": "Hops",
       "collapsed": false,
@@ -1653,7 +1738,7 @@
       "panels": []
     },
     {
-      "id": 20,
+      "id": 33,
       "type": "timeseries",
       "title": "RTT by hop",
       "description": "Average RTT to each hop. Hop RTT includes the router's own ICMP generation time, which can be much slower than forwarding.",
@@ -1673,7 +1758,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (ttl, hop_ip) (rate(etr_hop_rtt_seconds_sum{destination=~\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval])) / sum by (ttl, hop_ip) (rate(etr_hop_rtt_seconds_count{destination=~\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval]))",
+          "expr": "sum by (ttl, hop_ip) (rate(etr_hop_rtt_seconds_sum{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval])) / sum by (ttl, hop_ip) (rate(etr_hop_rtt_seconds_count{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval]))",
           "legendFormat": "TTL {{ttl}} {{hop_ip}}",
           "refId": "A",
           "range": true
@@ -1693,7 +1778,8 @@
             "spanNulls": false,
             "gradientMode": "none",
             "axisSoftMin": 0
-          }
+          },
+          "links": []
         },
         "overrides": []
       },
@@ -1717,7 +1803,7 @@
       }
     },
     {
-      "id": 21,
+      "id": 34,
       "type": "timeseries",
       "title": "Reply loss by hop",
       "description": "Share of probes each hop did not answer. Loss that only shows up at one hop (and not the hops behind it) is ICMP rate limiting; compare with the Forwarding loss column below.",
@@ -1737,7 +1823,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "clamp_min(100 * (1 - sum by (ttl, hop_ip) (increase(etr_hop_received_total{destination=~\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval])) / sum by (ttl, hop_ip) (increase(etr_hop_sent_total{destination=~\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval]))), 0)",
+          "expr": "clamp_min(100 * (1 - sum by (ttl, hop_ip) (increase(etr_hop_received_total{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval])) / (sum by (ttl, hop_ip) (increase(etr_hop_sent_total{source=\"$source\", destination=\"$destination\", src_port=~\"$src_port\", hop_ip!=\"*\"}[$__rate_interval])) > 0)), 0)",
           "legendFormat": "TTL {{ttl}} {{hop_ip}}",
           "refId": "A",
           "range": true
@@ -1757,7 +1843,8 @@
             "spanNulls": false,
             "gradientMode": "none",
             "axisSoftMin": 0
-          }
+          },
+          "links": []
         },
         "overrides": []
       },
@@ -1781,7 +1868,7 @@
       }
     },
     {
-      "id": 22,
+      "id": 35,
       "type": "table",
       "title": "Hop report",
       "description": "MTR-style report for the selected time range. Reply loss = hop did not answer. Fwd loss = lowest loss at this or any later hop for the flows crossing it: an estimate of loss that is actually forwarded, with ICMP rate limiting filtered out.",
@@ -1812,8 +1899,12 @@
             "data": "",
             "params": [
               {
+                "key": "source",
+                "value": "${source}"
+              },
+              {
                 "key": "destination",
-                "value": "${destination:csv}"
+                "value": "${destination}"
               },
               {
                 "key": "src_port",
@@ -1905,11 +1996,6 @@
               "selector": "in_use",
               "text": "In use",
               "type": "boolean"
-            },
-            {
-              "selector": "destination",
-              "text": "Destination",
-              "type": "string"
             }
           ],
           "filters": []
@@ -1934,8 +2020,7 @@
               "Jitter": 11,
               "Flows": 12,
               "Paths": 13,
-              "In use": 14,
-              "Destination": 15
+              "In use": 14
             }
           }
         }
@@ -2187,7 +2272,7 @@
       }
     },
     {
-      "id": 23,
+      "id": 36,
       "type": "table",
       "title": "Flows",
       "description": "One row per flow (5-tuple). Use the source port with e.g. `iperf3 --cport` to put test traffic on the same ECMP path.",
@@ -2218,8 +2303,12 @@
             "data": "",
             "params": [
               {
+                "key": "source",
+                "value": "${source}"
+              },
+              {
                 "key": "destination",
-                "value": "${destination:csv}"
+                "value": "${destination}"
               },
               {
                 "key": "src_port",
@@ -2301,11 +2390,6 @@
               "selector": "active",
               "text": "Active",
               "type": "boolean"
-            },
-            {
-              "selector": "destination",
-              "text": "Destination",
-              "type": "string"
             }
           ],
           "filters": []
@@ -2328,8 +2412,7 @@
               "Jitter": 9,
               "Last": 10,
               "Changes": 11,
-              "Active": 12,
-              "Destination": 13
+              "Active": 12
             }
           }
         }

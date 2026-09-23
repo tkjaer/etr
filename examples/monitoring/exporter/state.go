@@ -9,8 +9,9 @@ import (
 
 const unknownHop = "*"
 
-// FlowKey identifies one ECMP flow (a fixed 5-tuple minus the source IP).
+// FlowKey identifies one ECMP flow (a 5-tuple).
 type FlowKey struct {
+	Source      string
 	Destination string
 	Protocol    string
 	DstPort     uint16
@@ -18,8 +19,19 @@ type FlowKey struct {
 }
 
 func (k FlowKey) labels() []string {
-	return []string{k.Destination, k.Protocol, strconv.Itoa(int(k.DstPort)), strconv.Itoa(int(k.SrcPort))}
+	return []string{k.Source, k.Destination, k.Protocol, strconv.Itoa(int(k.DstPort)), strconv.Itoa(int(k.SrcPort))}
 }
+
+// Target is what etr traces: a destination as seen from one source. Paths
+// are numbered per target.
+type Target struct {
+	Source      string
+	Destination string
+}
+
+func (k FlowKey) target() Target { return Target{k.Source, k.Destination} }
+
+func (t Target) String() string { return t.Source + " → " + t.Destination }
 
 func (k FlowKey) hopLabels(ttl uint8, ip string) []string {
 	return append(k.labels(), strconv.Itoa(int(ttl)), ip)
@@ -39,7 +51,6 @@ type hopObs struct {
 type record struct {
 	TS      time.Time
 	Flow    FlowKey
-	Source  string
 	PathIdx int
 	Reached bool
 	Hops    []hopObs
@@ -57,12 +68,14 @@ type destState struct {
 	ptr     string
 	asn     string
 	infoSet bool
-	paths   []*pathEntry
+}
+
+type targetState struct {
+	paths []*pathEntry
 }
 
 type flowState struct {
 	key        FlowKey
-	source     string
 	lastIP     map[uint8]string
 	jitterIP   map[uint8]string
 	prevRTT    map[uint8]float64
@@ -107,6 +120,7 @@ type Store struct {
 
 	flows   map[FlowKey]*flowState
 	dests   map[string]*destState
+	targets map[Target]*targetState
 	hopMeta map[string]hopMeta
 	records []record
 	events  []PathEvent
@@ -123,6 +137,7 @@ func NewStore(m *Metrics, retention, stale time.Duration) *Store {
 		now:       time.Now,
 		flows:     make(map[FlowKey]*flowState),
 		dests:     make(map[string]*destState),
+		targets:   make(map[Target]*targetState),
 		hopMeta:   make(map[string]hopMeta),
 	}
 }
@@ -146,7 +161,7 @@ func (s *Store) Process(pr *ProbeRun) bool {
 	// restart does not produce a burst in rate() graphs.
 	live := pr.Timestamp.After(now.Add(-s.liveAfter))
 
-	key := FlowKey{pr.DestinationIP, pr.Protocol, pr.DestinationPort, pr.SourcePort}
+	key := FlowKey{pr.SourceIP, pr.DestinationIP, pr.Protocol, pr.DestinationPort, pr.SourcePort}
 	f := s.flows[key]
 	if f == nil {
 		f = &flowState{
@@ -162,11 +177,11 @@ func (s *Store) Process(pr *ProbeRun) bool {
 		// Out of order (e.g. file rewound). Ignore to keep path state sane.
 		return true
 	}
-	f.source = pr.SourceIP
 	f.lastSeen = pr.Timestamp
 	f.expired = false
 
-	d := s.dest(pr)
+	s.dest(pr)
+	t := s.target(key.target())
 
 	hops := slices.Clone(pr.Hops)
 	hops = slices.DeleteFunc(hops, func(h *HopRun) bool { return h == nil || h.TTL == 0 })
@@ -216,7 +231,7 @@ func (s *Store) Process(pr *ProbeRun) bool {
 	assignNodes(pr.SourceIP, obs)
 
 	vec := f.pathVector(maxTTL, pr.ReachedDest)
-	s.updatePath(f, d, vec, pr.Timestamp)
+	s.updatePath(f, t, vec, pr.Timestamp)
 
 	f.lastNodes = f.lastNodes[:0]
 	for _, o := range obs {
@@ -226,16 +241,24 @@ func (s *Store) Process(pr *ProbeRun) bool {
 	s.records = append(s.records, record{
 		TS:      pr.Timestamp,
 		Flow:    key,
-		Source:  pr.SourceIP,
 		PathIdx: f.path.Index,
 		Reached: pr.ReachedDest,
 		Hops:    obs,
 	})
 
 	s.updateMetrics(f, pr, obs, len(vec), live)
-	s.updateActivePaths(pr.DestinationIP, now)
+	s.updateActivePaths(key.target())
 	s.prune(now)
 	return true
+}
+
+func (s *Store) target(t Target) *targetState {
+	ts := s.targets[t]
+	if ts == nil {
+		ts = &targetState{}
+		s.targets[t] = ts
+	}
+	return ts
 }
 
 func (s *Store) dest(pr *ProbeRun) *destState {
@@ -309,7 +332,7 @@ func (f *flowState) pathVector(maxTTL uint8, reached bool) []string {
 	return vec
 }
 
-func (s *Store) updatePath(f *flowState, d *destState, vec []string, ts time.Time) {
+func (s *Store) updatePath(f *flowState, d *targetState, vec []string, ts time.Time) {
 	switch {
 	case f.path == nil:
 		f.path = d.match(vec, ts)
@@ -342,10 +365,10 @@ func (s *Store) updatePath(f *flowState, d *destState, vec []string, ts time.Tim
 	f.hops = vec
 }
 
-// match returns the destination's path entry for vec, registering a new one
+// match returns the target's path entry for vec, registering a new one
 // if needed. An existing entry that only differs in unknown hops is refined
 // in place instead of creating a near-duplicate.
-func (d *destState) match(vec []string, ts time.Time) *pathEntry {
+func (d *targetState) match(vec []string, ts time.Time) *pathEntry {
 	for _, p := range d.paths {
 		if slices.Equal(p.Hops, vec) {
 			return p
@@ -427,6 +450,7 @@ func (s *Store) updateMetrics(f *flowState, pr *ProbeRun, obs []hopObs, hopCount
 	if live {
 		s.m.runs.WithLabelValues(fl...).Inc()
 		s.m.reached.WithLabelValues(fl...).Add(0)
+		s.m.pathChanges.WithLabelValues(fl...).Add(0)
 	}
 	if pr.ReachedDest && len(obs) > 0 {
 		rtt := float64(obs[len(obs)-1].RTT) / 1e6
@@ -473,17 +497,17 @@ func (s *Store) updateMetrics(f *flowState, pr *ProbeRun, obs []hopObs, hopCount
 	}
 }
 
-func (s *Store) updateActivePaths(dest string, now time.Time) {
+func (s *Store) updateActivePaths(t Target) {
 	if s.m == nil {
 		return
 	}
 	seen := map[int]bool{}
 	for _, f := range s.flows {
-		if f.key.Destination == dest && !f.expired && f.path != nil {
+		if f.key.target() == t && !f.expired && f.path != nil {
 			seen[f.path.Index] = true
 		}
 	}
-	s.m.distinctPaths.WithLabelValues(dest).Set(float64(len(seen)))
+	s.m.distinctPaths.WithLabelValues(t.Source, t.Destination).Set(float64(len(seen)))
 }
 
 // Expire drops gauges for flows that have gone quiet, so stopped etr runs do
@@ -492,13 +516,13 @@ func (s *Store) Expire() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
-	dests := map[string]bool{}
+	targets := map[Target]bool{}
 	for _, f := range s.flows {
 		if f.expired || now.Sub(f.lastSeen) < s.stale {
 			continue
 		}
 		f.expired = true
-		dests[f.key.Destination] = true
+		targets[f.key.target()] = true
 		if s.m == nil {
 			continue
 		}
@@ -514,8 +538,8 @@ func (s *Store) Expire() {
 		f.prevRTT = make(map[uint8]float64)
 		f.hasDest = false
 	}
-	for d := range dests {
-		s.updateActivePaths(d, now)
+	for t := range targets {
+		s.updateActivePaths(t)
 	}
 	s.prune(now)
 }
@@ -574,7 +598,7 @@ func (s *Store) backfill(flow FlowKey, pathIdx int, ttl uint8, ip string) {
 			}
 		}
 		if changed {
-			assignNodes(r.Source, r.Hops)
+			assignNodes(r.Flow.Source, r.Hops)
 		}
 	}
 }

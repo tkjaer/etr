@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	flowLabels = []string{"destination", "protocol", "dst_port", "src_port"}
+	flowLabels = []string{"source", "destination", "protocol", "dst_port", "src_port"}
 	hopLabels  = append(append([]string{}, flowLabels...), "ttl", "hop_ip")
 
 	// 0.25ms .. ~8s
@@ -55,7 +55,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}, flowLabels),
 		pathIndex: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "etr_flow_path_index",
-			Help: "Index (#N) of the path currently used by the flow. Paths are numbered per destination in order of discovery.",
+			Help: "Index (#N) of the path currently used by the flow. Paths are numbered per target (source → destination) in order of discovery.",
 		}, flowLabels),
 		pathChanges: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "etr_flow_path_changes_total",
@@ -71,8 +71,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}, flowLabels),
 		distinctPaths: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "etr_destination_active_paths",
-			Help: "Number of distinct paths currently used by the flows towards a destination.",
-		}, []string{"destination"}),
+			Help: "Number of distinct paths currently used by the flows of a target (source → destination).",
+		}, []string{"source", "destination"}),
 		destInfo: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "etr_destination_info",
 			Help: "Destination metadata (always 1).",

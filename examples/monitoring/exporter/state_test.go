@@ -23,7 +23,7 @@ func newTestStore(t *testing.T) *Store {
 // IP, or "" for a timeout. The last hop is the destination.
 func run(port uint16, sec int, hops ...string) *ProbeRun {
 	pr := &ProbeRun{
-		SourceIP:        "10.0.0.2",
+		SourceIP:        src,
 		SourcePort:      port,
 		DestinationIP:   "192.0.2.100",
 		DestinationPort: 443,
@@ -41,9 +41,12 @@ func run(port uint16, sec int, hops ...string) *ProbeRun {
 	return pr
 }
 
-const dst = "192.0.2.100"
+const (
+	src = "10.0.0.2"
+	dst = "192.0.2.100"
+)
 
-func flowLabelsFor(port string) []string { return []string{dst, "TCP", "443", port} }
+func flowLabelsFor(port string) []string { return []string{src, dst, "TCP", "443", port} }
 
 func TestParallelFlowsOnDifferentPathsAreNotPathChanges(t *testing.T) {
 	s := newTestStore(t)
@@ -59,7 +62,7 @@ func TestParallelFlowsOnDifferentPathsAreNotPathChanges(t *testing.T) {
 	if len(s.events) != 0 {
 		t.Errorf("events = %d, want 0", len(s.events))
 	}
-	if got := testutil.ToFloat64(s.m.distinctPaths.WithLabelValues(dst)); got != 2 {
+	if got := testutil.ToFloat64(s.m.distinctPaths.WithLabelValues(src, dst)); got != 2 {
 		t.Errorf("active paths = %v, want 2", got)
 	}
 	if a, b := testutil.ToFloat64(s.m.pathIndex.WithLabelValues(flowLabelsFor("50000")...)),
@@ -156,7 +159,7 @@ func TestFirstReplyBackfillsEarlierTimeouts(t *testing.T) {
 	if len(s.events) != 0 {
 		t.Fatalf("learning a hop was reported as a path change: %+v", s.events)
 	}
-	if n := len(s.dests[dst].paths); n != 1 {
+	if n := len(s.targets[Target{src, dst}].paths); n != 1 {
 		t.Errorf("registered %d paths, want 1", n)
 	}
 	for _, n := range s.graphNodes(query{from: t0, to: t0.Add(time.Minute)}) {
@@ -281,7 +284,7 @@ func TestExpireDropsFlowGauges(t *testing.T) {
 	if n := testutil.CollectAndCount(s.m.hopJitter); n != 0 {
 		t.Errorf("jitter series after expiry = %d", n)
 	}
-	if got := testutil.ToFloat64(s.m.distinctPaths.WithLabelValues(dst)); got != 0 {
+	if got := testutil.ToFloat64(s.m.distinctPaths.WithLabelValues(src, dst)); got != 0 {
 		t.Errorf("active paths after expiry = %v", got)
 	}
 }
@@ -300,15 +303,90 @@ func TestParseSet(t *testing.T) {
 
 func TestDemoOutputIsIngestible(t *testing.T) {
 	s := newTestStore(t)
+	targets := demoTargets(8)
 	for i, p := range demoPhases {
-		for port := uint16(50000); port < 50008; port++ {
-			pr := demoRun(0, uint(i), port, p, t0.Add(time.Duration(i)*time.Second))
-			if !s.Process(pr) {
-				t.Fatalf("demo run rejected: %+v", pr)
+		for _, tg := range targets {
+			for port := uint16(50000); port < 50000+uint16(tg.flows); port++ {
+				pr := demoRun(tg, 0, uint(i), port, p, t0.Add(time.Duration(i)*time.Second))
+				if !s.Process(pr) {
+					t.Fatalf("demo run rejected: %+v", pr)
+				}
 			}
 		}
 	}
-	if n := len(s.dests[demoDest].paths); n < 4 {
-		t.Errorf("demo produced %d distinct paths, want at least 4", n)
+	if len(s.targets) != len(targets) {
+		t.Fatalf("demo produced %d targets, want %d", len(s.targets), len(targets))
+	}
+	for tg, want := range map[Target]int{
+		{demoHome, demoDest}:   4,
+		{demoHome, demoNSDest}: 2,
+		{demoOffice, demoDest}: 2,
+	} {
+		if n := len(s.targets[tg].paths); n < want {
+			t.Errorf("%s: %d distinct paths, want at least %d", tg, n, want)
+		}
+	}
+}
+
+// The same destination traced from two sources is two targets: paths are
+// numbered separately and the API can select one of them.
+func TestTargetsAreKeptApart(t *testing.T) {
+	s := newTestStore(t)
+	other := func(pr *ProbeRun) *ProbeRun { pr.SourceIP = "10.9.9.9"; return pr }
+	for sec := range 10 {
+		s.Process(run(50000, sec, "10.0.0.1", "198.51.100.1", dst))
+		s.Process(other(run(50000, sec, "10.9.9.1", "198.51.100.9", dst)))
+	}
+	if len(s.events) != 0 {
+		t.Errorf("a flow from another source was reported as a path change: %+v", s.events)
+	}
+	for _, tg := range []Target{{src, dst}, {"10.9.9.9", dst}} {
+		if ts := s.targets[tg]; ts == nil || len(ts.paths) != 1 || ts.paths[0].Index != 1 {
+			t.Errorf("%s: want exactly path #1, got %+v", tg, ts)
+		}
+	}
+
+	q := query{from: t0, to: t0.Add(10 * time.Second), sources: map[string]bool{"10.9.9.9": true}}
+	for _, n := range s.graphNodes(q) {
+		if n.ID == "10.0.0.1" || n.ID == sourceNodeID(src) {
+			t.Errorf("node %q of the other source leaked into the graph", n.ID)
+		}
+	}
+
+	rows := s.targetRows(query{from: t0, to: t0.Add(10 * time.Second)})
+	if len(rows) != 2 {
+		t.Fatalf("targetRows = %d rows, want 2", len(rows))
+	}
+	for _, r := range rows {
+		if r.Status != "ok" || r.Flows != 1 || r.PathsNow != 1 || float64(r.LossNow) != 0 {
+			t.Errorf("unexpected target row %+v", r)
+		}
+	}
+}
+
+func TestTargetStatus(t *testing.T) {
+	s := newTestStore(t)
+	for sec := range 60 {
+		hops := []string{"10.0.0.1", dst}
+		if sec >= 30 {
+			hops = []string{"10.0.0.1", ""}
+		}
+		s.Process(run(50000, sec, hops...))
+	}
+	at := func(sec int) string {
+		rows := s.targetRows(query{from: t0, to: t0.Add(time.Duration(sec) * time.Second)})
+		if len(rows) != 1 {
+			t.Fatalf("targetRows = %d rows, want 1", len(rows))
+		}
+		return rows[0].Status
+	}
+	if got := at(29); got != "ok" {
+		t.Errorf("status before the outage = %q, want ok", got)
+	}
+	if got := at(59); got != "down" {
+		t.Errorf("status during the outage = %q, want down", got)
+	}
+	if got := at(59 + 180); got != "stopped" {
+		t.Errorf("status after the flow went quiet = %q, want stopped", got)
 	}
 }
