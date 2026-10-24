@@ -124,7 +124,7 @@ jobs:
             -e DATE="$DATE" \
             ${{ matrix.container }} \
             bash -lc '
-              sed -i 's|http://deb.debian.org|http://archive.debian.org|g' /etc/apt/sources.list &&
+              sed -i "s|http://deb.debian.org|http://archive.debian.org|g" /etc/apt/sources.list &&
               apt-get update && apt-get install -y --no-install-recommends \
                 ca-certificates curl git build-essential pkg-config libpcap-dev &&
               GO_MINOR=$(awk "/^go /{print \$2}" go.mod) &&
