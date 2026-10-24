@@ -225,9 +225,7 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 }
 
 // init initializes the probe manager by setting up routes, pcap handles, and probes
-func (pm *ProbeManager) init(a config.Args) error {
-	var err error
-
+func (pm *ProbeManager) init(a config.Args) (err error) {
 	probeConfig := &pm.probeConfig
 	protocolConfig := &probeConfig.protocolConfig
 
