@@ -186,7 +186,6 @@ func (p *Probe) Run() {
 	probeConfig := p.config
 	protocolConfig := probeConfig.protocolConfig
 
-	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
@@ -270,6 +269,7 @@ func (p *Probe) Run() {
 				}
 			default:
 				ttl++
+				buf := gopacket.NewSerializeBuffer()
 				switch protocolConfig.inet {
 				case layers.IPProtocolIPv4:
 					ip := layers.IPv4{
