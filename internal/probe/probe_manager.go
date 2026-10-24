@@ -369,6 +369,14 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	return nil
 }
 
+// getProbe safely retrieves a probe by its ID, ensuring thread-safe access to
+// the probe tracker.
+func (pm *ProbeManager) getProbe(probeID uint16) *Probe {
+	pm.probeTracker.mutex.Lock()
+	defer pm.probeTracker.mutex.Unlock()
+	return pm.probeTracker.probes[probeID]
+}
+
 // spawnDiscoveryProbe creates and starts a new probe with the given ID.
 // Called from the stats goroutine (via TrackDiscoveryPath) when a probe's
 // path has been confirmed and the old probe has been retired.
