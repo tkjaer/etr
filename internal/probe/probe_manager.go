@@ -260,7 +260,7 @@ func (pm *ProbeManager) init(a config.Args) (err error) {
 	}
 
 	// Initialize pcap handle first so we can determine link type
-	pm.handle, err = pcap.OpenLive(probeConfig.route.Interface.Name, 65536, true, pcap.BlockForever)
+	pm.handle, err = pcap.OpenLive(probeConfig.route.Interface.Name, 65536, true, 10*time.Millisecond)
 	if err != nil {
 		return err
 	}
