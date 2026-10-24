@@ -415,6 +415,7 @@ func (pm *ProbeManager) Run() error {
 	}()
 
 	// Start all probes
+	pm.probeTracker.mutex.Lock()
 	for _, p := range pm.probeTracker.probes {
 		pm.wg.Add(1)
 		pm.probesWg.Add(1)
@@ -424,6 +425,7 @@ func (pm *ProbeManager) Run() error {
 			p.Run()
 		}(p)
 	}
+	pm.probeTracker.mutex.Unlock()
 
 	// Create a channel that signals when probes are done (not all goroutines)
 	probesDone := make(chan struct{})
