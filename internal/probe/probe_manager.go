@@ -269,6 +269,13 @@ func (pm *ProbeManager) init(a config.Args) error {
 	slog.Debug("Opened pcap handle", "interface", probeConfig.route.Interface.Name)
 	probeConfig.useEthernet = pm.handle.LinkType() == layers.LinkTypeEthernet
 
+	// Close pcap handle if init fails
+	defer func() {
+		if err != nil {
+			pm.handle.Close()
+		}
+	}()
+
 	// We currently do not support non-Ethernet interfaces on OpenBSD and NetBSD
 	if !probeConfig.useEthernet {
 		if runtime.GOOS == "openbsd" {
