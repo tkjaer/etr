@@ -101,7 +101,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
+          go-version: stable
 
       - name: Install libpcap (Linux)
         if: runner.os == 'Linux' && matrix.container == ''
@@ -127,10 +127,10 @@ jobs:
               sed -i "s|http://deb.debian.org|http://archive.debian.org|g" /etc/apt/sources.list &&
               apt-get update && apt-get install -y --no-install-recommends \
                 ca-certificates curl git build-essential pkg-config libpcap-dev &&
-              GO_MINOR=$(awk "/^go /{print \$2}" go.mod) &&
               GO_VERSION=$(curl -fsSL "https://go.dev/dl/?mode=json" | \
-                grep -o "\"version\": \"go${GO_MINOR}\\.[0-9][0-9]*\"" | \
-                head -n 1 | sed -E "s/.*\"go([0-9.]+)\"/\1/") &&
+                grep -o "\"version\": \"go[0-9.]*\"" | head -n 1 | \
+                sed -E "s/.*\"go([0-9.]+)\"/\1/") &&
+              test -n "$GO_VERSION" &&
               ARCH=$(uname -m) &&
               case "$ARCH" in
                 x86_64) GOARCH=amd64 ;;
@@ -191,7 +191,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
+          go-version: stable
 
       - name: Install nfpm
         run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@${{ env.NFPM_VERSION }}
