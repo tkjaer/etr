@@ -25,6 +25,8 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 			probeID := uint16(port) - pm.probeConfig.srcPort
 			// All valid received probes will have a TTL.
 			if ttl > 0 {
+				pm.probeTracker.mutex.Lock()
+				defer pm.probeTracker.mutex.Unlock()
 				if _, exists := pm.probeTracker.probes[probeID]; exists {
 					// Update stats
 					pm.probeTracker.probes[probeID].statsChan <- ProbeEvent{
