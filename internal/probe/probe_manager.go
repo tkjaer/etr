@@ -225,9 +225,7 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 }
 
 // init initializes the probe manager by setting up routes, pcap handles, and probes
-func (pm *ProbeManager) init(a config.Args) error {
-	var err error
-
+func (pm *ProbeManager) init(a config.Args) (err error) {
 	probeConfig := &pm.probeConfig
 	protocolConfig := &probeConfig.protocolConfig
 
@@ -262,20 +260,29 @@ func (pm *ProbeManager) init(a config.Args) error {
 	}
 
 	// Initialize pcap handle first so we can determine link type
-	pm.handle, err = pcap.OpenLive(probeConfig.route.Interface.Name, 65536, true, pcap.BlockForever)
+	pm.handle, err = pcap.OpenLive(probeConfig.route.Interface.Name, 65536, true, 10*time.Millisecond)
 	if err != nil {
 		return err
 	}
 	slog.Debug("Opened pcap handle", "interface", probeConfig.route.Interface.Name)
 	probeConfig.useEthernet = pm.handle.LinkType() == layers.LinkTypeEthernet
 
+	// Close pcap handle if init fails
+	defer func() {
+		if err != nil {
+			pm.handle.Close()
+		}
+	}()
+
 	// We currently do not support non-Ethernet interfaces on OpenBSD and NetBSD
 	if !probeConfig.useEthernet {
 		if runtime.GOOS == "openbsd" {
-			return errors.New("Non-Ethernet interfaces are not currently supported on OpenBSD")
+			err = errors.New("Non-Ethernet interfaces are not currently supported on OpenBSD")
+			return err
 		}
 		if runtime.GOOS == "netbsd" {
-			return errors.New("Non-Ethernet interfaces are not currently supported on NetBSD")
+			err = errors.New("Non-Ethernet interfaces are not currently supported on NetBSD")
+			return err
 		}
 	}
 
@@ -362,6 +369,14 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	return nil
 }
 
+// getProbe safely retrieves a probe by its ID, ensuring thread-safe access to
+// the probe tracker.
+func (pm *ProbeManager) getProbe(probeID uint16) *Probe {
+	pm.probeTracker.mutex.Lock()
+	defer pm.probeTracker.mutex.Unlock()
+	return pm.probeTracker.probes[probeID]
+}
+
 // spawnDiscoveryProbe creates and starts a new probe with the given ID.
 // Called from the stats goroutine (via TrackDiscoveryPath) when a probe's
 // path has been confirmed and the old probe has been retired.
@@ -385,6 +400,9 @@ func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 
 // Run initializes and executes all probes in parallel
 func (pm *ProbeManager) Run() error {
+	// Close pcap handle on run completion
+	defer pm.handle.Close()
+
 	// Start transmit routine
 	pm.wg.Add(1)
 	go func() {
@@ -405,6 +423,7 @@ func (pm *ProbeManager) Run() error {
 	}()
 
 	// Start all probes
+	pm.probeTracker.mutex.Lock()
 	for _, p := range pm.probeTracker.probes {
 		pm.wg.Add(1)
 		pm.probesWg.Add(1)
@@ -414,6 +433,7 @@ func (pm *ProbeManager) Run() error {
 			p.Run()
 		}(p)
 	}
+	pm.probeTracker.mutex.Unlock()
 
 	// Create a channel that signals when probes are done (not all goroutines)
 	probesDone := make(chan struct{})
@@ -474,7 +494,6 @@ func (pm *ProbeManager) Stop() {
 		close(pm.stop)
 	})
 	pm.wg.Wait()
-	pm.handle.Close()
 }
 
 // createOutputs creates and initializes output handlers

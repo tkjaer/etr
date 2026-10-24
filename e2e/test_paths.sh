@@ -3,7 +3,7 @@ set -e
 
 # Usage: test_paths.sh <destination_ip> <hop2a_ip> <hop2b_ip>
 # Example: test_paths.sh 10.4.1.102 10.2.1.102 10.2.2.102
-# Example: test_paths.sh fd00:4::102 fd00:2:1::102 fd00:2:2::102
+# Example: test_paths.sh fd16:24b7:6fcd:41::102 fd16:24b7:6fcd:21::102 fd16:24b7:6fcd:22::102
 
 if [ $# -ne 3 ]; then
     echo "Usage: $0 <destination_ip> <hop2a_ip> <hop2b_ip>"
