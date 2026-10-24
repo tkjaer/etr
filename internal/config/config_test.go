@@ -107,12 +107,62 @@ func TestParseArgs_Validation(t *testing.T) {
 		{
 			name:    "source port + parallel probes exceeds limit with TCP",
 			args:    []string{"--tcp", "--source-port", "65530", "--parallel-probes", "10", "example.com"},
-			wantErr: "source port range (base + parallel probes - 1) must be below 65535",
+			wantErr: "source port range (base + parallel probes - 1) must not exceed 65535",
 		},
 		{
 			name:    "max ttl too large with TCP",
 			args:    []string{"--tcp", "--max-ttl", "300", "example.com"},
-			wantErr: "maximum TTL must be between 0 and 255",
+			wantErr: "maximum TTL must be between 1 and 255",
+		},
+		{
+			name:    "both IPv4 and IPv6 without protocol flag",
+			args:    []string{"--ipv4", "--ipv6", "example.com"},
+			wantErr: "cannot force both IPv4 and IPv6",
+		},
+		{
+			name:    "destination port too large without protocol flag",
+			args:    []string{"--dest-port", "70000", "example.com"},
+			wantErr: "destination port must be between 0 and 65535",
+		},
+		{
+			name:    "source port too large without protocol flag",
+			args:    []string{"--source-port", "70000", "example.com"},
+			wantErr: "source port must be between 1 and 65535",
+		},
+		{
+			name:    "zero parallel probes without protocol flag",
+			args:    []string{"--parallel-probes", "0", "example.com"},
+			wantErr: "parallel probes must be at least 1",
+		},
+		{
+			name:    "source port + parallel probes exceeds limit without protocol flag",
+			args:    []string{"--source-port", "65530", "--parallel-probes", "10", "example.com"},
+			wantErr: "source port range (base + parallel probes - 1) must not exceed 65535",
+		},
+		{
+			name:    "max ttl too large without protocol flag",
+			args:    []string{"--max-ttl", "300", "example.com"},
+			wantErr: "maximum TTL must be between 1 and 255",
+		},
+		{
+			name:    "max ttl too large with UDP",
+			args:    []string{"--udp", "--max-ttl", "300", "example.com"},
+			wantErr: "maximum TTL must be between 1 and 255",
+		},
+		{
+			name:    "timeout too long without protocol flag",
+			args:    []string{"--timeout", "40s", "example.com"},
+			wantErr: "timeout must be less than 20 times inter-probe delay to prevent probe number wrapping issues",
+		},
+		{
+			name:    "zero source port",
+			args:    []string{"--source-port", "0", "example.com"},
+			wantErr: "source port must be between 1 and 65535",
+		},
+		{
+			name:    "zero max ttl",
+			args:    []string{"--max-ttl", "0", "example.com"},
+			wantErr: "maximum TTL must be between 1 and 255",
 		},
 		{
 			name: "valid minimal config",
