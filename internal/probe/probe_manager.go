@@ -279,10 +279,12 @@ func (pm *ProbeManager) init(a config.Args) error {
 	// We currently do not support non-Ethernet interfaces on OpenBSD and NetBSD
 	if !probeConfig.useEthernet {
 		if runtime.GOOS == "openbsd" {
-			return errors.New("Non-Ethernet interfaces are not currently supported on OpenBSD")
+			err = errors.New("Non-Ethernet interfaces are not currently supported on OpenBSD")
+			return err
 		}
 		if runtime.GOOS == "netbsd" {
-			return errors.New("Non-Ethernet interfaces are not currently supported on NetBSD")
+			err = errors.New("Non-Ethernet interfaces are not currently supported on NetBSD")
+			return err
 		}
 	}
 
