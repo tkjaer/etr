@@ -181,29 +181,29 @@ func ParseArgs() (Args, error) {
 		return args, ErrMissingDestination
 	}
 
+	if !args.TCP && !args.UDP {
+		args.TCP = true // default to TCP
+	}
+
+	// Flag conflicts and ranges that would be lost converting to
+	// probe.Config; remaining checks are done by probe.Config.validate().
 	switch {
 	case args.Json && args.JsonFile != "":
 		return args, errors.New("cannot use both --json and --json-file")
-	case args.HashAlgorithm != "crc32" && args.HashAlgorithm != "sha256":
-		return args, errors.New("hash algorithm must be either 'crc32' or 'sha256'")
 	case args.TCP && args.UDP:
 		return args, errors.New("cannot use both TCP and UDP")
-	case !args.TCP && !args.UDP:
-		args.TCP = true // default to TCP
 	case args.ForceIPv6 && args.ForceIPv4:
 		return args, errors.New("cannot force both IPv4 and IPv6")
 	case args.DestinationPort > 65535:
 		return args, errors.New("destination port must be between 0 and 65535")
-	case args.SourcePort > 65535:
-		return args, errors.New("source port must be between 0 and 65535")
+	case args.SourcePort == 0 || args.SourcePort > 65535:
+		return args, errors.New("source port must be between 1 and 65535")
 	case args.ParallelProbes == 0:
 		return args, errors.New("parallel probes must be at least 1")
 	case args.SourcePort+(args.ParallelProbes-1) > 65535:
-		return args, errors.New("source port range (base + parallel probes - 1) must be below 65535")
-	case args.MaxTTL > 255:
-		return args, errors.New("maximum TTL must be between 0 and 255")
-	case args.Timeout >= 20*args.InterProbeDelay:
-		return args, errors.New("timeout must be less than 20 times inter-probe delay to prevent probe number wrapping issues")
+		return args, errors.New("source port range (base + parallel probes - 1) must not exceed 65535")
+	case args.MaxTTL == 0 || args.MaxTTL > 255:
+		return args, errors.New("maximum TTL must be between 1 and 255")
 	}
 
 	if args.Disco {

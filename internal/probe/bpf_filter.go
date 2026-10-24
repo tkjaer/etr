@@ -5,50 +5,64 @@ import (
 	"runtime"
 
 	"github.com/google/gopacket/layers"
-	"github.com/tkjaer/etr/internal/config"
 	"github.com/tkjaer/etr/pkg/route"
 )
 
-// BuildBPFFilter builds the tcpdump-compatible BPF filter for the given args.
-func BuildBPFFilter(a config.Args) (string, error) {
-	d, err := getDestinationIP(a)
+// BuildBPFFilter returns a tcpdump-compatible BPF filter matching the probes
+// described by cfg and their responses.
+func BuildBPFFilter(cfg Config) (string, error) {
+	cfg = cfg.withDefaults()
+	if err := cfg.validate(); err != nil {
+		return "", err
+	}
+	tgt, err := resolveTarget(cfg)
 	if err != nil {
 		return "", err
+	}
+	return buildBPFFilter(cfg, tgt, true)
+}
+
+// resolveTarget resolves the destination and route, and derives the
+// network and transport protocols for the probes.
+func resolveTarget(cfg Config) (target, error) {
+	d, err := getDestinationIP(cfg.Destination, cfg.Family)
+	if err != nil {
+		return target{}, err
 	}
 
 	r, err := route.Get(d)
 	if err != nil {
-		return "", err
+		return target{}, err
 	}
 
-	protocolConfig := ProtocolConfig{}
-	if r.Destination.Is4() {
-		protocolConfig.etherType = layers.EthernetTypeIPv4
-		protocolConfig.inet = layers.IPProtocolIPv4
-	} else if r.Destination.Is6() {
-		protocolConfig.etherType = layers.EthernetTypeIPv6
-		protocolConfig.inet = layers.IPProtocolIPv6
-	} else {
-		return "", fmt.Errorf("unsupported destination address")
+	tgt := target{route: r}
+	switch {
+	case r.Destination.Is4():
+		tgt.etherType = layers.EthernetTypeIPv4
+		tgt.inet = layers.IPProtocolIPv4
+	case r.Destination.Is6():
+		tgt.etherType = layers.EthernetTypeIPv6
+		tgt.inet = layers.IPProtocolIPv6
+	default:
+		return target{}, fmt.Errorf("unsupported destination address")
 	}
 
-	if a.TCP {
-		protocolConfig.transport = layers.IPProtocolTCP
-	} else if a.UDP {
-		protocolConfig.transport = layers.IPProtocolUDP
-	} else {
-		protocolConfig.transport = layers.IPProtocolTCP
+	switch cfg.Protocol {
+	case ProtocolTCP:
+		tgt.transport = layers.IPProtocolTCP
+	case ProtocolUDP:
+		tgt.transport = layers.IPProtocolUDP
+	default:
+		return target{}, fmt.Errorf("unsupported protocol: %v", cfg.Protocol)
 	}
+	return tgt, nil
+}
 
-	probeConfig := ProbeConfig{
-		protocolConfig: protocolConfig,
-		route:          r,
-		dstPort:        uint16(a.DestinationPort),
-		srcPort:        uint16(a.SourcePort),
-	}
-
+// buildBPFFilter builds the capture filter. includeProbes also matches the
+// outgoing probe packets, which is useful when capturing with tcpdump.
+func buildBPFFilter(probeConfig Config, tgt target, includeProbes bool) (string, error) {
 	var proto string
-	switch probeConfig.protocolConfig.transport {
+	switch tgt.transport {
 	case layers.IPProtocolTCP:
 		proto = "tcp"
 	case layers.IPProtocolUDP:
@@ -58,7 +72,7 @@ func BuildBPFFilter(a config.Args) (string, error) {
 	}
 	var ttlExceeded string
 	var destUnreachable string
-	switch probeConfig.protocolConfig.inet {
+	switch tgt.inet {
 	case layers.IPProtocolIPv4:
 		// ICMP type 11 (TTL exceeded), code 0 (time to live exceeded in transit)
 		ttlExceeded = "icmp and icmp[0] == 11 and icmp[1] == 0"
@@ -70,23 +84,20 @@ func BuildBPFFilter(a config.Args) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported network protocol")
 	}
-	pp := uint16(a.ParallelProbes)
-	if pp == 0 {
-		pp = 1
-	}
+	pp := probeConfig.ParallelProbes
 
 	// In discovery mode, each new flow gets its own sequential source port.
 	// Widen the BPF port range to cover the initial probes plus the flow budget.
 	portCount := uint32(pp)
-	if a.Discover {
-		budget := uint32(a.DiscoverFlows)
+	if probeConfig.Discovery != nil {
+		budget := uint32(probeConfig.Discovery.MaxFlows)
 		if budget == 0 {
 			// Unlimited: cover all ports from srcPort to 65535
-			portCount = 65536 - uint32(probeConfig.srcPort)
+			portCount = 65536 - uint32(probeConfig.SrcPort)
 		} else {
 			portCount = uint32(pp) + budget
-			if uint32(probeConfig.srcPort)+portCount-1 > 65535 {
-				portCount = 65536 - uint32(probeConfig.srcPort)
+			if uint32(probeConfig.SrcPort)+portCount-1 > 65535 {
+				portCount = 65536 - uint32(probeConfig.SrcPort)
 			}
 		}
 	}
@@ -99,14 +110,14 @@ func BuildBPFFilter(a config.Args) (string, error) {
 			if i > 0 {
 				portRange += " or "
 			}
-			portRange += fmt.Sprintf("port %d", uint32(probeConfig.srcPort)+uint32(i))
+			portRange += fmt.Sprintf("port %d", uint32(probeConfig.SrcPort)+uint32(i))
 		}
 		portRange += ")"
 	} else {
 		portRange = fmt.Sprintf(
 			"portrange %d-%d",
-			probeConfig.srcPort,
-			uint32(probeConfig.srcPort)+portCount-1)
+			probeConfig.SrcPort,
+			uint32(probeConfig.SrcPort)+portCount-1)
 	}
 
 	// Note:
@@ -121,27 +132,25 @@ func BuildBPFFilter(a config.Args) (string, error) {
 	destinationAnswers := fmt.Sprintf(
 		"%v and src host %v and dst host %v and src port %v and dst %v",
 		proto,
-		probeConfig.route.Destination,
-		probeConfig.route.Source,
-		probeConfig.dstPort,
+		tgt.route.Destination,
+		tgt.route.Source,
+		probeConfig.DstPort,
 		portRange)
 
 	// Match packets that are the probes we are sending out
 	etrPackets := fmt.Sprintf(
 		"%v and src host %v and dst host %v and src %v and dst port %v",
 		proto,
-		probeConfig.route.Source,
-		probeConfig.route.Destination,
+		tgt.route.Source,
+		tgt.route.Destination,
 		portRange,
-		probeConfig.dstPort)
+		probeConfig.DstPort)
 
 	// Match packets that are TTL exceeded messages from intermediate routers
-	ttlExceededAnswers := fmt.Sprintf("dst host %v and %v", probeConfig.route.Source, ttlExceeded)
-	destUnreachableAnswers := fmt.Sprintf("dst host %v and %v", probeConfig.route.Source, destUnreachable)
+	ttlExceededAnswers := fmt.Sprintf("dst host %v and %v", tgt.route.Source, ttlExceeded)
+	destUnreachableAnswers := fmt.Sprintf("dst host %v and %v", tgt.route.Source, destUnreachable)
 
-	// If --print-bpf is set, include the outgoing probe packets in the filter,
-	// allow capturing them with tcpdump for testing/debugging.
-	if a.PrintBPFFilter {
+	if includeProbes {
 		return fmt.Sprintf("(%v) or (%v) or (%v) or (%v)", destinationAnswers, ttlExceededAnswers, destUnreachableAnswers, etrPackets), nil
 	}
 	return fmt.Sprintf("(%v) or (%v) or (%v)", destinationAnswers, ttlExceededAnswers, destUnreachableAnswers), nil

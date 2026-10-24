@@ -12,22 +12,13 @@ import (
 	"github.com/tkjaer/etr/pkg/route"
 )
 
-// ProbeConfig holds configuration common to all probes
-type ProbeConfig struct {
-	destination     string
-	numProbes       uint
-	protocolConfig  ProtocolConfig
-	route           route.Route
-	srcPort         uint16
-	dstPort         uint16
-	dstMAC          net.HardwareAddr
-	maxTTL          uint8
-	useEthernet     bool
-	NoResolve       bool
-	LookupASN       bool
-	interProbeDelay time.Duration
-	interTTLDelay   time.Duration
-	timeout         time.Duration
+type target struct {
+	route       route.Route
+	dstMAC      net.HardwareAddr
+	useEthernet bool
+	inet        layers.IPProtocol
+	transport   layers.IPProtocol
+	etherType   layers.EthernetType
 }
 
 type TransmitEvent struct {
@@ -150,7 +141,8 @@ func serializeLayers(buf gopacket.SerializeBuffer, opts gopacket.SerializeOption
 // newProbe holds configuration for a single probe instance
 type Probe struct {
 	probeID       uint16
-	config        *ProbeConfig
+	cfg           *Config
+	target        *target
 	transmitChan  chan TransmitEvent
 	responseChan  chan ResponseEvent
 	statsChan     chan ProbeEvent
@@ -183,8 +175,8 @@ func (p *Probe) sleepOrStop(d time.Duration) bool {
 }
 
 func (p *Probe) Run() {
-	probeConfig := p.config
-	protocolConfig := probeConfig.protocolConfig
+	cfg := p.cfg
+	tgt := p.target
 
 	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
@@ -193,19 +185,19 @@ func (p *Probe) Run() {
 
 	// Only create Ethernet layer for Ethernet interfaces
 	var eth *layers.Ethernet
-	if probeConfig.useEthernet {
+	if tgt.useEthernet {
 		eth = &layers.Ethernet{
-			SrcMAC:       probeConfig.route.Interface.HardwareAddr,
-			DstMAC:       probeConfig.dstMAC,
-			EthernetType: protocolConfig.etherType,
+			SrcMAC:       tgt.route.Interface.HardwareAddr,
+			DstMAC:       tgt.dstMAC,
+			EthernetType: tgt.etherType,
 		}
 	}
 
 	var lastProbeStart time.Time
-	maxTTL := probeConfig.maxTTL
+	maxTTL := cfg.MaxTTL
 
 	// Handle infinite probes (numProbes == 0)
-	probeCount := p.config.numProbes
+	probeCount := cfg.Count
 	if probeCount == 0 {
 		probeCount = (1 << 63) - 1 // effectively infinite
 	}
@@ -239,7 +231,7 @@ func (p *Probe) Run() {
 
 		slog.Debug("Starting probe", "probe_num", n)
 		lastProbeStart = time.Now()
-		currentSrcPort := probeConfig.srcPort + p.probeID
+		currentSrcPort := cfg.SrcPort + p.probeID
 		ttl := uint8(0)
 
 	TTLLoop:
@@ -253,7 +245,7 @@ func (p *Probe) Run() {
 					// Update maxTTL to original value if we got a TTL exceeded at current maxTTL
 					// This allows continuing probing if the path has changed.
 					if response.Flag == "TTL" && response.TTL == maxTTL {
-						maxTTL = probeConfig.maxTTL
+						maxTTL = cfg.MaxTTL
 					}
 					// Stop sending TTL increments if we've received a response from the
 					// final destination for this probe.
@@ -270,25 +262,25 @@ func (p *Probe) Run() {
 			default:
 				ttl++
 				buf := gopacket.NewSerializeBuffer()
-				switch protocolConfig.inet {
+				switch tgt.inet {
 				case layers.IPProtocolIPv4:
 					ip := layers.IPv4{
 						Version:  4,
 						TTL:      ttl,
-						Protocol: protocolConfig.transport,
-						SrcIP:    probeConfig.route.Source.AsSlice(),
-						DstIP:    probeConfig.route.Destination.AsSlice(),
+						Protocol: tgt.transport,
+						SrcIP:    tgt.route.Source.AsSlice(),
+						DstIP:    tgt.route.Destination.AsSlice(),
 						Flags:    layers.IPv4DontFragment,
 					}
-					switch protocolConfig.transport {
+					switch tgt.transport {
 					case layers.IPProtocolTCP:
 						tcp := layers.TCP{
 							Seq:     encodeTTLAndProbe(ttl, uint(n)),
 							SrcPort: layers.TCPPort(currentSrcPort),
-							DstPort: layers.TCPPort(probeConfig.dstPort),
+							DstPort: layers.TCPPort(cfg.DstPort),
 							SYN:     true,
 							Window:  65535,
-							Options: createTCPOptions(probeConfig.route.Interface, false),
+							Options: createTCPOptions(tgt.route.Interface, false),
 						}
 						if err := tcp.SetNetworkLayerForChecksum(&ip); err != nil {
 							slog.Error("Failed to set network layer for checksum", "error", err)
@@ -308,7 +300,7 @@ func (p *Probe) Run() {
 						payload := gopacket.Payload(make([]byte, length-8))
 						udp := layers.UDP{
 							SrcPort: layers.UDPPort(currentSrcPort),
-							DstPort: layers.UDPPort(probeConfig.dstPort),
+							DstPort: layers.UDPPort(cfg.DstPort),
 							Length:  uint16(length),
 						}
 						if err := udp.SetNetworkLayerForChecksum(&ip); err != nil {
@@ -329,19 +321,19 @@ func (p *Probe) Run() {
 					ip := layers.IPv6{
 						Version:    6,
 						HopLimit:   ttl,
-						NextHeader: protocolConfig.transport,
-						SrcIP:      probeConfig.route.Source.AsSlice(),
-						DstIP:      probeConfig.route.Destination.AsSlice(),
+						NextHeader: tgt.transport,
+						SrcIP:      tgt.route.Source.AsSlice(),
+						DstIP:      tgt.route.Destination.AsSlice(),
 					}
-					switch protocolConfig.transport {
+					switch tgt.transport {
 					case layers.IPProtocolTCP:
 						tcp := layers.TCP{
 							Seq:     encodeTTLAndProbe(ttl, uint(n)),
 							SrcPort: layers.TCPPort(currentSrcPort),
-							DstPort: layers.TCPPort(probeConfig.dstPort),
+							DstPort: layers.TCPPort(cfg.DstPort),
 							SYN:     true,
 							Window:  65535,
-							Options: createTCPOptions(probeConfig.route.Interface, true),
+							Options: createTCPOptions(tgt.route.Interface, true),
 						}
 						if err := tcp.SetNetworkLayerForChecksum(&ip); err != nil {
 							slog.Error("Failed to set network layer for checksum", "error", err)
@@ -361,7 +353,7 @@ func (p *Probe) Run() {
 						payload := gopacket.Payload(make([]byte, length-8))
 						udp := layers.UDP{
 							SrcPort: layers.UDPPort(currentSrcPort),
-							DstPort: layers.UDPPort(probeConfig.dstPort),
+							DstPort: layers.UDPPort(cfg.DstPort),
 							Length:  uint16(length),
 						}
 						if err := udp.SetNetworkLayerForChecksum(&ip); err != nil {
@@ -380,7 +372,8 @@ func (p *Probe) Run() {
 					}
 				}
 				// Wait inter-TTL delay before sending the next TTL increment
-				delay := probeConfig.interTTLDelay * time.Duration(ttl)
+				// (a negative InterTTLDelay disables the delay)
+				delay := max(cfg.InterTTLDelay, 0) * time.Duration(ttl)
 				if time.Since(lastProbeStart) < delay {
 					time.Sleep(delay - time.Since(lastProbeStart))
 				}
@@ -388,13 +381,13 @@ func (p *Probe) Run() {
 		}
 		// If this is the first probe run, we'll sleep for timeout to allow responses to arrive
 		if n == 0 {
-			if p.sleepOrStop(probeConfig.timeout) {
+			if p.sleepOrStop(cfg.Timeout) {
 				return
 			}
 		} else {
 			// Sleep for interProbeDelay if we haven't already spent that much time
 			// sending the probe.
-			if remaining := probeConfig.interProbeDelay - time.Since(lastProbeStart); remaining > 0 {
+			if remaining := cfg.InterProbeDelay - time.Since(lastProbeStart); remaining > 0 {
 				if p.sleepOrStop(remaining) {
 					return
 				}
@@ -412,7 +405,7 @@ func (p *Probe) Run() {
 		}
 	}
 	// Wait for any remaining responses before exiting
-	time.Sleep(probeConfig.timeout)
+	time.Sleep(cfg.Timeout)
 	slog.Debug("Probe finished sending all probes", "probe_id", p.probeID)
 
 	// Notify stats processor that this probe is complete

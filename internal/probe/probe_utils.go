@@ -2,11 +2,10 @@ package probe
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"net/netip"
-
-	"github.com/tkjaer/etr/internal/config"
 )
 
 // Encode the probe number and TTL into a single value.
@@ -39,37 +38,34 @@ func decodeTTLAndProbe(seq uint32) (ttl uint8, probeNum uint) {
 	return uint8(seq / 20), uint(seq % 20)
 }
 
-// GetDestinationIP resolves the destination IP address if necessary, validates it and returns it
-func getDestinationIP(a config.Args) (netip.Addr, error) {
-	// Check if destination is an IP address
-	d, err := netip.ParseAddr(a.Destination)
-	if err == nil {
-		return d, nil
-	} else {
-		// If not, resolve it
-		lookup, err := net.LookupHost(a.Destination)
-		if err != nil {
-			return netip.Addr{}, err
+// getDestinationIP resolves dest if necessary and returns the first address
+// matching family.
+func getDestinationIP(dest string, family Family) (netip.Addr, error) {
+	matches := func(ip netip.Addr) bool {
+		switch family {
+		case FamilyIPv4:
+			return ip.Is4()
+		case FamilyIPv6:
+			return ip.Is6()
+		default:
+			return true
 		}
+	}
 
-		// Find the first valid IP that meets our criteria
-		for _, record := range lookup {
-			ip, err := netip.ParseAddr(record)
-			if err != nil {
-				continue
-			}
-			switch {
-			case a.ForceIPv4 && ip.Is4():
-				d = ip
-			case a.ForceIPv6 && ip.Is6():
-				d = ip
-			case !a.ForceIPv4 && !a.ForceIPv6:
-				d = ip
-			}
-			// Return if we succeed
-			if d.IsValid() {
-				return d, nil
-			}
+	if d, err := netip.ParseAddr(dest); err == nil {
+		if !matches(d) {
+			return netip.Addr{}, fmt.Errorf("destination %v does not match requested address family", d)
+		}
+		return d, nil
+	}
+
+	lookup, err := net.LookupHost(dest)
+	if err != nil {
+		return netip.Addr{}, err
+	}
+	for _, record := range lookup {
+		if ip, err := netip.ParseAddr(record); err == nil && matches(ip) {
+			return ip, nil
 		}
 	}
 

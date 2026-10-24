@@ -23,7 +23,7 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 		flag = "D"
 	}
 
-	expected := protoToLayerType(pm.probeConfig.protocolConfig.inet)
+	expected := protoToLayerType(pm.probeTarget.inet)
 	packet := gopacket.NewPacket(icmp4Layer.Payload, expected, gopacket.Default)
 	if packet == nil {
 		return
@@ -42,7 +42,7 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 		}
 		srcPort := binary.BigEndian.Uint16(payload[:2])
 		dstPort := binary.BigEndian.Uint16(payload[2:4])
-		if !pm.sourcePortWithinRange(srcPort) || dstPort != pm.probeConfig.dstPort {
+		if !pm.sourcePortWithinRange(srcPort) || dstPort != pm.probeConfig.DstPort {
 			return
 		}
 		ttl, probeNum = decodeTTLAndProbe(binary.BigEndian.Uint32(payload[4:8]))
@@ -52,7 +52,7 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 
 	if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
 		tcp := tcpLayer.(*layers.TCP)
-		if !pm.sourcePortWithinRange(uint16(tcp.SrcPort)) || tcp.DstPort != layers.TCPPort(pm.probeConfig.dstPort) {
+		if !pm.sourcePortWithinRange(uint16(tcp.SrcPort)) || tcp.DstPort != layers.TCPPort(pm.probeConfig.DstPort) {
 			return
 		}
 		ttl, probeNum, port, _ = decodeTCPLayer(tcp)
@@ -61,7 +61,7 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 
 	if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
 		udp := udpLayer.(*layers.UDP)
-		if !pm.sourcePortWithinRange(uint16(udp.SrcPort)) || udp.DstPort != layers.UDPPort(pm.probeConfig.dstPort) {
+		if !pm.sourcePortWithinRange(uint16(udp.SrcPort)) || udp.DstPort != layers.UDPPort(pm.probeConfig.DstPort) {
 			return
 		}
 		ttl, probeNum, port = decodeUDPLayer(udp)
@@ -86,8 +86,8 @@ func (pm *ProbeManager) decodeICMPv6Layer(icmp6Layer *layers.ICMPv6) (ttl uint8,
 	}
 
 	innerPayload := icmp6Layer.Payload
-	expectedLayer := protoToLayerType(pm.probeConfig.protocolConfig.inet)
-	if pm.probeConfig.protocolConfig.inet == layers.IPProtocolIPv6 {
+	expectedLayer := protoToLayerType(pm.probeTarget.inet)
+	if pm.probeTarget.inet == layers.IPProtocolIPv6 {
 		offset, ok := locateInnerIPv6Header(innerPayload)
 		if !ok {
 			return
@@ -116,7 +116,7 @@ func (pm *ProbeManager) decodeICMPv6Layer(icmp6Layer *layers.ICMPv6) (ttl uint8,
 		}
 		srcPort := binary.BigEndian.Uint16(payload[:2])
 		dstPort := binary.BigEndian.Uint16(payload[2:4])
-		if !pm.sourcePortWithinRange(srcPort) || dstPort != pm.probeConfig.dstPort {
+		if !pm.sourcePortWithinRange(srcPort) || dstPort != pm.probeConfig.DstPort {
 			return
 		}
 		ttl, probeNum = decodeTTLAndProbe(binary.BigEndian.Uint32(payload[4:8]))
@@ -126,7 +126,7 @@ func (pm *ProbeManager) decodeICMPv6Layer(icmp6Layer *layers.ICMPv6) (ttl uint8,
 
 	if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
 		tcp := tcpLayer.(*layers.TCP)
-		if !pm.sourcePortWithinRange(uint16(tcp.SrcPort)) || tcp.DstPort != layers.TCPPort(pm.probeConfig.dstPort) {
+		if !pm.sourcePortWithinRange(uint16(tcp.SrcPort)) || tcp.DstPort != layers.TCPPort(pm.probeConfig.DstPort) {
 			return
 		}
 		ttl, probeNum, port, _ = decodeTCPLayer(tcp)
@@ -135,7 +135,7 @@ func (pm *ProbeManager) decodeICMPv6Layer(icmp6Layer *layers.ICMPv6) (ttl uint8,
 
 	if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
 		udp := udpLayer.(*layers.UDP)
-		if !pm.sourcePortWithinRange(uint16(udp.SrcPort)) || udp.DstPort != layers.UDPPort(pm.probeConfig.dstPort) {
+		if !pm.sourcePortWithinRange(uint16(udp.SrcPort)) || udp.DstPort != layers.UDPPort(pm.probeConfig.DstPort) {
 			return
 		}
 		ttl, probeNum, port = decodeUDPLayer(udp)
@@ -175,12 +175,12 @@ func locateInnerIPv6Header(payload []byte) (int, bool) {
 // sourcePortWithinRange checks if the given source port belongs to one of
 // this probe manager's probes.
 func (pm *ProbeManager) sourcePortWithinRange(srcPort uint16) bool {
-	if srcPort < pm.probeConfig.srcPort {
+	if srcPort < pm.probeConfig.SrcPort {
 		return false
 	}
-	offset := srcPort - pm.probeConfig.srcPort
+	offset := srcPort - pm.probeConfig.SrcPort
 	if !pm.discovery.enabled {
-		return offset < pm.parallelProbes
+		return offset < pm.probeConfig.ParallelProbes
 	}
 	// In discovery mode, accept any port that maps to a known probe.
 	pm.probeTracker.mutex.Lock()
@@ -208,11 +208,11 @@ func protoToLayerType(proto layers.IPProtocol) gopacket.LayerType {
 func (pm *ProbeManager) innerIPsMatch(layer gopacket.Layer) bool {
 	switch ipLayer := layer.(type) {
 	case *layers.IPv4:
-		return ipLayer.SrcIP.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) &&
-			ipLayer.DstIP.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice()))
+		return ipLayer.SrcIP.Equal(net.IP(pm.probeTarget.route.Source.AsSlice())) &&
+			ipLayer.DstIP.Equal(net.IP(pm.probeTarget.route.Destination.AsSlice()))
 	case *layers.IPv6:
-		return ipLayer.SrcIP.Equal(net.IP(pm.probeConfig.route.Source.AsSlice())) &&
-			ipLayer.DstIP.Equal(net.IP(pm.probeConfig.route.Destination.AsSlice()))
+		return ipLayer.SrcIP.Equal(net.IP(pm.probeTarget.route.Source.AsSlice())) &&
+			ipLayer.DstIP.Equal(net.IP(pm.probeTarget.route.Destination.AsSlice()))
 	default:
 		return false
 	}
