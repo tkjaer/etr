@@ -14,7 +14,6 @@ import (
 	"github.com/tkjaer/etr/pkg/asn"
 	"github.com/tkjaer/etr/pkg/ndp"
 	"github.com/tkjaer/etr/pkg/ptr"
-	"github.com/tkjaer/etr/pkg/route"
 
 	"github.com/tkjaer/etr/internal/config"
 	"github.com/tkjaer/etr/internal/output"
@@ -59,12 +58,11 @@ type ProbeEventDataIterationComplete struct {
 }
 
 type outputConfig struct {
-	jsonOutput    bool
-	jsonFile      string
-	noTUI         bool
-	hashAlgorithm string
-	tuiRefresh    time.Duration
-	noStyle       bool
+	jsonOutput bool
+	jsonFile   string
+	noTUI      bool
+	tuiRefresh time.Duration
+	noStyle    bool
 }
 
 type outputMsg struct {
@@ -132,10 +130,10 @@ type ProbeManager struct {
 	asnManager   *asn.ASNManager
 
 	// Probe Configuration
-	parallelProbes uint16
-	probeConfig    ProbeConfig
-	probeTracker   ProbeTracker
-	args           config.Args
+	probeConfig  Config
+	probeTarget  target
+	probeTracker ProbeTracker
+	args         config.Args
 
 	stats        ProbeManagerStats
 	outputConfig outputConfig
@@ -143,14 +141,13 @@ type ProbeManager struct {
 	discovery    discoveryState
 }
 
-type ProtocolConfig struct {
-	inet      layers.IPProtocol
-	transport layers.IPProtocol
-	etherType layers.EthernetType
-}
-
 // NewProbeManager creates and initializes a probe manager
 func NewProbeManager(a config.Args) (*ProbeManager, error) {
+	cfg := ConfigFromArgs(a).withDefaults()
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
 	pm := &ProbeManager{
 		// Coordination
 		wg:   sync.WaitGroup{},
@@ -168,55 +165,43 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 		},
 
 		// Probe Configuration
-		parallelProbes: uint16(a.ParallelProbes),
-		probeConfig: ProbeConfig{
-			destination:     a.Destination,
-			numProbes:       uint(a.NumProbes),
-			protocolConfig:  ProtocolConfig{},
-			dstPort:         uint16(a.DestinationPort),
-			srcPort:         uint16(a.SourcePort),
-			route:           route.Route{},
-			maxTTL:          uint8(a.MaxTTL),
-			interProbeDelay: a.InterProbeDelay,
-			interTTLDelay:   a.InterTTLDelay,
-			timeout:         a.Timeout,
-			NoResolve:       a.NoResolve,
-			LookupASN:       a.LookupASN,
-		},
+		probeConfig: cfg,
 
 		outputConfig: outputConfig{
-			jsonOutput:    a.Json,
-			jsonFile:      a.JsonFile,
-			noTUI:         a.NoTUI,
-			hashAlgorithm: a.HashAlgorithm,
-			tuiRefresh:    a.TUIRefresh,
-			noStyle:       a.NoStyle,
+			jsonOutput: a.Json,
+			jsonFile:   a.JsonFile,
+			noTUI:      a.NoTUI,
+			tuiRefresh: a.TUIRefresh,
+			noStyle:    a.NoStyle,
 		},
 		discovery: discoveryState{
-			enabled:              a.Discover,
-			hopsMode:             a.DiscoverHops,
-			flowBudget:           a.DiscoverFlows,
-			noNewPathsLimit:      a.DiscoverNoNewPathsRounds,
-			perProbeStableRounds: a.DiscoverPerProbeStableRounds,
-			allDiscoveredPaths:   make(map[string]discoveredPathInfo),
-			allDiscoveredIPs:     make(map[string]struct{}),
-			perProbeState:        make(map[uint16]*probeDiscoveryState),
-			activeProbes:         make(map[uint16]struct{}),
-			nextProbeID:          uint16(a.ParallelProbes),
-			flowsUsed:            a.ParallelProbes, // initial probes count toward the budget
+			enabled:            cfg.Discovery != nil,
+			allDiscoveredPaths: make(map[string]discoveredPathInfo),
+			allDiscoveredIPs:   make(map[string]struct{}),
+			perProbeState:      make(map[uint16]*probeDiscoveryState),
+			activeProbes:       make(map[uint16]struct{}),
 		},
 		args: a,
 	}
 
+	if d := cfg.Discovery; d != nil {
+		pm.discovery.hopsMode = d.Hops
+		pm.discovery.flowBudget = d.MaxFlows
+		pm.discovery.noNewPathsLimit = d.NoNewPathsRounds
+		pm.discovery.perProbeStableRounds = d.StableRounds
+	}
+	pm.discovery.nextProbeID = pm.probeConfig.ParallelProbes
+	pm.discovery.flowsUsed = uint(pm.probeConfig.ParallelProbes) // initial probes count toward the budget
+
 	// Initialize per-probe discovery state
 	if pm.discovery.enabled {
-		for p := uint16(0); p < uint16(a.ParallelProbes); p++ {
+		for p := range pm.probeConfig.ParallelProbes {
 			pm.discovery.perProbeState[p] = &probeDiscoveryState{}
 			pm.discovery.activeProbes[p] = struct{}{}
 		}
 	}
 
-	err := pm.init(a)
+	err := pm.init()
 	if err != nil {
 		return nil, err
 	}
@@ -225,47 +210,26 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 }
 
 // init initializes the probe manager by setting up routes, pcap handles, and probes
-func (pm *ProbeManager) init(a config.Args) (err error) {
-	probeConfig := &pm.probeConfig
-	protocolConfig := &probeConfig.protocolConfig
-
-	// Populate route struct
-	d, err := getDestinationIP(a)
+func (pm *ProbeManager) init() (err error) {
+	pm.probeTarget, err = resolveTarget(pm.probeConfig)
 	if err != nil {
 		return err
 	}
-	probeConfig.route, err = route.Get(d)
-	if err != nil {
-		return err
-	}
-
-	// Set protocol configuration (etherType, inet, transport)
-	if probeConfig.route.Destination.Is4() {
-		protocolConfig.etherType = layers.EthernetTypeIPv4
-		protocolConfig.inet = layers.IPProtocolIPv4
-	} else if probeConfig.route.Destination.Is6() {
-		protocolConfig.etherType = layers.EthernetTypeIPv6
-		protocolConfig.inet = layers.IPProtocolIPv6
-	}
-	if a.TCP {
-		protocolConfig.transport = layers.IPProtocolTCP
-	} else if a.UDP {
-		protocolConfig.transport = layers.IPProtocolUDP
-	}
+	tgt := &pm.probeTarget
 
 	// Resolve gateway MAC address for Ethernet interfaces
 	// if gw is empty, this is a directly connected route, so use dst IP
-	if probeConfig.route.Gateway == (netip.Addr{}) {
-		probeConfig.route.Gateway = probeConfig.route.Destination
+	if tgt.route.Gateway == (netip.Addr{}) {
+		tgt.route.Gateway = tgt.route.Destination
 	}
 
 	// Initialize pcap handle first so we can determine link type
-	pm.handle, err = pcap.OpenLive(probeConfig.route.Interface.Name, 65536, true, 10*time.Millisecond)
+	pm.handle, err = pcap.OpenLive(tgt.route.Interface.Name, 65536, true, 10*time.Millisecond)
 	if err != nil {
 		return err
 	}
-	slog.Debug("Opened pcap handle", "interface", probeConfig.route.Interface.Name)
-	probeConfig.useEthernet = pm.handle.LinkType() == layers.LinkTypeEthernet
+	slog.Debug("Opened pcap handle", "interface", tgt.route.Interface.Name)
+	tgt.useEthernet = pm.handle.LinkType() == layers.LinkTypeEthernet
 
 	// Close pcap handle if init fails
 	defer func() {
@@ -275,7 +239,7 @@ func (pm *ProbeManager) init(a config.Args) (err error) {
 	}()
 
 	// We currently do not support non-Ethernet interfaces on OpenBSD and NetBSD
-	if !probeConfig.useEthernet {
+	if !tgt.useEthernet {
 		if runtime.GOOS == "openbsd" {
 			err = errors.New("Non-Ethernet interfaces are not currently supported on OpenBSD")
 			return err
@@ -288,22 +252,22 @@ func (pm *ProbeManager) init(a config.Args) (err error) {
 
 	// Only resolve MAC addresses for Ethernet interfaces
 	// VPN/tunnel interfaces (utun, tun, etc.) don't use MAC addresses
-	if probeConfig.useEthernet {
+	if tgt.useEthernet {
 		// Use the ARP package to resolve MAC for IPv4 neighbors
-		switch pm.probeConfig.protocolConfig.inet {
+		switch tgt.inet {
 		case layers.IPProtocolIPv4:
-			probeConfig.dstMAC, err = arp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface, probeConfig.route.Source.AsSlice())
+			tgt.dstMAC, err = arp.Get(tgt.route.Gateway.AsSlice(), tgt.route.Interface, tgt.route.Source.AsSlice())
 			if err != nil {
 				return err
 			}
 		case layers.IPProtocolIPv6:
-			probeConfig.dstMAC, err = ndp.Get(probeConfig.route.Gateway.AsSlice(), probeConfig.route.Interface)
+			tgt.dstMAC, err = ndp.Get(tgt.route.Gateway.AsSlice(), tgt.route.Interface)
 			if err != nil {
 				return err
 			}
 		}
 	} else {
-		slog.Debug("Skipping MAC resolution for non-Ethernet interface", "interface", probeConfig.route.Interface.Name)
+		slog.Debug("Skipping MAC resolution for non-Ethernet interface", "interface", tgt.route.Interface.Name)
 		// For non-Ethernet interfaces, leave dstMAC as nil
 		// The packet construction will handle this case
 	}
@@ -315,7 +279,7 @@ func (pm *ProbeManager) init(a config.Args) (err error) {
 	}
 
 	// Add all probes
-	for i := range pm.parallelProbes {
+	for i := range pm.probeConfig.ParallelProbes {
 		err := pm.addProbe(i)
 		if err != nil {
 			return err
@@ -341,7 +305,7 @@ func (pm *ProbeManager) init(a config.Args) (err error) {
 
 // Create and set probe BPF filter string to capture returning probes.
 func (pm *ProbeManager) setBPFFilter() error {
-	filter, err := BuildBPFFilter(pm.args)
+	filter, err := buildBPFFilter(pm.probeConfig, pm.probeTarget, false)
 	if err != nil {
 		return err
 	}
@@ -352,7 +316,8 @@ func (pm *ProbeManager) setBPFFilter() error {
 func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	p := new(Probe)
 	p.probeID = probeIndex
-	p.config = &pm.probeConfig
+	p.cfg = &pm.probeConfig
+	p.target = &pm.probeTarget
 	p.transmitChan = pm.transmitChan
 	p.responseChan = make(chan ResponseEvent, 100)
 	p.statsChan = pm.statsChan
@@ -502,19 +467,19 @@ func (pm *ProbeManager) createOutputs() (*output.BubbleTUIOutput, *output.Output
 	om := &output.OutputManager{}
 
 	info := shared.OutputInfo{
-		Destination:    pm.probeConfig.destination,
+		Destination:    pm.probeConfig.Destination,
 		Protocol:       "TCP",
-		SrcPort:        pm.probeConfig.srcPort,
-		DstPort:        pm.probeConfig.dstPort,
-		ParallelProbes: pm.parallelProbes,
-		HashAlgorithm:  pm.outputConfig.hashAlgorithm,
+		SrcPort:        pm.probeConfig.SrcPort,
+		DstPort:        pm.probeConfig.DstPort,
+		ParallelProbes: pm.probeConfig.ParallelProbes,
+		HashAlgorithm:  string(pm.probeConfig.HashAlgorithm),
 		TUIRefresh:     pm.outputConfig.tuiRefresh,
 		NoStyle:        pm.outputConfig.noStyle,
 		DiscoverMode:   pm.discovery.enabled,
 		DiscoverHops:   pm.discovery.hopsMode,
 		DiscoMode:      pm.args.Disco,
 	}
-	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {
+	if pm.probeTarget.transport == layers.IPProtocolUDP {
 		info.Protocol = "UDP"
 	}
 

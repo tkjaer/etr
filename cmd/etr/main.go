@@ -38,7 +38,7 @@ func run() error {
 	}
 
 	if args.PrintBPFFilter {
-		filter, err := probe.BuildBPFFilter(args)
+		filter, err := probe.BuildBPFFilter(probe.ConfigFromArgs(args))
 		if err != nil {
 			return err
 		}

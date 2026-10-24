@@ -45,7 +45,7 @@ func (pm *ProbeManager) statsProcessor() {
 		Probes:      make(map[uint16]*shared.ProbeStats),
 		CurrentRuns: make(map[uint16]*ProbeRunBuilder),
 		Mutex:       sync.RWMutex{},
-		TTLCache:    ttlcache.New(ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.timeout)),
+		TTLCache:    ttlcache.New(ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.Timeout)),
 	}
 	pm.stats.TTLCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[TTLCacheKey, TTLCacheValue]) {
 		if reason == ttlcache.EvictionReasonExpired {
@@ -63,11 +63,11 @@ func (pm *ProbeManager) statsProcessor() {
 	go pm.stats.TTLCache.Start()
 
 	// Request PTR lookup for destination IP early
-	if !pm.probeConfig.NoResolve {
-		go pm.ptrManager.RequestPTR(pm.probeConfig.route.Destination.String())
+	if pm.probeConfig.ResolvePTR {
+		go pm.ptrManager.RequestPTR(pm.probeTarget.route.Destination.String())
 	}
 	if pm.probeConfig.LookupASN {
-		go pm.asnManager.RequestASN(pm.probeConfig.route.Destination.String())
+		go pm.asnManager.RequestASN(pm.probeTarget.route.Destination.String())
 	}
 	defer pm.stats.TTLCache.Stop()
 
@@ -189,7 +189,7 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 		pm.stats.Probes[probeID] = probeStats
 	}
 
-	pm.stats.TTLCache.Set(TTLCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}, TTLCacheValue{SentTime: data.Timestamp}, pm.probeConfig.timeout)
+	pm.stats.TTLCache.Set(TTLCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}, TTLCacheValue{SentTime: data.Timestamp}, pm.probeConfig.Timeout)
 
 	// Also build/update current ProbeRun for JSON output
 	run, exists := pm.stats.CurrentRuns[probeID]
@@ -264,7 +264,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 		}
 		hopStats.IPs[data.IP] = ipStats
 		// Request PTR lookup for new IP
-		if !pm.probeConfig.NoResolve {
+		if pm.probeConfig.ResolvePTR {
 			go pm.ptrManager.RequestPTR(data.IP)
 		}
 		if pm.probeConfig.LookupASN {
@@ -273,7 +273,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	}
 
 	// Update PTR if missing in probe, and available in manager
-	if ipStats.PTR == "" && !pm.probeConfig.NoResolve {
+	if ipStats.PTR == "" && pm.probeConfig.ResolvePTR {
 		if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
 			ipStats.PTR = ptr
 		}
@@ -304,7 +304,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	ptrValue := ipStats.PTR
 	asnValue := ipStats.ASN
 
-	if !pm.probeConfig.NoResolve {
+	if pm.probeConfig.ResolvePTR {
 		if ptr, found := pm.ptrManager.GetPTR(data.IP); found && ptr != "" {
 			ptrValue = ptr
 			// Update ipStats.PTR as well for consistency
@@ -479,7 +479,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 				// Get the latest PTR from the manager
 				ptrValue := ipStats.PTR
 				asnValue := ipStats.ASN
-				if !pm.probeConfig.NoResolve {
+				if pm.probeConfig.ResolvePTR {
 					if ptr, found := pm.ptrManager.GetPTR(hopStats.CurrentIP); found && ptr != "" {
 						ptrValue = ptr
 					}
@@ -521,11 +521,11 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 	}
 
 	// Calculate path hash using the configured algorithm
-	pathHash := shared.CalculatePathHashFromHops(hopsSlice, pm.outputConfig.hashAlgorithm)
+	pathHash := shared.CalculatePathHashFromHops(hopsSlice, string(pm.probeConfig.HashAlgorithm))
 
 	// Determine protocol name
 	protocol := "TCP"
-	if pm.probeConfig.protocolConfig.transport == layers.IPProtocolUDP {
+	if pm.probeTarget.transport == layers.IPProtocolUDP {
 		protocol = "UDP"
 	}
 
@@ -533,13 +533,13 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 	reachedDest := false
 	if len(hopsSlice) > 0 {
 		lastHop := hopsSlice[len(hopsSlice)-1]
-		if lastHop.IP == pm.probeConfig.route.Destination.String() {
+		if lastHop.IP == pm.probeTarget.route.Destination.String() {
 			reachedDest = true
 		}
 	}
 
 	// Get destination PTR
-	destIP := pm.probeConfig.route.Destination.String()
+	destIP := pm.probeTarget.route.Destination.String()
 	destPTR := ""
 	if ptr, found := pm.ptrManager.GetPTR(destIP); found && ptr != "" {
 		destPTR = ptr
@@ -556,10 +556,10 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 		ProbeID:         probeID,
 		ProbeNum:        data.ProbeNum,
 		PathHash:        pathHash,
-		SourceIP:        pm.probeConfig.route.Source.String(),
-		SourcePort:      pm.probeConfig.srcPort + probeID,
+		SourceIP:        pm.probeTarget.route.Source.String(),
+		SourcePort:      pm.probeConfig.SrcPort + probeID,
 		DestinationIP:   destIP,
-		DestinationPort: pm.probeConfig.dstPort,
+		DestinationPort: pm.probeConfig.DstPort,
 		DestinationPTR:  destPTR,
 		DestinationASN:  destASN,
 		Protocol:        protocol,

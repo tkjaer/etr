@@ -27,7 +27,7 @@ func (pm *ProbeManager) decodeRecvProbe(packet gopacket.Packet) (ttl uint8, prob
 			flag = "TTL"
 		}
 	} else {
-		switch pm.probeConfig.protocolConfig.transport {
+		switch pm.probeTarget.transport {
 		case layers.IPProtocolTCP:
 			if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
 				ttl, probeNum, port, flag = decodeTCPLayer(tcpLayer.(*layers.TCP))

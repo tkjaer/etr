@@ -185,11 +185,11 @@ func ParseArgs() (Args, error) {
 		args.TCP = true // default to TCP
 	}
 
+	// Flag conflicts and ranges that would be lost converting to
+	// probe.Config; remaining checks are done by probe.Config.validate().
 	switch {
 	case args.Json && args.JsonFile != "":
 		return args, errors.New("cannot use both --json and --json-file")
-	case args.HashAlgorithm != "crc32" && args.HashAlgorithm != "sha256":
-		return args, errors.New("hash algorithm must be either 'crc32' or 'sha256'")
 	case args.TCP && args.UDP:
 		return args, errors.New("cannot use both TCP and UDP")
 	case args.ForceIPv6 && args.ForceIPv4:
@@ -204,8 +204,6 @@ func ParseArgs() (Args, error) {
 		return args, errors.New("source port range (base + parallel probes - 1) must not exceed 65535")
 	case args.MaxTTL == 0 || args.MaxTTL > 255:
 		return args, errors.New("maximum TTL must be between 1 and 255")
-	case args.Timeout >= 20*args.InterProbeDelay:
-		return args, errors.New("timeout must be less than 20 times inter-probe delay to prevent probe number wrapping issues")
 	}
 
 	if args.Disco {

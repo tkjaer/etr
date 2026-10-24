@@ -22,7 +22,7 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 			return
 		case packet = <-in:
 			ttl, probeNum, timestamp, ip, port, flag := pm.decodeRecvProbe(packet)
-			probeID := uint16(port) - pm.probeConfig.srcPort
+			probeID := uint16(port) - pm.probeConfig.SrcPort
 			// All valid received probes will have a TTL.
 			if ttl > 0 {
 				if p := pm.getProbe(probeID); p != nil {

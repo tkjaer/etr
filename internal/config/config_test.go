@@ -85,11 +85,6 @@ func TestParseArgs_Validation(t *testing.T) {
 			wantErr: "cannot use both --json and --json-file",
 		},
 		{
-			name:    "invalid hash algorithm",
-			args:    []string{"--hash-algorithm", "md5", "example.com"},
-			wantErr: "hash algorithm must be either 'crc32' or 'sha256'",
-		},
-		{
 			name:    "both TCP and UDP",
 			args:    []string{"--tcp", "--udp", "example.com"},
 			wantErr: "cannot use both TCP and UDP",
@@ -148,11 +143,6 @@ func TestParseArgs_Validation(t *testing.T) {
 			name:    "max ttl too large with UDP",
 			args:    []string{"--udp", "--max-ttl", "300", "example.com"},
 			wantErr: "maximum TTL must be between 1 and 255",
-		},
-		{
-			name:    "timeout too long without protocol flag",
-			args:    []string{"--timeout", "40s", "example.com"},
-			wantErr: "timeout must be less than 20 times inter-probe delay to prevent probe number wrapping issues",
 		},
 		{
 			name:    "zero source port",

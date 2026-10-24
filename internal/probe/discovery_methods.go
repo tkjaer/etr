@@ -44,7 +44,7 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 		}
 		if probeState.stableRoundsCount >= requiredRounds {
 			// Path confirmed stable — record it and check convergence
-			srcPort := pm.probeConfig.srcPort + probeID
+			srcPort := pm.probeConfig.SrcPort + probeID
 			foundNew := false
 
 			// Always record the path (first port per hash wins)
@@ -120,9 +120,9 @@ func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
 		return
 	}
 	nextID := pm.discovery.nextProbeID
-	if uint32(pm.probeConfig.srcPort)+uint32(nextID) > 65535 {
+	if uint32(pm.probeConfig.SrcPort)+uint32(nextID) > 65535 {
 		pm.discovery.stoppedByPortLimit = true
-		slog.Warn("Discovery: ran out of source ports", "last_port", pm.probeConfig.srcPort+nextID-1)
+		slog.Warn("Discovery: ran out of source ports", "last_port", pm.probeConfig.SrcPort+nextID-1)
 		return
 	}
 
@@ -132,7 +132,7 @@ func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
 	pm.discovery.activeProbes[nextID] = struct{}{}
 
 	slog.Debug("Discovery: spawning new probe", "new_probe_id", nextID,
-		"src_port", pm.probeConfig.srcPort+nextID)
+		"src_port", pm.probeConfig.SrcPort+nextID)
 
 	// Spawn outside the lock to avoid holding discoveryMu during goroutine start
 	go pm.spawnDiscoveryProbe(nextID)
