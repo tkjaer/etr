@@ -385,6 +385,9 @@ func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 
 // Run initializes and executes all probes in parallel
 func (pm *ProbeManager) Run() error {
+	// Close pcap handle on run completion
+	defer pm.handle.Close()
+
 	// Start transmit routine
 	pm.wg.Add(1)
 	go func() {
@@ -474,7 +477,6 @@ func (pm *ProbeManager) Stop() {
 		close(pm.stop)
 	})
 	pm.wg.Wait()
-	pm.handle.Close()
 }
 
 // createOutputs creates and initializes output handlers
