@@ -64,7 +64,7 @@ func run() error {
 		"parallel_probes", args.ParallelProbes,
 	)
 
-	pm, err := probe.NewProbeManager(args)
+	pm, err := probe.NewProbeManager(probe.ConfigFromArgs(args))
 	if err != nil {
 		return fmt.Errorf("failed to create probe manager: %w", err)
 	}
@@ -73,9 +73,19 @@ func run() error {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigChan)
 
+	outputs, tui := newOutputs(args)
+	if tui != nil {
+		go func() {
+			<-tui.QuitChan()
+			pm.Stop()
+		}()
+	}
+
 	done := make(chan error, 1)
 	go func() {
-		done <- pm.Run()
+		err := pm.Run(outputs)
+		outputs.Close()
+		done <- err
 	}()
 
 	runErr := waitForCompletion(pm, done, sigChan)
