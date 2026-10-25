@@ -108,13 +108,22 @@ func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
 	delete(pm.discovery.perProbeState, probeID)
 	delete(pm.discovery.activeProbes, probeID)
 
+	// Start the replacement before stopping this probe. Otherwise this probe
+	// could finish first and, if it was the last one running, end the run.
+	pm.spawnReplacementProbeNoLock()
+
 	// Close the probe's discovery channel to stop its Run loop
 	pm.probeTracker.mutex.Lock()
 	if p, exists := pm.probeTracker.probes[probeID]; exists && p.discoveryStop != nil {
 		close(p.discoveryStop)
 	}
 	pm.probeTracker.mutex.Unlock()
+}
 
+// spawnReplacementProbeNoLock starts a probe on the next source port, unless
+// the flow budget or the source port range is used up.
+// Caller must hold discoveryMu write lock.
+func (pm *ProbeManager) spawnReplacementProbeNoLock() {
 	// Check budget before spawning replacement
 	if pm.discovery.flowBudget > 0 && pm.discovery.flowsUsed >= pm.discovery.flowBudget {
 		return
@@ -134,8 +143,9 @@ func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
 	slog.Debug("Discovery: spawning new probe", "new_probe_id", nextID,
 		"src_port", pm.probeConfig.SrcPort+nextID)
 
-	// Spawn outside the lock to avoid holding discoveryMu during goroutine start
-	go pm.spawnDiscoveryProbe(nextID)
+	// Called synchronously so the WaitGroups count the new probe before the
+	// old one is stopped.
+	pm.spawnDiscoveryProbe(nextID)
 }
 
 // shouldStopDiscoveryNoLock checks convergence conditions.

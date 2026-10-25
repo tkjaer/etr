@@ -392,29 +392,51 @@ func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataT
 }
 
 func (pm *ProbeManager) getProbeHopStats(probeID uint16, ttl uint8) (shared.HopStats, bool) {
-	stats := shared.HopStats{}
-	exists := false
 	pm.stats.Mutex.RLock()
 	defer pm.stats.Mutex.RUnlock()
 	if probe, ok := pm.stats.Probes[probeID]; ok {
 		if hop, ok := probe.Hops[ttl]; ok {
-			stats = *hop
-			exists = true
+			return copyHopStats(hop), true
 		}
 	}
-	return stats, exists
+	return shared.HopStats{}, false
 }
 
 func (pm *ProbeManager) getProbeStats(probeID uint16) (shared.ProbeStats, bool) {
-	stats := shared.ProbeStats{}
-	exists := false
 	pm.stats.Mutex.RLock()
 	defer pm.stats.Mutex.RUnlock()
 	if probe, ok := pm.stats.Probes[probeID]; ok {
-		stats = *probe
-		exists = true
+		return copyProbeStats(probe), true
 	}
-	return stats, exists
+	return shared.ProbeStats{}, false
+}
+
+// copyHopStats returns a deep copy of h. Outputs keep the stats they're given
+// while the stats processor goes on updating the originals, so the copy must
+// not share maps or pointers with them.
+func copyHopStats(h *shared.HopStats) shared.HopStats {
+	c := *h
+	if h.IPs != nil {
+		c.IPs = make(map[string]*shared.HopIPStats, len(h.IPs))
+		for ip, s := range h.IPs {
+			s := *s
+			c.IPs[ip] = &s
+		}
+	}
+	return c
+}
+
+// copyProbeStats returns a deep copy of p; see copyHopStats.
+func copyProbeStats(p *shared.ProbeStats) shared.ProbeStats {
+	c := *p
+	if p.Hops != nil {
+		c.Hops = make(map[uint8]*shared.HopStats, len(p.Hops))
+		for ttl, h := range p.Hops {
+			h := copyHopStats(h)
+			c.Hops[ttl] = &h
+		}
+	}
+	return c
 }
 
 // pruneHopsBeyondDestinationTTL removes hop stats with TTLs greater than the destination TTL for a probe.

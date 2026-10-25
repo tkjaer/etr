@@ -344,7 +344,7 @@ func (pm *ProbeManager) getProbe(probeID uint16) *Probe {
 
 // spawnDiscoveryProbe creates and starts a new probe with the given ID.
 // Called from the stats goroutine (via TrackDiscoveryPath) when a probe's
-// path has been confirmed and the old probe has been retired.
+// path has been confirmed, just before the old probe is retired.
 func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 	if err := pm.addProbe(probeID); err != nil {
 		slog.Error("Failed to create discovery probe", "probe_id", probeID, "error", err)
