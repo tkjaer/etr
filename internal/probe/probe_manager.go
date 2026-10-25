@@ -15,7 +15,6 @@ import (
 	"github.com/tkjaer/etr/pkg/ndp"
 	"github.com/tkjaer/etr/pkg/ptr"
 
-	"github.com/tkjaer/etr/internal/config"
 	"github.com/tkjaer/etr/internal/shared"
 )
 
@@ -131,8 +130,8 @@ type ProbeManager struct {
 }
 
 // NewProbeManager creates and initializes a probe manager
-func NewProbeManager(a config.Args) (*ProbeManager, error) {
-	cfg := ConfigFromArgs(a).withDefaults()
+func NewProbeManager(cfg Config) (*ProbeManager, error) {
+	cfg = cfg.withDefaults()
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}

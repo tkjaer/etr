@@ -64,7 +64,7 @@ func run() error {
 		"parallel_probes", args.ParallelProbes,
 	)
 
-	pm, err := probe.NewProbeManager(args)
+	pm, err := probe.NewProbeManager(probe.ConfigFromArgs(args))
 	if err != nil {
 		return fmt.Errorf("failed to create probe manager: %w", err)
 	}
