@@ -333,8 +333,23 @@ func (m *tuiModel) ensureDetailVisible() {
 	m.detailScroll = 0
 }
 
+// Info holds run details and settings for the TUI
+type Info struct {
+	Destination    string
+	Protocol       string
+	SrcPort        uint16
+	DstPort        uint16
+	ParallelProbes uint16
+	HashAlgorithm  string
+	TUIRefresh     time.Duration
+	NoStyle        bool
+	DiscoverMode   bool
+	DiscoverHops   bool
+	DiscoMode      bool
+}
+
 // NewBubbleTUIOutput creates a new Bubble Tea TUI output
-func NewBubbleTUIOutput(info shared.OutputInfo) *BubbleTUIOutput {
+func NewBubbleTUIOutput(info Info) *BubbleTUIOutput {
 	updateCh := make(chan tuiUpdateMsg, 100)
 	quitCh := make(chan struct{})
 

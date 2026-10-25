@@ -36,21 +36,6 @@ type HopStats struct {
 	LossPct   float64                `json:"loss_pct"`   // Percentage loss at this TTL
 }
 
-// Holds general output information
-type OutputInfo struct {
-	Destination    string
-	Protocol       string
-	SrcPort        uint16
-	DstPort        uint16
-	ParallelProbes uint16
-	HashAlgorithm  string
-	TUIRefresh     time.Duration
-	NoStyle        bool
-	DiscoverMode   bool
-	DiscoverHops   bool
-	DiscoMode      bool
-}
-
 // DiscoveryStats holds live stats about a discovery run, for the TUI
 type DiscoveryStats struct {
 	FlowsUsed        uint
