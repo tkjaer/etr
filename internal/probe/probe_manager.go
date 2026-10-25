@@ -448,6 +448,7 @@ func (pm *ProbeManager) Run() error {
 	// Wait for output routine to finish processing remaining messages
 	slog.Debug("Waiting for output routine")
 	outputWg.Wait()
+	om.Close()
 
 	return nil
 }
@@ -511,31 +512,33 @@ func (pm *ProbeManager) createOutputs() (*output.BubbleTUIOutput, *output.Output
 	return bubbleTUI, om
 }
 
-// outputRoutine processes output messages and updates displays
-func (pm *ProbeManager) outputRoutine(om *output.OutputManager) {
+// outputRoutine forwards output messages to the sink
+func (pm *ProbeManager) outputRoutine(sink Sink) {
 	for msg := range pm.outputChan {
+		if sink == nil {
+			continue
+		}
 		switch msg.msgType {
 		case "hop":
 			if probeHopStats, exists := pm.getProbeHopStats(uint16(msg.probeNum), msg.ttl); exists {
-				om.UpdateHop(uint16(msg.probeNum), msg.ttl, probeHopStats)
+				sink.UpdateHop(uint16(msg.probeNum), msg.ttl, probeHopStats)
 			}
 		case "delete_hops":
 			// Notify outputs to delete specific hops
-			om.DeleteHops(uint16(msg.probeNum), msg.deleteTTLs)
+			sink.DeleteHops(uint16(msg.probeNum), msg.deleteTTLs)
 		case "probe_run":
 			// Output individual probe run (for JSON)
 			if msg.run != nil {
-				om.CompleteProbeRun(msg.run)
+				sink.CompleteProbeRun(msg.run)
 			}
 		case "discovery_update":
 			if msg.discoveryStats != nil {
-				om.UpdateDiscoveryStats(*msg.discoveryStats)
+				sink.UpdateDiscoveryStats(*msg.discoveryStats)
 			}
 		case "complete":
 			if probeStats, exists := pm.getProbeStats(uint16(msg.probeNum)); exists {
-				om.CompleteProbe(uint16(msg.probeNum), probeStats)
+				sink.CompleteProbe(uint16(msg.probeNum), probeStats)
 			}
 		}
 	}
-	om.Close()
 }
