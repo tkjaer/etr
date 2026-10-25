@@ -16,7 +16,6 @@ import (
 	"github.com/tkjaer/etr/pkg/ptr"
 
 	"github.com/tkjaer/etr/internal/config"
-	"github.com/tkjaer/etr/internal/output"
 	"github.com/tkjaer/etr/internal/shared"
 )
 
@@ -55,14 +54,6 @@ type ProbeEventDataTimeout struct {
 type ProbeEventDataIterationComplete struct {
 	ProbeNum  uint      // Which iteration just completed
 	Timestamp time.Time // When it completed
-}
-
-type outputConfig struct {
-	jsonOutput bool
-	jsonFile   string
-	noTUI      bool
-	tuiRefresh time.Duration
-	noStyle    bool
 }
 
 type outputMsg struct {
@@ -133,12 +124,10 @@ type ProbeManager struct {
 	probeConfig  Config
 	probeTarget  target
 	probeTracker ProbeTracker
-	args         config.Args
 
-	stats        ProbeManagerStats
-	outputConfig outputConfig
-	discoveryMu  sync.RWMutex
-	discovery    discoveryState
+	stats       ProbeManagerStats
+	discoveryMu sync.RWMutex
+	discovery   discoveryState
 }
 
 // NewProbeManager creates and initializes a probe manager
@@ -167,13 +156,6 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 		// Probe Configuration
 		probeConfig: cfg,
 
-		outputConfig: outputConfig{
-			jsonOutput: a.Json,
-			jsonFile:   a.JsonFile,
-			noTUI:      a.NoTUI,
-			tuiRefresh: a.TUIRefresh,
-			noStyle:    a.NoStyle,
-		},
 		discovery: discoveryState{
 			enabled:            cfg.Discovery != nil,
 			allDiscoveredPaths: make(map[string]discoveredPathInfo),
@@ -181,7 +163,6 @@ func NewProbeManager(a config.Args) (*ProbeManager, error) {
 			perProbeState:      make(map[uint16]*probeDiscoveryState),
 			activeProbes:       make(map[uint16]struct{}),
 		},
-		args: a,
 	}
 
 	if d := cfg.Discovery; d != nil {
@@ -363,8 +344,10 @@ func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 	}()
 }
 
-// Run initializes and executes all probes in parallel
-func (pm *ProbeManager) Run() error {
+// Run executes all probes in parallel and sends results to sink until the
+// probes finish or Stop is called. A nil sink discards results. Run does not
+// close the sink.
+func (pm *ProbeManager) Run(sink Sink) error {
 	// Close pcap handle on run completion
 	defer pm.handle.Close()
 
@@ -378,13 +361,12 @@ func (pm *ProbeManager) Run() error {
 		}
 	}()
 
-	// Create and start output formatter (separate wait group to avoid circular dependency)
+	// Start output routine (separate wait group to avoid circular dependency)
 	var outputWg sync.WaitGroup
-	bubbleTUI, om := pm.createOutputs()
 	outputWg.Add(1)
 	go func() {
 		defer outputWg.Done()
-		pm.outputRoutine(om)
+		pm.outputRoutine(sink)
 	}()
 
 	// Start all probes
@@ -407,36 +389,14 @@ func (pm *ProbeManager) Run() error {
 		close(probesDone)
 	}()
 
-	// Wait for either all probes to complete or user to quit TUI
-	if bubbleTUI != nil {
-		select {
-		case <-probesDone:
-			// All probes completed normally, signal stop for cleanup
-			slog.Debug("All probes completed normally, signaling stop for cleanup")
-			pm.stopOnce.Do(func() {
-				close(pm.stop)
-			})
-			// Wait for other goroutines (transmit, recv, stats) to exit
-			pm.wg.Wait()
-		case <-bubbleTUI.QuitChan():
-			// User quit the TUI, stop all probes
-			slog.Debug("User quit TUI, stopping probes")
-			pm.stopOnce.Do(func() {
-				close(pm.stop)
-			})
-			// Wait for all goroutines to exit (they listen to pm.stop)
-			pm.wg.Wait()
-		}
-	} else {
-		// No TUI, just wait for probes then signal stop
-		<-probesDone
-		slog.Debug("All probes completed normally, signaling stop for cleanup")
-		pm.stopOnce.Do(func() {
-			close(pm.stop)
-		})
-		// Wait for other goroutines to finish
-		pm.wg.Wait()
-	}
+	// Wait for all probes to finish. Stop makes them exit early.
+	<-probesDone
+	slog.Debug("All probes finished, signaling stop for cleanup")
+	pm.stopOnce.Do(func() {
+		close(pm.stop)
+	})
+	// Wait for other goroutines (transmit, recv, stats) to exit
+	pm.wg.Wait()
 
 	// All goroutines done (they listen to pm.stop and exit gracefully)
 	slog.Debug("All goroutines finished")
@@ -448,7 +408,6 @@ func (pm *ProbeManager) Run() error {
 	// Wait for output routine to finish processing remaining messages
 	slog.Debug("Waiting for output routine")
 	outputWg.Wait()
-	om.Close()
 
 	return nil
 }
@@ -460,56 +419,6 @@ func (pm *ProbeManager) Stop() {
 		close(pm.stop)
 	})
 	pm.wg.Wait()
-}
-
-// createOutputs creates and initializes output handlers
-// Returns the BubbleTUIOutput instance (may be nil) and the OutputManager
-func (pm *ProbeManager) createOutputs() (*output.BubbleTUIOutput, *output.OutputManager) {
-	om := &output.OutputManager{}
-
-	info := shared.OutputInfo{
-		Destination:    pm.probeConfig.Destination,
-		Protocol:       "TCP",
-		SrcPort:        pm.probeConfig.SrcPort,
-		DstPort:        pm.probeConfig.DstPort,
-		ParallelProbes: pm.probeConfig.ParallelProbes,
-		HashAlgorithm:  string(pm.probeConfig.HashAlgorithm),
-		TUIRefresh:     pm.outputConfig.tuiRefresh,
-		NoStyle:        pm.outputConfig.noStyle,
-		DiscoverMode:   pm.discovery.enabled,
-		DiscoverHops:   pm.discovery.hopsMode,
-		DiscoMode:      pm.args.Disco,
-	}
-	if pm.probeTarget.transport == layers.IPProtocolUDP {
-		info.Protocol = "UDP"
-	}
-
-	var bubbleTUI *output.BubbleTUIOutput
-
-	// If JSON output is enabled, output to stdout and disable TUI
-	if pm.outputConfig.jsonOutput {
-		jsonOut, err := output.NewJSONOutput("") // empty string = stdout
-		if err == nil {
-			om.Register(jsonOut)
-		}
-	} else if !pm.outputConfig.noTUI {
-		// TUI mode: show interactive interface
-		bubbleTUI = output.NewBubbleTUIOutput(info)
-		bubbleTUI.Start()
-		om.Register(bubbleTUI)
-	}
-
-	// If JSON file output is enabled, write to file (alongside TUI if not disabled)
-	if pm.outputConfig.jsonFile != "" {
-		jsonOut, err := output.NewJSONOutput(pm.outputConfig.jsonFile)
-		if err == nil {
-			om.Register(jsonOut)
-		} else {
-			slog.Warn("Failed to create JSON file output", "error", err)
-		}
-	}
-
-	return bubbleTUI, om
 }
 
 // outputRoutine forwards output messages to the sink
