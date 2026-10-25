@@ -5,7 +5,6 @@ import (
 
 	"github.com/tkjaer/etr/internal/config"
 	"github.com/tkjaer/etr/internal/output"
-	"github.com/tkjaer/etr/internal/shared"
 )
 
 func newOutputs(args config.Args) (*output.OutputManager, *output.BubbleTUIOutput) {
@@ -19,7 +18,7 @@ func newOutputs(args config.Args) (*output.OutputManager, *output.BubbleTUIOutpu
 			om.Register(jsonOut)
 		}
 	} else if !args.NoTUI {
-		tui = output.NewBubbleTUIOutput(shared.OutputInfo{
+		tui = output.NewBubbleTUIOutput(output.Info{
 			Destination:    args.Destination,
 			Protocol:       args.ProtocolName(),
 			SrcPort:        uint16(args.SourcePort),

@@ -2,16 +2,14 @@ package probe
 
 import (
 	"testing"
-
-	"github.com/tkjaer/etr/internal/shared"
 )
 
 func TestCopyProbeStatsIsIndependent(t *testing.T) {
-	orig := &shared.ProbeStats{
+	orig := &ProbeStats{
 		ProbeID: 1,
-		Hops: map[uint8]*shared.HopStats{
+		Hops: map[uint8]*HopStats{
 			1: {
-				IPs:       map[string]*shared.HopIPStats{"10.0.0.1": {Responses: 1, PTR: "gw"}},
+				IPs:       map[string]*HopIPStats{"10.0.0.1": {Responses: 1, PTR: "gw"}},
 				CurrentIP: "10.0.0.1",
 				Sent:      1,
 			},
@@ -24,8 +22,8 @@ func TestCopyProbeStatsIsIndependent(t *testing.T) {
 	orig.Hops[1].Sent = 2
 	orig.Hops[1].CurrentIP = "10.0.0.2"
 	orig.Hops[1].IPs["10.0.0.1"].Responses = 2
-	orig.Hops[1].IPs["10.0.0.2"] = &shared.HopIPStats{}
-	orig.Hops[2] = &shared.HopStats{}
+	orig.Hops[1].IPs["10.0.0.2"] = &HopIPStats{}
+	orig.Hops[2] = &HopStats{}
 
 	hop := c.Hops[1]
 	if len(c.Hops) != 1 || hop.Sent != 1 || hop.CurrentIP != "10.0.0.1" {
@@ -37,10 +35,10 @@ func TestCopyProbeStatsIsIndependent(t *testing.T) {
 }
 
 func TestCopyStatsKeepsNilMaps(t *testing.T) {
-	if c := copyHopStats(&shared.HopStats{}); c.IPs != nil {
+	if c := copyHopStats(&HopStats{}); c.IPs != nil {
 		t.Errorf("copyHopStats: IPs = %v, want nil", c.IPs)
 	}
-	if c := copyProbeStats(&shared.ProbeStats{}); c.Hops != nil {
+	if c := copyProbeStats(&ProbeStats{}); c.Hops != nil {
 		t.Errorf("copyProbeStats: Hops = %v, want nil", c.Hops)
 	}
 }
@@ -48,9 +46,9 @@ func TestCopyStatsKeepsNilMaps(t *testing.T) {
 func TestGetProbeStatsReturnsCopies(t *testing.T) {
 	pm := &ProbeManager{
 		stats: ProbeManagerStats{
-			Probes: map[uint16]*shared.ProbeStats{
-				1: {ProbeID: 1, Hops: map[uint8]*shared.HopStats{
-					3: {IPs: map[string]*shared.HopIPStats{"10.0.0.1": {Responses: 1}}},
+			Probes: map[uint16]*ProbeStats{
+				1: {ProbeID: 1, Hops: map[uint8]*HopStats{
+					3: {IPs: map[string]*HopIPStats{"10.0.0.1": {Responses: 1}}},
 				}},
 			},
 		},

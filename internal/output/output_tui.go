@@ -13,7 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/tkjaer/etr/internal/shared"
+	"github.com/tkjaer/etr/internal/probe"
 )
 
 // BubbleTUIOutput is an MTR-like TUI using Bubble Tea
@@ -39,7 +39,7 @@ type tickMsg time.Time
 // tuiModel holds the Bubble Tea model state
 type tuiModel struct {
 	// Data
-	probes          map[uint16]*shared.ProbeStats
+	probes          map[uint16]*probe.ProbeStats
 	mu              sync.RWMutex
 	destination     string
 	protocol        string
@@ -55,7 +55,7 @@ type tuiModel struct {
 	discoverHops   bool
 	discoMode      bool
 	discoFrame     int
-	discoveryStats shared.DiscoveryStats
+	discoveryStats probe.DiscoveryStats
 
 	// UI state
 	width         int
@@ -333,13 +333,28 @@ func (m *tuiModel) ensureDetailVisible() {
 	m.detailScroll = 0
 }
 
+// Info holds run details and settings for the TUI
+type Info struct {
+	Destination    string
+	Protocol       string
+	SrcPort        uint16
+	DstPort        uint16
+	ParallelProbes uint16
+	HashAlgorithm  string
+	TUIRefresh     time.Duration
+	NoStyle        bool
+	DiscoverMode   bool
+	DiscoverHops   bool
+	DiscoMode      bool
+}
+
 // NewBubbleTUIOutput creates a new Bubble Tea TUI output
-func NewBubbleTUIOutput(info shared.OutputInfo) *BubbleTUIOutput {
+func NewBubbleTUIOutput(info Info) *BubbleTUIOutput {
 	updateCh := make(chan tuiUpdateMsg, 100)
 	quitCh := make(chan struct{})
 
 	model := &tuiModel{
-		probes:          make(map[uint16]*shared.ProbeStats),
+		probes:          make(map[uint16]*probe.ProbeStats),
 		destination:     info.Destination,
 		protocol:        info.Protocol,
 		srcPort:         info.SrcPort,
@@ -360,11 +375,11 @@ func NewBubbleTUIOutput(info shared.OutputInfo) *BubbleTUIOutput {
 	}
 
 	// Initialize all probe stats
-	probes := make(map[uint16]*shared.ProbeStats)
+	probes := make(map[uint16]*probe.ProbeStats)
 	for i := uint16(0); i < info.ParallelProbes; i++ {
-		probes[i] = &shared.ProbeStats{
+		probes[i] = &probe.ProbeStats{
 			ProbeID: i,
-			Hops:    make(map[uint8]*shared.HopStats),
+			Hops:    make(map[uint8]*probe.HopStats),
 		}
 	}
 	model.probes = probes
@@ -413,7 +428,7 @@ func (b *BubbleTUIOutput) QuitChan() <-chan struct{} {
 }
 
 // UpdateHop implements the Output interface
-func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats shared.HopStats) {
+func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats probe.HopStats) {
 	// Snapshot pointers so we don't hold b.mu while updating model state.
 	b.mu.RLock()
 	model := b.model
@@ -426,17 +441,17 @@ func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats shared.H
 	model.mu.Lock()
 	if _, exists := model.probes[probeID]; !exists {
 		// Auto-create probe entry for dynamically spawned discovery probes
-		model.probes[probeID] = &shared.ProbeStats{
+		model.probes[probeID] = &probe.ProbeStats{
 			ProbeID: probeID,
-			Hops:    make(map[uint8]*shared.HopStats),
+			Hops:    make(map[uint8]*probe.HopStats),
 		}
 	}
-	if probe, exists := model.probes[probeID]; exists {
-		if probe.Hops == nil {
-			probe.Hops = make(map[uint8]*shared.HopStats)
+	if ps, exists := model.probes[probeID]; exists {
+		if ps.Hops == nil {
+			ps.Hops = make(map[uint8]*probe.HopStats)
 		}
 		hopCopy := hopStats
-		probe.Hops[ttl] = &hopCopy
+		ps.Hops[ttl] = &hopCopy
 	}
 	model.mu.Unlock()
 
@@ -449,7 +464,7 @@ func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats shared.H
 }
 
 // CompleteProbe implements the Output interface
-func (b *BubbleTUIOutput) CompleteProbe(probeID uint16, stats shared.ProbeStats) {
+func (b *BubbleTUIOutput) CompleteProbe(probeID uint16, stats probe.ProbeStats) {
 	// Updates are handled through UpdateHop
 }
 
@@ -497,12 +512,12 @@ func (b *BubbleTUIOutput) shouldSignal() bool {
 	return false
 }
 
-func (b *BubbleTUIOutput) CompleteProbeRun(run *shared.ProbeRun) {
+func (b *BubbleTUIOutput) CompleteProbeRun(run *probe.ProbeRun) {
 	// No special handling needed — stats are tracked via UpdateHop
 }
 
 // UpdateDiscoveryStats receives live discovery progress from the probe manager.
-func (b *BubbleTUIOutput) UpdateDiscoveryStats(stats shared.DiscoveryStats) {
+func (b *BubbleTUIOutput) UpdateDiscoveryStats(stats probe.DiscoveryStats) {
 	b.mu.RLock()
 	model := b.model
 	updateCh := b.updateCh
@@ -741,8 +756,8 @@ func (m *tuiModel) renderDiscoveryProgress() string {
 	stats := m.discoveryStats
 	// Count unique paths across all probes
 	uniquePaths := make(map[string]struct{})
-	for _, probe := range m.probes {
-		hash := shared.CalculatePathHashFromProbe(probe, m.hashAlgorithm)
+	for _, ps := range m.probes {
+		hash := probe.CalculatePathHashFromProbe(ps, m.hashAlgorithm)
 		if hash != "" && hash != "00000000" {
 			uniquePaths[hash] = struct{}{}
 		}
@@ -784,8 +799,8 @@ func (m *tuiModel) renderNormalSummary(maxHeight int) string {
 	// Calculate unique paths and track which probeID first observed each hash
 	pathFirstProbe := make(map[string]uint16) // hash -> lowest probeID
 	pathCount := make(map[string]int)
-	for id, probe := range m.probes {
-		hash := shared.CalculatePathHashFromProbe(probe, m.hashAlgorithm)
+	for id, ps := range m.probes {
+		hash := probe.CalculatePathHashFromProbe(ps, m.hashAlgorithm)
 		pathCount[hash]++
 		if first, exists := pathFirstProbe[hash]; !exists || id < first {
 			pathFirstProbe[hash] = id
@@ -1098,13 +1113,13 @@ type probeAggregateStats struct {
 }
 
 // calculateProbeAggregateStats calculates aggregate stats for a probe
-func calculateProbeAggregateStats(probe *shared.ProbeStats, algorithm string) probeAggregateStats {
+func calculateProbeAggregateStats(ps *probe.ProbeStats, algorithm string) probeAggregateStats {
 	stats := probeAggregateStats{
-		NumHops: len(probe.Hops),
+		NumHops: len(ps.Hops),
 	}
 	minRTTSet := false
 
-	if len(probe.Hops) == 0 {
+	if len(ps.Hops) == 0 {
 		stats.MinRTT = 0
 		return stats
 	}
@@ -1114,12 +1129,12 @@ func calculateProbeAggregateStats(probe *shared.ProbeStats, algorithm string) pr
 	var maxTTL uint8 = 0
 
 	// Find the highest TTL (destination hop)
-	for ttl := range probe.Hops {
+	for ttl := range ps.Hops {
 		maxTTL = max(maxTTL, ttl)
 	}
 
 	// Calculate all stats from the destination hop only
-	if destHop, exists := probe.Hops[maxTTL]; exists {
+	if destHop, exists := ps.Hops[maxTTL]; exists {
 		// Calculate loss percentage
 		if destHop.Received+destHop.Lost > 0 {
 			stats.LossPct = (float64(destHop.Lost) / float64(destHop.Received+destHop.Lost)) * 100
@@ -1161,7 +1176,7 @@ func calculateProbeAggregateStats(probe *shared.ProbeStats, algorithm string) pr
 	}
 
 	// Calculate path hash
-	stats.PathHash = shared.CalculatePathHashFromProbe(probe, algorithm)
+	stats.PathHash = probe.CalculatePathHashFromProbe(ps, algorithm)
 
 	return stats
 }
