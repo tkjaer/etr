@@ -3,19 +3,17 @@ package probe
 import (
 	"slices"
 	"testing"
-
-	"github.com/tkjaer/etr/internal/shared"
 )
 
 type recordingSink struct {
 	hops      []uint8
 	deleted   []uint8
-	runs      []*shared.ProbeRun
+	runs      []*ProbeRun
 	completed []uint16
-	discovery []shared.DiscoveryStats
+	discovery []DiscoveryStats
 }
 
-func (s *recordingSink) UpdateHop(probeID uint16, ttl uint8, hop shared.HopStats) {
+func (s *recordingSink) UpdateHop(probeID uint16, ttl uint8, hop HopStats) {
 	s.hops = append(s.hops, ttl)
 }
 
@@ -23,15 +21,15 @@ func (s *recordingSink) DeleteHops(probeID uint16, ttls []uint8) {
 	s.deleted = append(s.deleted, ttls...)
 }
 
-func (s *recordingSink) CompleteProbe(probeID uint16, stats shared.ProbeStats) {
+func (s *recordingSink) CompleteProbe(probeID uint16, stats ProbeStats) {
 	s.completed = append(s.completed, probeID)
 }
 
-func (s *recordingSink) CompleteProbeRun(run *shared.ProbeRun) {
+func (s *recordingSink) CompleteProbeRun(run *ProbeRun) {
 	s.runs = append(s.runs, run)
 }
 
-func (s *recordingSink) UpdateDiscoveryStats(stats shared.DiscoveryStats) {
+func (s *recordingSink) UpdateDiscoveryStats(stats DiscoveryStats) {
 	s.discovery = append(s.discovery, stats)
 }
 
@@ -39,8 +37,8 @@ func newOutputTestManager(msgs ...outputMsg) *ProbeManager {
 	pm := &ProbeManager{
 		outputChan: make(chan outputMsg, len(msgs)),
 		stats: ProbeManagerStats{
-			Probes: map[uint16]*shared.ProbeStats{
-				1: {ProbeID: 1, Hops: map[uint8]*shared.HopStats{3: {Sent: 1}}},
+			Probes: map[uint16]*ProbeStats{
+				1: {ProbeID: 1, Hops: map[uint8]*HopStats{3: {Sent: 1}}},
 			},
 		},
 	}
@@ -52,13 +50,13 @@ func newOutputTestManager(msgs ...outputMsg) *ProbeManager {
 }
 
 func TestOutputRoutineForwardsToSink(t *testing.T) {
-	run := &shared.ProbeRun{ProbeID: 1}
+	run := &ProbeRun{ProbeID: 1}
 	pm := newOutputTestManager(
 		outputMsg{msgType: "hop", probeNum: 1, ttl: 3},
 		outputMsg{msgType: "hop", probeNum: 2, ttl: 3}, // unknown probe, skipped
 		outputMsg{msgType: "delete_hops", probeNum: 1, deleteTTLs: []uint8{4, 5}},
 		outputMsg{msgType: "probe_run", run: run},
-		outputMsg{msgType: "discovery_update", discoveryStats: &shared.DiscoveryStats{FlowsUsed: 2}},
+		outputMsg{msgType: "discovery_update", discoveryStats: &DiscoveryStats{FlowsUsed: 2}},
 		outputMsg{msgType: "complete", probeNum: 1},
 	)
 

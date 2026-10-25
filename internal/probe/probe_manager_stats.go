@@ -9,20 +9,19 @@ import (
 
 	"github.com/google/gopacket/layers"
 	"github.com/jellydator/ttlcache/v3"
-	"github.com/tkjaer/etr/internal/shared"
 )
 
 // ProbeRunBuilder is used internally to build a ProbeRun incrementally
 type ProbeRunBuilder struct {
 	ProbeID   uint16
 	ProbeNum  uint
-	Hops      map[uint8]*shared.HopRun // TTL -> hop result (internal map for building)
+	Hops      map[uint8]*HopRun // TTL -> hop result (internal map for building)
 	Timestamp time.Time
 }
 
 // Top-level stats structure for all probes
 type ProbeManagerStats struct {
-	Probes      map[uint16]*shared.ProbeStats
+	Probes      map[uint16]*ProbeStats
 	CurrentRuns map[uint16]*ProbeRunBuilder // Current probe run being built for each probe ID
 	Mutex       sync.RWMutex
 	TTLCache    *ttlcache.Cache[TTLCacheKey, TTLCacheValue]
@@ -42,7 +41,7 @@ type TTLCacheValue struct {
 
 func (pm *ProbeManager) statsProcessor() {
 	pm.stats = ProbeManagerStats{
-		Probes:      make(map[uint16]*shared.ProbeStats),
+		Probes:      make(map[uint16]*ProbeStats),
 		CurrentRuns: make(map[uint16]*ProbeRunBuilder),
 		Mutex:       sync.RWMutex{},
 		TTLCache:    ttlcache.New(ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.Timeout)),
@@ -182,9 +181,9 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 	// Get or create ProbeStats entry
 	probeStats, exists := pm.stats.Probes[probeID]
 	if !exists {
-		probeStats = &shared.ProbeStats{
+		probeStats = &ProbeStats{
 			ProbeID: probeID,
-			Hops:    make(map[uint8]*shared.HopStats),
+			Hops:    make(map[uint8]*HopStats),
 		}
 		pm.stats.Probes[probeID] = probeStats
 	}
@@ -198,7 +197,7 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 		run = &ProbeRunBuilder{
 			ProbeID:   probeID,
 			ProbeNum:  data.ProbeNum,
-			Hops:      make(map[uint8]*shared.HopRun),
+			Hops:      make(map[uint8]*HopRun),
 			Timestamp: data.Timestamp,
 		}
 		pm.stats.CurrentRuns[probeID] = run
@@ -206,7 +205,7 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 
 	// Initialize hop as pending (will be updated on receive or timeout)
 	if _, ok := run.Hops[data.TTL]; !ok {
-		run.Hops[data.TTL] = &shared.HopRun{
+		run.Hops[data.TTL] = &HopRun{
 			TTL:     data.TTL,
 			Timeout: true, // Assume timeout until we get a response
 		}
@@ -214,8 +213,8 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 
 	// Get or create HopStats entry
 	if _, exists := probeStats.Hops[data.TTL]; !exists {
-		hopStats := &shared.HopStats{
-			IPs: make(map[string]*shared.HopIPStats),
+		hopStats := &HopStats{
+			IPs: make(map[string]*HopIPStats),
 		}
 		probeStats.Hops[data.TTL] = hopStats
 	}
@@ -257,10 +256,10 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 				ipStats = blankStats
 				delete(hopStats.IPs, "")
 			} else {
-				ipStats = &shared.HopIPStats{}
+				ipStats = &HopIPStats{}
 			}
 		} else {
-			ipStats = &shared.HopIPStats{}
+			ipStats = &HopIPStats{}
 		}
 		hopStats.IPs[data.IP] = ipStats
 		// Request PTR lookup for new IP
@@ -321,7 +320,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 
 	// Update ProbeRun for this iteration
 	if run, ok := pm.stats.CurrentRuns[probeID]; ok && run.ProbeNum == data.ProbeNum {
-		run.Hops[data.TTL] = &shared.HopRun{
+		run.Hops[data.TTL] = &HopRun{
 			TTL:      data.TTL,
 			IP:       data.IP,
 			RTT:      rtt,
@@ -370,7 +369,7 @@ func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataT
 	hopStats.LossPct = calculateLossPct(hopStats.Lost, hopStats.Received)
 
 	if ipStats, exists := hopStats.IPs[hopStats.CurrentIP]; !exists {
-		hopStats.IPs[hopStats.CurrentIP] = &shared.HopIPStats{
+		hopStats.IPs[hopStats.CurrentIP] = &HopIPStats{
 			Lost:    1,
 			LossPct: 100.0,
 		}
@@ -391,7 +390,7 @@ func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataT
 	}
 }
 
-func (pm *ProbeManager) getProbeHopStats(probeID uint16, ttl uint8) (shared.HopStats, bool) {
+func (pm *ProbeManager) getProbeHopStats(probeID uint16, ttl uint8) (HopStats, bool) {
 	pm.stats.Mutex.RLock()
 	defer pm.stats.Mutex.RUnlock()
 	if probe, ok := pm.stats.Probes[probeID]; ok {
@@ -399,25 +398,25 @@ func (pm *ProbeManager) getProbeHopStats(probeID uint16, ttl uint8) (shared.HopS
 			return copyHopStats(hop), true
 		}
 	}
-	return shared.HopStats{}, false
+	return HopStats{}, false
 }
 
-func (pm *ProbeManager) getProbeStats(probeID uint16) (shared.ProbeStats, bool) {
+func (pm *ProbeManager) getProbeStats(probeID uint16) (ProbeStats, bool) {
 	pm.stats.Mutex.RLock()
 	defer pm.stats.Mutex.RUnlock()
 	if probe, ok := pm.stats.Probes[probeID]; ok {
 		return copyProbeStats(probe), true
 	}
-	return shared.ProbeStats{}, false
+	return ProbeStats{}, false
 }
 
 // copyHopStats returns a deep copy of h. Outputs keep the stats they're given
 // while the stats processor goes on updating the originals, so the copy must
 // not share maps or pointers with them.
-func copyHopStats(h *shared.HopStats) shared.HopStats {
+func copyHopStats(h *HopStats) HopStats {
 	c := *h
 	if h.IPs != nil {
-		c.IPs = make(map[string]*shared.HopIPStats, len(h.IPs))
+		c.IPs = make(map[string]*HopIPStats, len(h.IPs))
 		for ip, s := range h.IPs {
 			s := *s
 			c.IPs[ip] = &s
@@ -427,10 +426,10 @@ func copyHopStats(h *shared.HopStats) shared.HopStats {
 }
 
 // copyProbeStats returns a deep copy of p; see copyHopStats.
-func copyProbeStats(p *shared.ProbeStats) shared.ProbeStats {
+func copyProbeStats(p *ProbeStats) ProbeStats {
 	c := *p
 	if p.Hops != nil {
-		c.Hops = make(map[uint8]*shared.HopStats, len(p.Hops))
+		c.Hops = make(map[uint8]*HopStats, len(p.Hops))
 		for ttl, h := range p.Hops {
 			h := copyHopStats(h)
 			c.Hops[ttl] = &h
@@ -487,7 +486,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 	}
 
 	// Build temporary map of hops
-	hopsMap := make(map[uint8]*shared.HopRun)
+	hopsMap := make(map[uint8]*HopRun)
 
 	pm.stats.Mutex.RLock()
 	for ttl, hopStats := range probeStats.Hops {
@@ -511,7 +510,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 						asnValue = asn
 					}
 				}
-				hopsMap[ttl] = &shared.HopRun{
+				hopsMap[ttl] = &HopRun{
 					TTL:      ttl,
 					IP:       hopStats.CurrentIP,
 					RTT:      ipStats.Last,
@@ -523,7 +522,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 			}
 		} else if hopStats.Lost > 0 {
 			// This hop timed out
-			hopsMap[ttl] = &shared.HopRun{
+			hopsMap[ttl] = &HopRun{
 				TTL:     ttl,
 				IP:      "",
 				RTT:     0,
@@ -535,7 +534,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 	pm.stats.Mutex.RUnlock()
 
 	// Convert map to sorted slice
-	hopsSlice := make([]*shared.HopRun, 0, len(hopsMap))
+	hopsSlice := make([]*HopRun, 0, len(hopsMap))
 	for ttl := uint8(1); ttl != 0; ttl++ {
 		if hop, ok := hopsMap[ttl]; ok {
 			hopsSlice = append(hopsSlice, hop)
@@ -543,7 +542,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 	}
 
 	// Calculate path hash using the configured algorithm
-	pathHash := shared.CalculatePathHashFromHops(hopsSlice, string(pm.probeConfig.HashAlgorithm))
+	pathHash := CalculatePathHashFromHops(hopsSlice, string(pm.probeConfig.HashAlgorithm))
 
 	// Determine protocol name
 	protocol := "TCP"
@@ -574,7 +573,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 	}
 
 	// Build ProbeRun with all metadata
-	run := &shared.ProbeRun{
+	run := &ProbeRun{
 		ProbeID:         probeID,
 		ProbeNum:        data.ProbeNum,
 		PathHash:        pathHash,

@@ -1,4 +1,4 @@
-package shared
+package probe
 
 import (
 	"crypto/sha256"

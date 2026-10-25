@@ -14,8 +14,6 @@ import (
 	"github.com/tkjaer/etr/pkg/asn"
 	"github.com/tkjaer/etr/pkg/ndp"
 	"github.com/tkjaer/etr/pkg/ptr"
-
-	"github.com/tkjaer/etr/internal/shared"
 )
 
 type ProbeTracker struct {
@@ -56,12 +54,12 @@ type ProbeEventDataIterationComplete struct {
 }
 
 type outputMsg struct {
-	msgType        string                 // "hop", "probe_run", "complete", "delete_hops", "discovery_update"
-	run            *shared.ProbeRun       // For probe_run messages
-	deleteTTLs     []uint8                // For delete_hops messages
-	probeNum       uint                   // Probe number for hop/delete_hops/complete messages
-	ttl            uint8                  // TTL for hop messages
-	discoveryStats *shared.DiscoveryStats // For discovery_update messages
+	msgType        string          // "hop", "probe_run", "complete", "delete_hops", "discovery_update"
+	run            *ProbeRun       // For probe_run messages
+	deleteTTLs     []uint8         // For delete_hops messages
+	probeNum       uint            // Probe number for hop/delete_hops/complete messages
+	ttl            uint8           // TTL for hop messages
+	discoveryStats *DiscoveryStats // For discovery_update messages
 }
 
 // discoveryState tracks per-probe path stability and flow rotation

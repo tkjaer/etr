@@ -3,16 +3,16 @@ package output
 import (
 	"log/slog"
 
-	"github.com/tkjaer/etr/internal/shared"
+	"github.com/tkjaer/etr/internal/probe"
 )
 
 // Output interface for different output types
 type Output interface {
-	UpdateHop(probeID uint16, ttl uint8, hopStats shared.HopStats)
+	UpdateHop(probeID uint16, ttl uint8, hopStats probe.HopStats)
 	DeleteHops(probeID uint16, ttls []uint8)
-	CompleteProbe(probeID uint16, stats shared.ProbeStats)
-	CompleteProbeRun(run *shared.ProbeRun)
-	UpdateDiscoveryStats(stats shared.DiscoveryStats)
+	CompleteProbe(probeID uint16, stats probe.ProbeStats)
+	CompleteProbeRun(run *probe.ProbeRun)
+	UpdateDiscoveryStats(stats probe.DiscoveryStats)
 	Close() error
 }
 
@@ -25,7 +25,7 @@ func (om *OutputManager) Register(o Output) {
 	om.outputs = append(om.outputs, o)
 }
 
-func (om *OutputManager) UpdateHop(probeID uint16, ttl uint8, hopStats shared.HopStats) {
+func (om *OutputManager) UpdateHop(probeID uint16, ttl uint8, hopStats probe.HopStats) {
 	for _, o := range om.outputs {
 		o.UpdateHop(probeID, ttl, hopStats)
 	}
@@ -37,19 +37,19 @@ func (om *OutputManager) DeleteHops(probeID uint16, ttls []uint8) {
 	}
 }
 
-func (om *OutputManager) CompleteProbe(probeID uint16, stats shared.ProbeStats) {
+func (om *OutputManager) CompleteProbe(probeID uint16, stats probe.ProbeStats) {
 	for _, o := range om.outputs {
 		o.CompleteProbe(probeID, stats)
 	}
 }
 
-func (om *OutputManager) CompleteProbeRun(run *shared.ProbeRun) {
+func (om *OutputManager) CompleteProbeRun(run *probe.ProbeRun) {
 	for _, o := range om.outputs {
 		o.CompleteProbeRun(run)
 	}
 }
 
-func (om *OutputManager) UpdateDiscoveryStats(stats shared.DiscoveryStats) {
+func (om *OutputManager) UpdateDiscoveryStats(stats probe.DiscoveryStats) {
 	for _, o := range om.outputs {
 		o.UpdateDiscoveryStats(stats)
 	}

@@ -3,7 +3,7 @@ package output
 import (
 	"testing"
 
-	"github.com/tkjaer/etr/internal/shared"
+	"github.com/tkjaer/etr/internal/probe"
 )
 
 func TestFormatCell(t *testing.T) {
@@ -169,15 +169,15 @@ func TestTruncateToWidthSingleLineBehavior(t *testing.T) {
 func TestCalculateProbeAggregateStats(t *testing.T) {
 	tests := []struct {
 		name      string
-		probe     *shared.ProbeStats
+		probe     *probe.ProbeStats
 		algorithm string
 		want      probeAggregateStats
 	}{
 		{
 			name: "empty probe",
-			probe: &shared.ProbeStats{
+			probe: &probe.ProbeStats{
 				ProbeID: 1,
-				Hops:    map[uint8]*shared.HopStats{},
+				Hops:    map[uint8]*probe.HopStats{},
 			},
 			algorithm: "crc32",
 			want: probeAggregateStats{
@@ -187,11 +187,11 @@ func TestCalculateProbeAggregateStats(t *testing.T) {
 		},
 		{
 			name: "single hop no responses",
-			probe: &shared.ProbeStats{
+			probe: &probe.ProbeStats{
 				ProbeID: 1,
-				Hops: map[uint8]*shared.HopStats{
+				Hops: map[uint8]*probe.HopStats{
 					1: {
-						IPs:      map[string]*shared.HopIPStats{},
+						IPs:      map[string]*probe.HopIPStats{},
 						Received: 0,
 						Lost:     5,
 					},
@@ -206,11 +206,11 @@ func TestCalculateProbeAggregateStats(t *testing.T) {
 		},
 		{
 			name: "single hop with responses",
-			probe: &shared.ProbeStats{
+			probe: &probe.ProbeStats{
 				ProbeID: 1,
-				Hops: map[uint8]*shared.HopStats{
+				Hops: map[uint8]*probe.HopStats{
 					1: {
-						IPs: map[string]*shared.HopIPStats{
+						IPs: map[string]*probe.HopIPStats{
 							"192.0.2.1": {
 								Responses: 5,
 								Avg:       10000, // 10ms in microseconds
@@ -236,11 +236,11 @@ func TestCalculateProbeAggregateStats(t *testing.T) {
 		},
 		{
 			name: "multiple hops uses destination only",
-			probe: &shared.ProbeStats{
+			probe: &probe.ProbeStats{
 				ProbeID: 1,
-				Hops: map[uint8]*shared.HopStats{
+				Hops: map[uint8]*probe.HopStats{
 					1: {
-						IPs: map[string]*shared.HopIPStats{
+						IPs: map[string]*probe.HopIPStats{
 							"192.0.2.1": {
 								Responses: 5,
 								Avg:       5000,
@@ -253,7 +253,7 @@ func TestCalculateProbeAggregateStats(t *testing.T) {
 						Lost:     0,
 					},
 					3: { // This is the destination (highest TTL)
-						IPs: map[string]*shared.HopIPStats{
+						IPs: map[string]*probe.HopIPStats{
 							"203.0.113.1": {
 								Responses: 8,
 								Avg:       20000, // 20ms
@@ -279,11 +279,11 @@ func TestCalculateProbeAggregateStats(t *testing.T) {
 		},
 		{
 			name: "multiple IPs at destination",
-			probe: &shared.ProbeStats{
+			probe: &probe.ProbeStats{
 				ProbeID: 1,
-				Hops: map[uint8]*shared.HopStats{
+				Hops: map[uint8]*probe.HopStats{
 					1: {
-						IPs: map[string]*shared.HopIPStats{
+						IPs: map[string]*probe.HopIPStats{
 							"192.0.2.1": {
 								Responses: 3,
 								Avg:       10000,

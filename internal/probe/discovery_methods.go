@@ -2,14 +2,12 @@ package probe
 
 import (
 	"log/slog"
-
-	"github.com/tkjaer/etr/internal/shared"
 )
 
 // TrackDiscoveryPath records a completed probe run during discovery.
 // It updates per-probe stability and, when a path is confirmed, retires
 // the probe and spawns a replacement with a new source port.
-func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHash string, hops []*shared.HopRun) {
+func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHash string, hops []*HopRun) {
 	pm.discoveryMu.Lock()
 	defer pm.discoveryMu.Unlock()
 
@@ -218,10 +216,10 @@ func (pm *ProbeManager) GetDiscoverySummary() DiscoverySummary {
 
 // discoveryStatsSnapshot returns a TUI-friendly snapshot of current discovery state.
 // Caller must NOT hold discoveryMu.
-func (pm *ProbeManager) discoveryStatsSnapshot() shared.DiscoveryStats {
+func (pm *ProbeManager) discoveryStatsSnapshot() DiscoveryStats {
 	pm.discoveryMu.RLock()
 	defer pm.discoveryMu.RUnlock()
-	return shared.DiscoveryStats{
+	return DiscoveryStats{
 		FlowsUsed:        pm.discovery.flowsUsed,
 		FlowBudget:       pm.discovery.flowBudget,
 		ProbesConfirmed:  pm.discovery.confirmedProbes,
