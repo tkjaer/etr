@@ -11,8 +11,8 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 )
 
-// ProbeRunBuilder is used internally to build a ProbeRun incrementally
-type ProbeRunBuilder struct {
+// probeRunBuilder is used internally to build a ProbeRun incrementally
+type probeRunBuilder struct {
 	ProbeID   uint16
 	ProbeNum  uint
 	Hops      map[uint8]*HopRun // TTL -> hop result (internal map for building)
@@ -20,33 +20,33 @@ type ProbeRunBuilder struct {
 }
 
 // Top-level stats structure for all probes
-type ProbeManagerStats struct {
+type probeManagerStats struct {
 	Probes      map[uint16]*ProbeStats
-	CurrentRuns map[uint16]*ProbeRunBuilder // Current probe run being built for each probe ID
+	CurrentRuns map[uint16]*probeRunBuilder // Current probe run being built for each probe ID
 	Mutex       sync.RWMutex
-	TTLCache    *ttlcache.Cache[TTLCacheKey, TTLCacheValue]
+	TTLCache    *ttlcache.Cache[ttlCacheKey, ttlCacheValue]
 }
 
 // Key for the TTL cache
-type TTLCacheKey struct {
+type ttlCacheKey struct {
 	ProbeID  uint16
 	ProbeNum uint // Which iteration
 	TTL      uint8
 }
 
 // Value stored in the TTL cache
-type TTLCacheValue struct {
+type ttlCacheValue struct {
 	SentTime time.Time
 }
 
 func (pm *ProbeManager) statsProcessor() {
-	pm.stats = ProbeManagerStats{
+	pm.stats = probeManagerStats{
 		Probes:      make(map[uint16]*ProbeStats),
-		CurrentRuns: make(map[uint16]*ProbeRunBuilder),
+		CurrentRuns: make(map[uint16]*probeRunBuilder),
 		Mutex:       sync.RWMutex{},
-		TTLCache:    ttlcache.New(ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.Timeout)),
+		TTLCache:    ttlcache.New(ttlcache.WithTTL[ttlCacheKey, ttlCacheValue](pm.probeConfig.Timeout)),
 	}
-	pm.stats.TTLCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[TTLCacheKey, TTLCacheValue]) {
+	pm.stats.TTLCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[ttlCacheKey, ttlCacheValue]) {
 		if reason == ttlcache.EvictionReasonExpired {
 			pm.statsChan <- probeEvent{
 				ProbeID:   item.Key().ProbeID,
@@ -188,13 +188,13 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *probeEventDataSent
 		pm.stats.Probes[probeID] = probeStats
 	}
 
-	pm.stats.TTLCache.Set(TTLCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}, TTLCacheValue{SentTime: data.Timestamp}, pm.probeConfig.Timeout)
+	pm.stats.TTLCache.Set(ttlCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}, ttlCacheValue{SentTime: data.Timestamp}, pm.probeConfig.Timeout)
 
 	// Also build/update current ProbeRun for JSON output
 	run, exists := pm.stats.CurrentRuns[probeID]
 	if !exists || run.ProbeNum != data.ProbeNum {
 		// New run
-		run = &ProbeRunBuilder{
+		run = &probeRunBuilder{
 			ProbeID:   probeID,
 			ProbeNum:  data.ProbeNum,
 			Hops:      make(map[uint8]*HopRun),
@@ -288,7 +288,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *probeEventData
 	hopStats.CurrentIP = data.IP
 
 	// Check and remove from TTL cache
-	cacheKey := TTLCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}
+	cacheKey := ttlCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}
 	cacheEntry, present := pm.stats.TTLCache.GetAndDelete(cacheKey)
 	if !present {
 		slog.Debug("Received probe for TTL that has already expired", "ttl", data.TTL, "probe_id", probeID)
@@ -598,7 +598,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *probeEventDataItera
 
 	// Track discovery state and push a stats update to the TUI
 	if pm.discovery.enabled {
-		pm.TrackDiscoveryPath(probeID, data.ProbeNum, pathHash, hopsSlice)
+		pm.trackDiscoveryPath(probeID, data.ProbeNum, pathHash, hopsSlice)
 		stats := pm.discoveryStatsSnapshot()
 		pm.outputChan <- outputMsg{
 			msgType:        "discovery_update",

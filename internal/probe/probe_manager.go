@@ -17,7 +17,7 @@ import (
 	"github.com/tkjaer/etr/pkg/ptr"
 )
 
-type ProbeTracker struct {
+type probeTracker struct {
 	probes map[uint16]*Probe
 	mutex  sync.Mutex
 }
@@ -121,9 +121,9 @@ type ProbeManager struct {
 	// Probe Configuration
 	probeConfig  Config
 	probeTarget  target
-	probeTracker ProbeTracker
+	probeTracker probeTracker
 
-	stats       ProbeManagerStats
+	stats       probeManagerStats
 	discoveryMu sync.RWMutex
 	discovery   discoveryState
 }
@@ -141,7 +141,7 @@ func newProbeManager(ctx context.Context, cfg Config) (*ProbeManager, error) {
 		ptrManager:   ptr.NewPtrManager(),
 		asnManager:   asn.NewASNManager(),
 
-		probeTracker: ProbeTracker{
+		probeTracker: probeTracker{
 			probes: make(map[uint16]*Probe),
 			mutex:  sync.Mutex{},
 		},
@@ -303,7 +303,7 @@ func (pm *ProbeManager) getProbe(probeID uint16) *Probe {
 }
 
 // spawnDiscoveryProbe creates and starts a new probe with the given ID.
-// Called from the stats goroutine (via TrackDiscoveryPath) when a probe's
+// Called from the stats goroutine (via trackDiscoveryPath) when a probe's
 // path has been confirmed, just before the old probe is retired.
 func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 	if err := pm.addProbe(probeID); err != nil {

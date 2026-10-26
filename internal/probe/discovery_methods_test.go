@@ -9,7 +9,7 @@ func newDiscoveryTestManager(budget uint) *ProbeManager {
 	pm := &ProbeManager{
 		stop:         make(chan struct{}),
 		probeConfig:  Config{SrcPort: 50000, ParallelProbes: 1},
-		probeTracker: ProbeTracker{probes: make(map[uint16]*Probe)},
+		probeTracker: probeTracker{probes: make(map[uint16]*Probe)},
 		discovery: discoveryState{
 			enabled:       true,
 			flowBudget:    budget,

@@ -4,10 +4,10 @@ import (
 	"log/slog"
 )
 
-// TrackDiscoveryPath records a completed probe run during discovery.
+// trackDiscoveryPath records a completed probe run during discovery.
 // It updates per-probe stability and, when a path is confirmed, retires
 // the probe and spawns a replacement with a new source port.
-func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHash string, hops []*HopRun) {
+func (pm *ProbeManager) trackDiscoveryPath(probeID uint16, probeNum uint, pathHash string, hops []*HopRun) {
 	pm.discoveryMu.Lock()
 	defer pm.discoveryMu.Unlock()
 

@@ -36,7 +36,7 @@ func (s *recordingSink) UpdateDiscoveryStats(stats DiscoveryStats) {
 func newOutputTestManager(msgs ...outputMsg) *ProbeManager {
 	pm := &ProbeManager{
 		outputChan: make(chan outputMsg, len(msgs)),
-		stats: ProbeManagerStats{
+		stats: probeManagerStats{
 			Probes: map[uint16]*ProbeStats{
 				1: {ProbeID: 1, Hops: map[uint8]*HopStats{3: {Sent: 1}}},
 			},
