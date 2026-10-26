@@ -39,7 +39,7 @@ func run() error {
 	}
 
 	if args.PrintBPFFilter {
-		filter, err := probe.BuildBPFFilter(probe.ConfigFromArgs(args))
+		filter, err := probe.BuildBPFFilter(configFromArgs(args))
 		if err != nil {
 			return err
 		}
@@ -65,7 +65,7 @@ func run() error {
 		"parallel_probes", args.ParallelProbes,
 	)
 
-	tracer, err := probe.New(probe.ConfigFromArgs(args))
+	tracer, err := probe.New(configFromArgs(args))
 	if err != nil {
 		return err
 	}
