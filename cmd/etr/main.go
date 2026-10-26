@@ -85,17 +85,22 @@ func run() error {
 		}()
 	}
 
+	var res *probe.Result
 	done := make(chan error, 1)
 	go func() {
-		err := pm.Run(ctx, outputs)
+		var err error
+		res, err = pm.Run(ctx, outputs)
 		outputs.Close()
 		done <- err
 	}()
 
 	runErr := waitForCompletion(cancel, done, sigChan)
+	if errors.Is(runErr, errForcedExit) {
+		return runErr
+	}
 
-	if args.Discover {
-		s := pm.GetDiscoverySummary()
+	if args.Discover && res != nil {
+		s := res.Discovery
 		if s.Enabled {
 			var flowStr string
 			if s.FlowBudget == 0 {

@@ -187,8 +187,8 @@ type DiscoverySummary struct {
 	Paths              []DiscoveredPath `json:"paths"`
 }
 
-// GetDiscoverySummary returns end-of-run discovery statistics.
-func (pm *ProbeManager) GetDiscoverySummary() DiscoverySummary {
+// discoverySummary returns end-of-run discovery statistics.
+func (pm *ProbeManager) discoverySummary() DiscoverySummary {
 	pm.discoveryMu.RLock()
 	defer pm.discoveryMu.RUnlock()
 

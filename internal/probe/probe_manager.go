@@ -345,7 +345,7 @@ func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 // Run executes all probes in parallel and sends results to sink until the
 // probes finish or ctx is cancelled. A nil sink discards results. Run does not
 // close the sink.
-func (pm *ProbeManager) Run(ctx context.Context, sink Sink) error {
+func (pm *ProbeManager) Run(ctx context.Context, sink Sink) (*Result, error) {
 	// Close pcap handle on run completion
 	defer pm.handle.Close()
 
@@ -408,7 +408,7 @@ func (pm *ProbeManager) Run(ctx context.Context, sink Sink) error {
 	slog.Debug("Waiting for output routine")
 	outputWg.Wait()
 
-	return nil
+	return &Result{Discovery: pm.discoverySummary()}, nil
 }
 
 // signalStop tells all goroutines to stop
