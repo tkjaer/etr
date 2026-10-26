@@ -17,25 +17,25 @@ import (
 	"github.com/tkjaer/etr/pkg/ptr"
 )
 
-type ProbeTracker struct {
-	probes map[uint16]*Probe
+type probeTracker struct {
+	probes map[uint16]*probe
 	mutex  sync.Mutex
 }
 
 // Event structure for probe statistics
-type ProbeEvent struct {
+type probeEvent struct {
 	ProbeID   uint16
 	EventType string // "sent", "received", "timeout", etc.
 	Data      any
 }
 
-type ProbeEventDataSent struct {
+type probeEventDataSent struct {
 	ProbeNum  uint
 	TTL       uint8
 	Timestamp time.Time
 }
 
-type ProbeEventDataReceived struct {
+type probeEventDataReceived struct {
 	ProbeNum  uint
 	TTL       uint8
 	Timestamp time.Time
@@ -43,13 +43,13 @@ type ProbeEventDataReceived struct {
 	Flag      string
 }
 
-type ProbeEventDataTimeout struct {
+type probeEventDataTimeout struct {
 	ProbeNum uint
 	SentTime time.Time
 	TTL      uint8
 }
 
-type ProbeEventDataIterationComplete struct {
+type probeEventDataIterationComplete struct {
 	ProbeNum  uint      // Which iteration just completed
 	Timestamp time.Time // When it completed
 }
@@ -100,8 +100,8 @@ type probeDiscoveryState struct {
 	stableRoundsCount uint   // How many consecutive rounds with same path
 }
 
-// ProbeManager coordinates multiple parallel probes to the same destination
-type ProbeManager struct {
+// probeManager coordinates multiple parallel probes to the same destination
+type probeManager struct {
 	// Coordination
 	wg       sync.WaitGroup
 	probesWg sync.WaitGroup // tracks probe goroutines only (for probesDone signaling)
@@ -109,40 +109,40 @@ type ProbeManager struct {
 	stopOnce sync.Once
 
 	// Statistics aggregation
-	statsChan chan ProbeEvent
+	statsChan chan probeEvent
 
 	// Shared resources
 	handle       *pcap.Handle
 	outputChan   chan outputMsg
-	transmitChan chan TransmitEvent
+	transmitChan chan transmitEvent
 	ptrManager   *ptr.PtrManager
 	asnManager   *asn.ASNManager
 
 	// Probe Configuration
 	probeConfig  Config
 	probeTarget  target
-	probeTracker ProbeTracker
+	probeTracker probeTracker
 
-	stats       ProbeManagerStats
+	stats       probeManagerStats
 	discoveryMu sync.RWMutex
 	discovery   discoveryState
 }
 
 // newProbeManager sets up a single run for a validated cfg
-func newProbeManager(ctx context.Context, cfg Config) (*ProbeManager, error) {
-	pm := &ProbeManager{
+func newProbeManager(ctx context.Context, cfg Config) (*probeManager, error) {
+	pm := &probeManager{
 		// Coordination
 		wg:   sync.WaitGroup{},
 		stop: make(chan struct{}),
 
-		statsChan:    make(chan ProbeEvent, 100),
+		statsChan:    make(chan probeEvent, 100),
 		outputChan:   make(chan outputMsg, 100),
-		transmitChan: make(chan TransmitEvent, 100),
+		transmitChan: make(chan transmitEvent, 100),
 		ptrManager:   ptr.NewPtrManager(),
 		asnManager:   asn.NewASNManager(),
 
-		probeTracker: ProbeTracker{
-			probes: make(map[uint16]*Probe),
+		probeTracker: probeTracker{
+			probes: make(map[uint16]*probe),
 			mutex:  sync.Mutex{},
 		},
 
@@ -184,7 +184,7 @@ func newProbeManager(ctx context.Context, cfg Config) (*ProbeManager, error) {
 }
 
 // init sets up the route, pcap handle, and probes
-func (pm *ProbeManager) init(ctx context.Context) (err error) {
+func (pm *probeManager) init(ctx context.Context) (err error) {
 	pm.probeTarget, err = resolveTarget(ctx, pm.probeConfig)
 	if err != nil {
 		return err
@@ -264,7 +264,7 @@ func (pm *ProbeManager) init(ctx context.Context) (err error) {
 }
 
 // Create and set probe BPF filter string to capture returning probes.
-func (pm *ProbeManager) setBPFFilter() error {
+func (pm *probeManager) setBPFFilter() error {
 	filter, err := buildBPFFilter(pm.probeConfig, pm.probeTarget, false)
 	if err != nil {
 		return err
@@ -273,13 +273,13 @@ func (pm *ProbeManager) setBPFFilter() error {
 }
 
 // AddProbe initializes and adds a probe to the manager
-func (pm *ProbeManager) addProbe(probeIndex uint16) error {
-	p := new(Probe)
+func (pm *probeManager) addProbe(probeIndex uint16) error {
+	p := new(probe)
 	p.probeID = probeIndex
 	p.cfg = &pm.probeConfig
 	p.target = &pm.probeTarget
 	p.transmitChan = pm.transmitChan
-	p.responseChan = make(chan ResponseEvent, 100)
+	p.responseChan = make(chan responseEvent, 100)
 	p.statsChan = pm.statsChan
 	p.stop = pm.stop
 	if pm.discovery.enabled {
@@ -296,16 +296,16 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 
 // getProbe safely retrieves a probe by its ID, ensuring thread-safe access to
 // the probe tracker.
-func (pm *ProbeManager) getProbe(probeID uint16) *Probe {
+func (pm *probeManager) getProbe(probeID uint16) *probe {
 	pm.probeTracker.mutex.Lock()
 	defer pm.probeTracker.mutex.Unlock()
 	return pm.probeTracker.probes[probeID]
 }
 
 // spawnDiscoveryProbe creates and starts a new probe with the given ID.
-// Called from the stats goroutine (via TrackDiscoveryPath) when a probe's
+// Called from the stats goroutine (via trackDiscoveryPath) when a probe's
 // path has been confirmed, just before the old probe is retired.
-func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
+func (pm *probeManager) spawnDiscoveryProbe(probeID uint16) {
 	if err := pm.addProbe(probeID); err != nil {
 		slog.Error("Failed to create discovery probe", "probe_id", probeID, "error", err)
 		return
@@ -324,7 +324,7 @@ func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 }
 
 // run executes all probes in parallel until they finish or ctx is cancelled
-func (pm *ProbeManager) run(ctx context.Context, sink Sink) (*Result, error) {
+func (pm *probeManager) run(ctx context.Context, sink Sink) (*Result, error) {
 	// Close pcap handle on run completion
 	defer pm.handle.Close()
 
@@ -368,7 +368,7 @@ func (pm *ProbeManager) run(ctx context.Context, sink Sink) (*Result, error) {
 	for _, p := range pm.probeTracker.probes {
 		pm.wg.Add(1)
 		pm.probesWg.Add(1)
-		go func(p *Probe) {
+		go func(p *probe) {
 			defer pm.wg.Done()
 			defer pm.probesWg.Done()
 			p.Run()
@@ -405,7 +405,7 @@ func (pm *ProbeManager) run(ctx context.Context, sink Sink) (*Result, error) {
 }
 
 // signalStop tells all goroutines to stop
-func (pm *ProbeManager) signalStop() {
+func (pm *probeManager) signalStop() {
 	pm.stopOnce.Do(func() {
 		slog.Debug("Stopping ProbeManager")
 		close(pm.stop)
@@ -413,7 +413,7 @@ func (pm *ProbeManager) signalStop() {
 }
 
 // outputRoutine forwards output messages to the sink
-func (pm *ProbeManager) outputRoutine(sink Sink) {
+func (pm *probeManager) outputRoutine(sink Sink) {
 	for msg := range pm.outputChan {
 		if sink == nil {
 			continue

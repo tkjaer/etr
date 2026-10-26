@@ -8,7 +8,7 @@ import (
 // transmitRoutine handles sending packets via the pcap handle.
 // It listens for TransmitEvent messages on the transmitChan channel,
 // sends the packets, and notifies the stats processor of sent packets.
-func (pm *ProbeManager) transmitRoutine() error {
+func (pm *probeManager) transmitRoutine() error {
 	for {
 		select {
 		case event := <-pm.transmitChan:
@@ -19,10 +19,10 @@ func (pm *ProbeManager) transmitRoutine() error {
 				return err
 			} else {
 				// Notify stats processor of sent packet
-				pm.statsChan <- ProbeEvent{
+				pm.statsChan <- probeEvent{
 					ProbeID:   event.ProbeID,
 					EventType: "sent",
-					Data: &ProbeEventDataSent{
+					Data: &probeEventDataSent{
 						ProbeNum:  event.ProbeNum,
 						TTL:       event.TTL,
 						Timestamp: sent,

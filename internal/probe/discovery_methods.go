@@ -4,10 +4,10 @@ import (
 	"log/slog"
 )
 
-// TrackDiscoveryPath records a completed probe run during discovery.
+// trackDiscoveryPath records a completed probe run during discovery.
 // It updates per-probe stability and, when a path is confirmed, retires
 // the probe and spawns a replacement with a new source port.
-func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHash string, hops []*HopRun) {
+func (pm *probeManager) trackDiscoveryPath(probeID uint16, probeNum uint, pathHash string, hops []*HopRun) {
 	pm.discoveryMu.Lock()
 	defer pm.discoveryMu.Unlock()
 
@@ -101,7 +101,7 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 
 // retireAndReplaceProbeNoLock stops a confirmed probe and starts a new one.
 // Caller must hold discoveryMu write lock.
-func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
+func (pm *probeManager) retireAndReplaceProbeNoLock(probeID uint16) {
 	// Clean up old probe's discovery state
 	delete(pm.discovery.perProbeState, probeID)
 	delete(pm.discovery.activeProbes, probeID)
@@ -121,7 +121,7 @@ func (pm *ProbeManager) retireAndReplaceProbeNoLock(probeID uint16) {
 // spawnReplacementProbeNoLock starts a probe on the next source port, unless
 // the flow budget or the source port range is used up.
 // Caller must hold discoveryMu write lock.
-func (pm *ProbeManager) spawnReplacementProbeNoLock() {
+func (pm *probeManager) spawnReplacementProbeNoLock() {
 	// Check budget before spawning replacement
 	if pm.discovery.flowBudget > 0 && pm.discovery.flowsUsed >= pm.discovery.flowBudget {
 		return
@@ -148,7 +148,7 @@ func (pm *ProbeManager) spawnReplacementProbeNoLock() {
 
 // shouldStopDiscoveryNoLock checks convergence conditions.
 // Caller must hold discoveryMu write lock.
-func (pm *ProbeManager) shouldStopDiscoveryNoLock() bool {
+func (pm *probeManager) shouldStopDiscoveryNoLock() bool {
 	if pm.discovery.noNewPathsCount >= pm.discovery.noNewPathsLimit {
 		return true
 	}
@@ -188,7 +188,7 @@ type DiscoverySummary struct {
 }
 
 // discoverySummary returns end-of-run discovery statistics.
-func (pm *ProbeManager) discoverySummary() DiscoverySummary {
+func (pm *probeManager) discoverySummary() DiscoverySummary {
 	pm.discoveryMu.RLock()
 	defer pm.discoveryMu.RUnlock()
 
@@ -216,7 +216,7 @@ func (pm *ProbeManager) discoverySummary() DiscoverySummary {
 
 // discoveryStatsSnapshot returns a TUI-friendly snapshot of current discovery state.
 // Caller must NOT hold discoveryMu.
-func (pm *ProbeManager) discoveryStatsSnapshot() DiscoveryStats {
+func (pm *probeManager) discoveryStatsSnapshot() DiscoveryStats {
 	pm.discoveryMu.RLock()
 	defer pm.discoveryMu.RUnlock()
 	return DiscoveryStats{

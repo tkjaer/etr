@@ -11,8 +11,8 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 )
 
-// ProbeRunBuilder is used internally to build a ProbeRun incrementally
-type ProbeRunBuilder struct {
+// probeRunBuilder is used internally to build a ProbeRun incrementally
+type probeRunBuilder struct {
 	ProbeID   uint16
 	ProbeNum  uint
 	Hops      map[uint8]*HopRun // TTL -> hop result (internal map for building)
@@ -20,38 +20,38 @@ type ProbeRunBuilder struct {
 }
 
 // Top-level stats structure for all probes
-type ProbeManagerStats struct {
+type probeManagerStats struct {
 	Probes      map[uint16]*ProbeStats
-	CurrentRuns map[uint16]*ProbeRunBuilder // Current probe run being built for each probe ID
+	CurrentRuns map[uint16]*probeRunBuilder // Current probe run being built for each probe ID
 	Mutex       sync.RWMutex
-	TTLCache    *ttlcache.Cache[TTLCacheKey, TTLCacheValue]
+	TTLCache    *ttlcache.Cache[ttlCacheKey, ttlCacheValue]
 }
 
 // Key for the TTL cache
-type TTLCacheKey struct {
+type ttlCacheKey struct {
 	ProbeID  uint16
 	ProbeNum uint // Which iteration
 	TTL      uint8
 }
 
 // Value stored in the TTL cache
-type TTLCacheValue struct {
+type ttlCacheValue struct {
 	SentTime time.Time
 }
 
-func (pm *ProbeManager) statsProcessor() {
-	pm.stats = ProbeManagerStats{
+func (pm *probeManager) statsProcessor() {
+	pm.stats = probeManagerStats{
 		Probes:      make(map[uint16]*ProbeStats),
-		CurrentRuns: make(map[uint16]*ProbeRunBuilder),
+		CurrentRuns: make(map[uint16]*probeRunBuilder),
 		Mutex:       sync.RWMutex{},
-		TTLCache:    ttlcache.New(ttlcache.WithTTL[TTLCacheKey, TTLCacheValue](pm.probeConfig.Timeout)),
+		TTLCache:    ttlcache.New(ttlcache.WithTTL[ttlCacheKey, ttlCacheValue](pm.probeConfig.Timeout)),
 	}
-	pm.stats.TTLCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[TTLCacheKey, TTLCacheValue]) {
+	pm.stats.TTLCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[ttlCacheKey, ttlCacheValue]) {
 		if reason == ttlcache.EvictionReasonExpired {
-			pm.statsChan <- ProbeEvent{
+			pm.statsChan <- probeEvent{
 				ProbeID:   item.Key().ProbeID,
 				EventType: "timeout",
-				Data: &ProbeEventDataTimeout{
+				Data: &probeEventDataTimeout{
 					ProbeNum: item.Key().ProbeNum,
 					SentTime: item.Value().SentTime,
 					TTL:      item.Key().TTL,
@@ -82,12 +82,12 @@ func (pm *ProbeManager) statsProcessor() {
 			// Decide if/when to output to TUI/JSON
 			switch event.EventType {
 			case "sent":
-				if data, ok := event.Data.(*ProbeEventDataSent); ok {
+				if data, ok := event.Data.(*probeEventDataSent); ok {
 					pm.updateSentStats(event.ProbeID, data)
 					pm.notifyOutput(event.ProbeID, data.TTL)
 				}
 			case "received":
-				if data, ok := event.Data.(*ProbeEventDataReceived); ok {
+				if data, ok := event.Data.(*probeEventDataReceived); ok {
 					pm.updateReceivedStats(event.ProbeID, data)
 					if data.Flag != "TTL" {
 						deleted := pm.pruneHopsBeyondDestinationTTL(event.ProbeID, data.TTL)
@@ -102,12 +102,12 @@ func (pm *ProbeManager) statsProcessor() {
 					pm.notifyOutput(event.ProbeID, data.TTL)
 				}
 			case "timeout":
-				if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
+				if data, ok := event.Data.(*probeEventDataTimeout); ok {
 					pm.updateTimeoutStats(event.ProbeID, data)
 					pm.notifyOutput(event.ProbeID, data.TTL)
 				}
 			case "iteration_complete":
-				if data, ok := event.Data.(*ProbeEventDataIterationComplete); ok {
+				if data, ok := event.Data.(*probeEventDataIterationComplete); ok {
 					// Output the completed probe run
 					pm.outputProbeRun(event.ProbeID, data)
 				}
@@ -133,12 +133,12 @@ func (pm *ProbeManager) statsProcessor() {
 					// Process remaining events
 					switch event.EventType {
 					case "sent":
-						if data, ok := event.Data.(*ProbeEventDataSent); ok {
+						if data, ok := event.Data.(*probeEventDataSent); ok {
 							pm.updateSentStats(event.ProbeID, data)
 							pm.notifyOutput(event.ProbeID, data.TTL)
 						}
 					case "received":
-						if data, ok := event.Data.(*ProbeEventDataReceived); ok {
+						if data, ok := event.Data.(*probeEventDataReceived); ok {
 							pm.updateReceivedStats(event.ProbeID, data)
 							if data.Flag != "TTL" {
 								deleted := pm.pruneHopsBeyondDestinationTTL(event.ProbeID, data.TTL)
@@ -153,7 +153,7 @@ func (pm *ProbeManager) statsProcessor() {
 							pm.notifyOutput(event.ProbeID, data.TTL)
 						}
 					case "timeout":
-						if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
+						if data, ok := event.Data.(*probeEventDataTimeout); ok {
 							pm.updateTimeoutStats(event.ProbeID, data)
 							pm.notifyOutput(event.ProbeID, data.TTL)
 						}
@@ -174,7 +174,7 @@ func (pm *ProbeManager) statsProcessor() {
 	}
 }
 
-func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent) {
+func (pm *probeManager) updateSentStats(probeID uint16, data *probeEventDataSent) {
 	pm.stats.Mutex.Lock()
 	defer pm.stats.Mutex.Unlock()
 
@@ -188,13 +188,13 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 		pm.stats.Probes[probeID] = probeStats
 	}
 
-	pm.stats.TTLCache.Set(TTLCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}, TTLCacheValue{SentTime: data.Timestamp}, pm.probeConfig.Timeout)
+	pm.stats.TTLCache.Set(ttlCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}, ttlCacheValue{SentTime: data.Timestamp}, pm.probeConfig.Timeout)
 
 	// Also build/update current ProbeRun for JSON output
 	run, exists := pm.stats.CurrentRuns[probeID]
 	if !exists || run.ProbeNum != data.ProbeNum {
 		// New run
-		run = &ProbeRunBuilder{
+		run = &probeRunBuilder{
 			ProbeID:   probeID,
 			ProbeNum:  data.ProbeNum,
 			Hops:      make(map[uint8]*HopRun),
@@ -223,7 +223,7 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 	probeStats.Hops[data.TTL].Sent++
 }
 
-func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventDataReceived) {
+func (pm *probeManager) updateReceivedStats(probeID uint16, data *probeEventDataReceived) {
 	pm.stats.Mutex.Lock()
 	defer pm.stats.Mutex.Unlock()
 
@@ -288,7 +288,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	hopStats.CurrentIP = data.IP
 
 	// Check and remove from TTL cache
-	cacheKey := TTLCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}
+	cacheKey := ttlCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}
 	cacheEntry, present := pm.stats.TTLCache.GetAndDelete(cacheKey)
 	if !present {
 		slog.Debug("Received probe for TTL that has already expired", "ttl", data.TTL, "probe_id", probeID)
@@ -349,7 +349,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	ipStats.StdDev = calculateStdDev(ipStats.Sum, ipStats.SumSquares, ipStats.Responses)
 }
 
-func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataTimeout) {
+func (pm *probeManager) updateTimeoutStats(probeID uint16, data *probeEventDataTimeout) {
 	pm.stats.Mutex.Lock()
 	defer pm.stats.Mutex.Unlock()
 
@@ -390,7 +390,7 @@ func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataT
 	}
 }
 
-func (pm *ProbeManager) getProbeHopStats(probeID uint16, ttl uint8) (HopStats, bool) {
+func (pm *probeManager) getProbeHopStats(probeID uint16, ttl uint8) (HopStats, bool) {
 	pm.stats.Mutex.RLock()
 	defer pm.stats.Mutex.RUnlock()
 	if probe, ok := pm.stats.Probes[probeID]; ok {
@@ -401,7 +401,7 @@ func (pm *ProbeManager) getProbeHopStats(probeID uint16, ttl uint8) (HopStats, b
 	return HopStats{}, false
 }
 
-func (pm *ProbeManager) getProbeStats(probeID uint16) (ProbeStats, bool) {
+func (pm *probeManager) getProbeStats(probeID uint16) (ProbeStats, bool) {
 	pm.stats.Mutex.RLock()
 	defer pm.stats.Mutex.RUnlock()
 	if probe, ok := pm.stats.Probes[probeID]; ok {
@@ -440,7 +440,7 @@ func copyProbeStats(p *ProbeStats) ProbeStats {
 
 // pruneHopsBeyondDestinationTTL removes hop stats with TTLs greater than the destination TTL for a probe.
 // Returns a sorted list of TTLs that were deleted.
-func (pm *ProbeManager) pruneHopsBeyondDestinationTTL(probeID uint16, destinationTTL uint8) []uint8 {
+func (pm *probeManager) pruneHopsBeyondDestinationTTL(probeID uint16, destinationTTL uint8) []uint8 {
 	pm.stats.Mutex.Lock()
 	defer pm.stats.Mutex.Unlock()
 
@@ -466,7 +466,7 @@ func (pm *ProbeManager) pruneHopsBeyondDestinationTTL(probeID uint16, destinatio
 }
 
 // Notifies the output system of a hop update for TUI
-func (pm *ProbeManager) notifyOutput(probeID uint16, ttl uint8) {
+func (pm *probeManager) notifyOutput(probeID uint16, ttl uint8) {
 	pm.outputChan <- outputMsg{
 		probeNum: uint(probeID),
 		ttl:      ttl,
@@ -475,7 +475,7 @@ func (pm *ProbeManager) notifyOutput(probeID uint16, ttl uint8) {
 }
 
 // Outputs the completed ProbeRun for a given probeID and iteration
-func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataIterationComplete) {
+func (pm *probeManager) outputProbeRun(probeID uint16, data *probeEventDataIterationComplete) {
 	// Convert current ProbeStats to ProbeRun format for this iteration
 	pm.stats.Mutex.RLock()
 	probeStats, exists := pm.stats.Probes[probeID]
@@ -598,7 +598,7 @@ func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataItera
 
 	// Track discovery state and push a stats update to the TUI
 	if pm.discovery.enabled {
-		pm.TrackDiscoveryPath(probeID, data.ProbeNum, pathHash, hopsSlice)
+		pm.trackDiscoveryPath(probeID, data.ProbeNum, pathHash, hopsSlice)
 		stats := pm.discoveryStatsSnapshot()
 		pm.outputChan <- outputMsg{
 			msgType:        "discovery_update",

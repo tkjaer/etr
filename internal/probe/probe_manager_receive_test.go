@@ -5,19 +5,19 @@ import (
 	"time"
 )
 
-func newDeliveryTestProbe(statsBuf, respBuf int) *Probe {
-	return &Probe{
-		statsChan:    make(chan ProbeEvent, statsBuf),
-		responseChan: make(chan ResponseEvent, respBuf),
+func newDeliveryTestProbe(statsBuf, respBuf int) *probe {
+	return &probe{
+		statsChan:    make(chan probeEvent, statsBuf),
+		responseChan: make(chan responseEvent, respBuf),
 	}
 }
 
 // runDelivery calls deliverResponse and fails the test if it blocks.
-func runDelivery(t *testing.T, p *Probe, stop <-chan struct{}) bool {
+func runDelivery(t *testing.T, p *probe, stop <-chan struct{}) bool {
 	t.Helper()
 	done := make(chan bool, 1)
 	go func() {
-		done <- deliverResponse(p, stop, ProbeEvent{ProbeID: 1}, ResponseEvent{TTL: 3})
+		done <- deliverResponse(p, stop, probeEvent{ProbeID: 1}, responseEvent{TTL: 3})
 	}()
 	select {
 	case ok := <-done:
@@ -45,7 +45,7 @@ func TestDeliverResponse(t *testing.T) {
 func TestDeliverResponseDropsWhenProbeNotReading(t *testing.T) {
 	// A retired probe's response buffer is full and nobody reads it.
 	p := newDeliveryTestProbe(1, 1)
-	p.responseChan <- ResponseEvent{}
+	p.responseChan <- responseEvent{}
 
 	if !runDelivery(t, p, make(chan struct{})) {
 		t.Fatal("deliverResponse = false, want true")
@@ -58,7 +58,7 @@ func TestDeliverResponseDropsWhenProbeNotReading(t *testing.T) {
 func TestDeliverResponseGivesUpAfterStop(t *testing.T) {
 	// After stop, the stats processor is gone and its buffer may be full.
 	p := newDeliveryTestProbe(1, 1)
-	p.statsChan <- ProbeEvent{}
+	p.statsChan <- probeEvent{}
 	stop := make(chan struct{})
 	close(stop)
 

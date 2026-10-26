@@ -9,7 +9,7 @@ import (
 )
 
 // decodeICMPv4Layer decodes an ICMPv4 layer and returns the TTL, probe number, and flag.
-func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8, probeNum uint, port uint, flag string) {
+func (pm *probeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8, probeNum uint, port uint, flag string) {
 	// Handle both TTL exceeded (intermediate hops) and destination unreachable (final hop)
 	isTimeExceeded := icmp4Layer.TypeCode.Type() == layers.ICMPv4TypeTimeExceeded && icmp4Layer.TypeCode.Code() == layers.ICMPv4CodeTTLExceeded
 	isDestUnreachable := icmp4Layer.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable && icmp4Layer.TypeCode.Code() == layers.ICMPv4CodePort
@@ -71,7 +71,7 @@ func (pm *ProbeManager) decodeICMPv4Layer(icmp4Layer *layers.ICMPv4) (ttl uint8,
 }
 
 // decodeICMPv6Layer decodes an ICMPv6 layer and returns the TTL, probe number, port, and flag.
-func (pm *ProbeManager) decodeICMPv6Layer(icmp6Layer *layers.ICMPv6) (ttl uint8, probeNum uint, port uint, flag string) {
+func (pm *probeManager) decodeICMPv6Layer(icmp6Layer *layers.ICMPv6) (ttl uint8, probeNum uint, port uint, flag string) {
 	// Handle both time exceeded (intermediate hops) and destination unreachable (final hop)
 	isTimeExceeded := icmp6Layer.TypeCode.Type() == layers.ICMPv6TypeTimeExceeded && icmp6Layer.TypeCode.Code() == layers.ICMPv6CodeHopLimitExceeded
 	isDestUnreachable := icmp6Layer.TypeCode.Type() == layers.ICMPv6TypeDestinationUnreachable && icmp6Layer.TypeCode.Code() == 4 // Port unreachable
@@ -174,7 +174,7 @@ func locateInnerIPv6Header(payload []byte) (int, bool) {
 
 // sourcePortWithinRange checks if the given source port belongs to one of
 // this probe manager's probes.
-func (pm *ProbeManager) sourcePortWithinRange(srcPort uint16) bool {
+func (pm *probeManager) sourcePortWithinRange(srcPort uint16) bool {
 	if srcPort < pm.probeConfig.SrcPort {
 		return false
 	}
@@ -205,7 +205,7 @@ func protoToLayerType(proto layers.IPProtocol) gopacket.LayerType {
 	}
 }
 
-func (pm *ProbeManager) innerIPsMatch(layer gopacket.Layer) bool {
+func (pm *probeManager) innerIPsMatch(layer gopacket.Layer) bool {
 	switch ipLayer := layer.(type) {
 	case *layers.IPv4:
 		return ipLayer.SrcIP.Equal(net.IP(pm.probeTarget.route.Source.AsSlice())) &&
