@@ -65,13 +65,13 @@ func run() error {
 		"parallel_probes", args.ParallelProbes,
 	)
 
-	pm, err := probe.NewProbeManager(probe.ConfigFromArgs(args))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pm, err := probe.NewProbeManager(ctx, probe.ConfigFromArgs(args))
 	if err != nil {
 		return fmt.Errorf("failed to create probe manager: %w", err)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	sigChan := make(chan os.Signal, 2)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

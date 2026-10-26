@@ -1,6 +1,8 @@
 package probe
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -208,11 +210,21 @@ func TestGetDestinationIP_literalFamily(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := getDestinationIP(tt.dest, tt.family)
+			_, err := getDestinationIP(context.Background(), tt.dest, tt.family)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getDestinationIP(%q, %v) error = %v, wantErr %v", tt.dest, tt.family, err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestGetDestinationIPCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := getDestinationIP(ctx, "etr-test.invalid", FamilyAny)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("getDestinationIP() error = %v, want context.Canceled", err)
 	}
 }
 

@@ -129,7 +129,7 @@ type ProbeManager struct {
 }
 
 // NewProbeManager creates and initializes a probe manager
-func NewProbeManager(cfg Config) (*ProbeManager, error) {
+func NewProbeManager(ctx context.Context, cfg Config) (*ProbeManager, error) {
 	cfg = cfg.withDefaults()
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -180,7 +180,7 @@ func NewProbeManager(cfg Config) (*ProbeManager, error) {
 		}
 	}
 
-	err := pm.init()
+	err := pm.init(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -189,8 +189,8 @@ func NewProbeManager(cfg Config) (*ProbeManager, error) {
 }
 
 // init initializes the probe manager by setting up routes, pcap handles, and probes
-func (pm *ProbeManager) init() (err error) {
-	pm.probeTarget, err = resolveTarget(pm.probeConfig)
+func (pm *ProbeManager) init(ctx context.Context) (err error) {
+	pm.probeTarget, err = resolveTarget(ctx, pm.probeConfig)
 	if err != nil {
 		return err
 	}

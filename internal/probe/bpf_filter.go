@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 
@@ -15,7 +16,7 @@ func BuildBPFFilter(cfg Config) (string, error) {
 	if err := cfg.validate(); err != nil {
 		return "", err
 	}
-	tgt, err := resolveTarget(cfg)
+	tgt, err := resolveTarget(context.Background(), cfg)
 	if err != nil {
 		return "", err
 	}
@@ -24,8 +25,8 @@ func BuildBPFFilter(cfg Config) (string, error) {
 
 // resolveTarget resolves the destination and route, and derives the
 // network and transport protocols for the probes.
-func resolveTarget(cfg Config) (target, error) {
-	d, err := getDestinationIP(cfg.Destination, cfg.Family)
+func resolveTarget(ctx context.Context, cfg Config) (target, error) {
+	d, err := getDestinationIP(ctx, cfg.Destination, cfg.Family)
 	if err != nil {
 		return target{}, err
 	}
