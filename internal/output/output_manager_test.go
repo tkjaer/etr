@@ -3,7 +3,7 @@ package output
 import (
 	"testing"
 
-	"github.com/tkjaer/etr/internal/probe"
+	"github.com/tkjaer/etr/pkg/etr"
 )
 
 // mockOutput is a mock implementation of Output for testing
@@ -18,7 +18,7 @@ type mockOutput struct {
 type updateHopCall struct {
 	probeID  uint16
 	ttl      uint8
-	hopStats probe.HopStats
+	hopStats etr.HopStats
 }
 
 type deleteHopsCall struct {
@@ -28,14 +28,14 @@ type deleteHopsCall struct {
 
 type completeProbeCall struct {
 	probeID uint16
-	stats   probe.ProbeStats
+	stats   etr.ProbeStats
 }
 
 type completeProbeRunCall struct {
-	run *probe.ProbeRun
+	run *etr.ProbeRun
 }
 
-func (m *mockOutput) UpdateHop(probeID uint16, ttl uint8, hopStats probe.HopStats) {
+func (m *mockOutput) UpdateHop(probeID uint16, ttl uint8, hopStats etr.HopStats) {
 	m.updateHopCalls = append(m.updateHopCalls, updateHopCall{probeID, ttl, hopStats})
 }
 
@@ -43,15 +43,15 @@ func (m *mockOutput) DeleteHops(probeID uint16, ttls []uint8) {
 	m.deleteHopsCalls = append(m.deleteHopsCalls, deleteHopsCall{probeID, ttls})
 }
 
-func (m *mockOutput) CompleteProbe(probeID uint16, stats probe.ProbeStats) {
+func (m *mockOutput) CompleteProbe(probeID uint16, stats etr.ProbeStats) {
 	m.completeProbeCalls = append(m.completeProbeCalls, completeProbeCall{probeID, stats})
 }
 
-func (m *mockOutput) CompleteProbeRun(run *probe.ProbeRun) {
+func (m *mockOutput) CompleteProbeRun(run *etr.ProbeRun) {
 	m.completeProbeRunCalls = append(m.completeProbeRunCalls, completeProbeRunCall{run})
 }
 
-func (m *mockOutput) UpdateDiscoveryStats(_ probe.DiscoveryStats) {}
+func (m *mockOutput) UpdateDiscoveryStats(_ etr.DiscoveryStats) {}
 
 func (m *mockOutput) Close() error {
 	m.closeCalls++
@@ -81,7 +81,7 @@ func TestOutputManager_UpdateHop(t *testing.T) {
 	om.Register(mock1)
 	om.Register(mock2)
 
-	hopStats := probe.HopStats{CurrentIP: "192.0.2.1"}
+	hopStats := etr.HopStats{CurrentIP: "192.0.2.1"}
 	om.UpdateHop(1, 5, hopStats)
 
 	if len(mock1.updateHopCalls) != 1 {
@@ -126,7 +126,7 @@ func TestOutputManager_CompleteProbe(t *testing.T) {
 	mock := &mockOutput{}
 	om.Register(mock)
 
-	stats := probe.ProbeStats{ProbeID: 42}
+	stats := etr.ProbeStats{ProbeID: 42}
 	om.CompleteProbe(42, stats)
 
 	if len(mock.completeProbeCalls) != 1 {
@@ -142,7 +142,7 @@ func TestOutputManager_CompleteProbeRun(t *testing.T) {
 	mock := &mockOutput{}
 	om.Register(mock)
 
-	run := &probe.ProbeRun{DestinationIP: "203.0.113.1"}
+	run := &etr.ProbeRun{DestinationIP: "203.0.113.1"}
 	om.CompleteProbeRun(run)
 
 	if len(mock.completeProbeRunCalls) != 1 {
@@ -180,10 +180,10 @@ func TestOutputManager_MultipleOutputs(t *testing.T) {
 	om.Register(mock3)
 
 	// Test that all outputs receive all calls
-	om.UpdateHop(1, 1, probe.HopStats{})
+	om.UpdateHop(1, 1, etr.HopStats{})
 	om.DeleteHops(1, []uint8{1})
-	om.CompleteProbe(1, probe.ProbeStats{})
-	om.CompleteProbeRun(&probe.ProbeRun{})
+	om.CompleteProbe(1, etr.ProbeStats{})
+	om.CompleteProbeRun(&etr.ProbeRun{})
 	om.Close()
 
 	for i, mock := range []*mockOutput{mock1, mock2, mock3} {

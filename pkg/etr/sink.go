@@ -1,4 +1,4 @@
-package probe
+package etr
 
 // Sink is the interface that receives probe results.
 type Sink interface {

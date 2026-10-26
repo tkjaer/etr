@@ -12,7 +12,7 @@ import (
 	"syscall"
 
 	"github.com/tkjaer/etr/internal/config"
-	"github.com/tkjaer/etr/internal/probe"
+	"github.com/tkjaer/etr/pkg/etr"
 )
 
 var errForcedExit = errors.New("second interrupt received")
@@ -39,7 +39,7 @@ func run() error {
 	}
 
 	if args.PrintBPFFilter {
-		filter, err := probe.BuildBPFFilter(probe.ConfigFromArgs(args))
+		filter, err := etr.BuildBPFFilter(configFromArgs(args))
 		if err != nil {
 			return err
 		}
@@ -65,7 +65,7 @@ func run() error {
 		"parallel_probes", args.ParallelProbes,
 	)
 
-	tracer, err := probe.New(probe.ConfigFromArgs(args))
+	tracer, err := etr.New(configFromArgs(args))
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func run() error {
 
 	outputs := newOutputs(args, cancel)
 
-	var res *probe.Result
+	var res *etr.Result
 	done := make(chan error, 1)
 	go func() {
 		var err error

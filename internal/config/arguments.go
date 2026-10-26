@@ -186,7 +186,7 @@ func ParseArgs() (Args, error) {
 	}
 
 	// Flag conflicts and ranges that would be lost converting to
-	// probe.Config; remaining checks are done by probe.Config.validate().
+	// etr.Config; remaining checks are done by etr.Config.validate().
 	switch {
 	case args.Json && args.JsonFile != "":
 		return args, errors.New("cannot use both --json and --json-file")

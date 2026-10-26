@@ -1,4 +1,4 @@
-package probe
+package etr
 
 import (
 	"testing"

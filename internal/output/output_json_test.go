@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/tkjaer/etr/internal/probe"
+	"github.com/tkjaer/etr/pkg/etr"
 )
 
 func TestNewJSONOutput_Stdout(t *testing.T) {
@@ -62,7 +62,7 @@ func TestJSONOutput_CompleteProbeRun(t *testing.T) {
 		t.Fatalf("NewJSONOutput() error = %v", err)
 	}
 
-	run := &probe.ProbeRun{
+	run := &etr.ProbeRun{
 		ProbeID:       1,
 		ProbeNum:      0,
 		PathHash:      "abc123",
@@ -83,7 +83,7 @@ func TestJSONOutput_CompleteProbeRun(t *testing.T) {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 
-	var decoded probe.ProbeRun
+	var decoded etr.ProbeRun
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
@@ -143,7 +143,7 @@ func TestJSONOutput_NoOps(t *testing.T) {
 	}()
 
 	// These should all be no-ops and not panic
-	output.UpdateHop(1, 1, probe.HopStats{})
+	output.UpdateHop(1, 1, etr.HopStats{})
 	output.DeleteHops(1, []uint8{1, 2})
-	output.CompleteProbe(1, probe.ProbeStats{})
+	output.CompleteProbe(1, etr.ProbeStats{})
 }
