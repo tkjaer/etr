@@ -5,15 +5,15 @@ import (
 	"time"
 )
 
-func newDeliveryTestProbe(statsBuf, respBuf int) *Probe {
-	return &Probe{
+func newDeliveryTestProbe(statsBuf, respBuf int) *probe {
+	return &probe{
 		statsChan:    make(chan probeEvent, statsBuf),
 		responseChan: make(chan responseEvent, respBuf),
 	}
 }
 
 // runDelivery calls deliverResponse and fails the test if it blocks.
-func runDelivery(t *testing.T, p *Probe, stop <-chan struct{}) bool {
+func runDelivery(t *testing.T, p *probe, stop <-chan struct{}) bool {
 	t.Helper()
 	done := make(chan bool, 1)
 	go func() {

@@ -44,7 +44,7 @@ func TestCopyStatsKeepsNilMaps(t *testing.T) {
 }
 
 func TestGetProbeStatsReturnsCopies(t *testing.T) {
-	pm := &ProbeManager{
+	pm := &probeManager{
 		stats: probeManagerStats{
 			Probes: map[uint16]*ProbeStats{
 				1: {ProbeID: 1, Hops: map[uint8]*HopStats{

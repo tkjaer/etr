@@ -139,7 +139,7 @@ func serializeLayers(buf gopacket.SerializeBuffer, opts gopacket.SerializeOption
 }
 
 // newProbe holds configuration for a single probe instance
-type Probe struct {
+type probe struct {
 	probeID       uint16
 	cfg           *Config
 	target        *target
@@ -153,7 +153,7 @@ type Probe struct {
 
 // sleepOrStop sleeps for the given duration, but returns true immediately
 // if the probe's stop or discoveryStop channel is closed.
-func (p *Probe) sleepOrStop(d time.Duration) bool {
+func (p *probe) sleepOrStop(d time.Duration) bool {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	if p.discoveryStop != nil {
@@ -174,7 +174,7 @@ func (p *Probe) sleepOrStop(d time.Duration) bool {
 	}
 }
 
-func (p *Probe) Run() {
+func (p *probe) Run() {
 	cfg := p.cfg
 	tgt := p.target
 

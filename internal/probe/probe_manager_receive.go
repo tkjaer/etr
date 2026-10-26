@@ -9,7 +9,7 @@ import (
 // recvProbes listens for incoming probe responses on the provided pcap handle.
 // It decodes the packets to extract TTL, probe number, timestamp, IP address,
 // and flag, and passes each response to the stats processor and its probe.
-func (pm *ProbeManager) recvProbes(stop chan struct{}) {
+func (pm *probeManager) recvProbes(stop chan struct{}) {
 	src := gopacket.NewPacketSource(pm.handle, pm.handle.LinkType())
 	in := src.Packets()
 
@@ -54,7 +54,7 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 // deliverResponse passes a received response to the stats processor and to
 // the probe. It never blocks once stop is closed, and returns false if stop
 // was closed before the stats processor took the event.
-func deliverResponse(p *Probe, stop <-chan struct{}, stats probeEvent, resp responseEvent) bool {
+func deliverResponse(p *probe, stop <-chan struct{}, stats probeEvent, resp responseEvent) bool {
 	// The stats processor stops reading once stop is closed.
 	select {
 	case p.statsChan <- stats:

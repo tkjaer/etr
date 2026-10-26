@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-func newDiscoveryTestManager(budget uint) *ProbeManager {
-	pm := &ProbeManager{
+func newDiscoveryTestManager(budget uint) *probeManager {
+	pm := &probeManager{
 		stop:         make(chan struct{}),
 		probeConfig:  Config{SrcPort: 50000, ParallelProbes: 1},
-		probeTracker: probeTracker{probes: make(map[uint16]*Probe)},
+		probeTracker: probeTracker{probes: make(map[uint16]*probe)},
 		discovery: discoveryState{
 			enabled:       true,
 			flowBudget:    budget,
