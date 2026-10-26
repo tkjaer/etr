@@ -19,10 +19,10 @@ func (pm *ProbeManager) transmitRoutine() error {
 				return err
 			} else {
 				// Notify stats processor of sent packet
-				pm.statsChan <- ProbeEvent{
+				pm.statsChan <- probeEvent{
 					ProbeID:   event.ProbeID,
 					EventType: "sent",
-					Data: &ProbeEventDataSent{
+					Data: &probeEventDataSent{
 						ProbeNum:  event.ProbeNum,
 						TTL:       event.TTL,
 						Timestamp: sent,

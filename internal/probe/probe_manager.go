@@ -23,19 +23,19 @@ type ProbeTracker struct {
 }
 
 // Event structure for probe statistics
-type ProbeEvent struct {
+type probeEvent struct {
 	ProbeID   uint16
 	EventType string // "sent", "received", "timeout", etc.
 	Data      any
 }
 
-type ProbeEventDataSent struct {
+type probeEventDataSent struct {
 	ProbeNum  uint
 	TTL       uint8
 	Timestamp time.Time
 }
 
-type ProbeEventDataReceived struct {
+type probeEventDataReceived struct {
 	ProbeNum  uint
 	TTL       uint8
 	Timestamp time.Time
@@ -43,13 +43,13 @@ type ProbeEventDataReceived struct {
 	Flag      string
 }
 
-type ProbeEventDataTimeout struct {
+type probeEventDataTimeout struct {
 	ProbeNum uint
 	SentTime time.Time
 	TTL      uint8
 }
 
-type ProbeEventDataIterationComplete struct {
+type probeEventDataIterationComplete struct {
 	ProbeNum  uint      // Which iteration just completed
 	Timestamp time.Time // When it completed
 }
@@ -109,12 +109,12 @@ type ProbeManager struct {
 	stopOnce sync.Once
 
 	// Statistics aggregation
-	statsChan chan ProbeEvent
+	statsChan chan probeEvent
 
 	// Shared resources
 	handle       *pcap.Handle
 	outputChan   chan outputMsg
-	transmitChan chan TransmitEvent
+	transmitChan chan transmitEvent
 	ptrManager   *ptr.PtrManager
 	asnManager   *asn.ASNManager
 
@@ -135,9 +135,9 @@ func newProbeManager(ctx context.Context, cfg Config) (*ProbeManager, error) {
 		wg:   sync.WaitGroup{},
 		stop: make(chan struct{}),
 
-		statsChan:    make(chan ProbeEvent, 100),
+		statsChan:    make(chan probeEvent, 100),
 		outputChan:   make(chan outputMsg, 100),
-		transmitChan: make(chan TransmitEvent, 100),
+		transmitChan: make(chan transmitEvent, 100),
 		ptrManager:   ptr.NewPtrManager(),
 		asnManager:   asn.NewASNManager(),
 
@@ -279,7 +279,7 @@ func (pm *ProbeManager) addProbe(probeIndex uint16) error {
 	p.cfg = &pm.probeConfig
 	p.target = &pm.probeTarget
 	p.transmitChan = pm.transmitChan
-	p.responseChan = make(chan ResponseEvent, 100)
+	p.responseChan = make(chan responseEvent, 100)
 	p.statsChan = pm.statsChan
 	p.stop = pm.stop
 	if pm.discovery.enabled {

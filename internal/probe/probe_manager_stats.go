@@ -48,10 +48,10 @@ func (pm *ProbeManager) statsProcessor() {
 	}
 	pm.stats.TTLCache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[TTLCacheKey, TTLCacheValue]) {
 		if reason == ttlcache.EvictionReasonExpired {
-			pm.statsChan <- ProbeEvent{
+			pm.statsChan <- probeEvent{
 				ProbeID:   item.Key().ProbeID,
 				EventType: "timeout",
-				Data: &ProbeEventDataTimeout{
+				Data: &probeEventDataTimeout{
 					ProbeNum: item.Key().ProbeNum,
 					SentTime: item.Value().SentTime,
 					TTL:      item.Key().TTL,
@@ -82,12 +82,12 @@ func (pm *ProbeManager) statsProcessor() {
 			// Decide if/when to output to TUI/JSON
 			switch event.EventType {
 			case "sent":
-				if data, ok := event.Data.(*ProbeEventDataSent); ok {
+				if data, ok := event.Data.(*probeEventDataSent); ok {
 					pm.updateSentStats(event.ProbeID, data)
 					pm.notifyOutput(event.ProbeID, data.TTL)
 				}
 			case "received":
-				if data, ok := event.Data.(*ProbeEventDataReceived); ok {
+				if data, ok := event.Data.(*probeEventDataReceived); ok {
 					pm.updateReceivedStats(event.ProbeID, data)
 					if data.Flag != "TTL" {
 						deleted := pm.pruneHopsBeyondDestinationTTL(event.ProbeID, data.TTL)
@@ -102,12 +102,12 @@ func (pm *ProbeManager) statsProcessor() {
 					pm.notifyOutput(event.ProbeID, data.TTL)
 				}
 			case "timeout":
-				if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
+				if data, ok := event.Data.(*probeEventDataTimeout); ok {
 					pm.updateTimeoutStats(event.ProbeID, data)
 					pm.notifyOutput(event.ProbeID, data.TTL)
 				}
 			case "iteration_complete":
-				if data, ok := event.Data.(*ProbeEventDataIterationComplete); ok {
+				if data, ok := event.Data.(*probeEventDataIterationComplete); ok {
 					// Output the completed probe run
 					pm.outputProbeRun(event.ProbeID, data)
 				}
@@ -133,12 +133,12 @@ func (pm *ProbeManager) statsProcessor() {
 					// Process remaining events
 					switch event.EventType {
 					case "sent":
-						if data, ok := event.Data.(*ProbeEventDataSent); ok {
+						if data, ok := event.Data.(*probeEventDataSent); ok {
 							pm.updateSentStats(event.ProbeID, data)
 							pm.notifyOutput(event.ProbeID, data.TTL)
 						}
 					case "received":
-						if data, ok := event.Data.(*ProbeEventDataReceived); ok {
+						if data, ok := event.Data.(*probeEventDataReceived); ok {
 							pm.updateReceivedStats(event.ProbeID, data)
 							if data.Flag != "TTL" {
 								deleted := pm.pruneHopsBeyondDestinationTTL(event.ProbeID, data.TTL)
@@ -153,7 +153,7 @@ func (pm *ProbeManager) statsProcessor() {
 							pm.notifyOutput(event.ProbeID, data.TTL)
 						}
 					case "timeout":
-						if data, ok := event.Data.(*ProbeEventDataTimeout); ok {
+						if data, ok := event.Data.(*probeEventDataTimeout); ok {
 							pm.updateTimeoutStats(event.ProbeID, data)
 							pm.notifyOutput(event.ProbeID, data.TTL)
 						}
@@ -174,7 +174,7 @@ func (pm *ProbeManager) statsProcessor() {
 	}
 }
 
-func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent) {
+func (pm *ProbeManager) updateSentStats(probeID uint16, data *probeEventDataSent) {
 	pm.stats.Mutex.Lock()
 	defer pm.stats.Mutex.Unlock()
 
@@ -223,7 +223,7 @@ func (pm *ProbeManager) updateSentStats(probeID uint16, data *ProbeEventDataSent
 	probeStats.Hops[data.TTL].Sent++
 }
 
-func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventDataReceived) {
+func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *probeEventDataReceived) {
 	pm.stats.Mutex.Lock()
 	defer pm.stats.Mutex.Unlock()
 
@@ -349,7 +349,7 @@ func (pm *ProbeManager) updateReceivedStats(probeID uint16, data *ProbeEventData
 	ipStats.StdDev = calculateStdDev(ipStats.Sum, ipStats.SumSquares, ipStats.Responses)
 }
 
-func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *ProbeEventDataTimeout) {
+func (pm *ProbeManager) updateTimeoutStats(probeID uint16, data *probeEventDataTimeout) {
 	pm.stats.Mutex.Lock()
 	defer pm.stats.Mutex.Unlock()
 
@@ -475,7 +475,7 @@ func (pm *ProbeManager) notifyOutput(probeID uint16, ttl uint8) {
 }
 
 // Outputs the completed ProbeRun for a given probeID and iteration
-func (pm *ProbeManager) outputProbeRun(probeID uint16, data *ProbeEventDataIterationComplete) {
+func (pm *ProbeManager) outputProbeRun(probeID uint16, data *probeEventDataIterationComplete) {
 	// Convert current ProbeStats to ProbeRun format for this iteration
 	pm.stats.Mutex.RLock()
 	probeStats, exists := pm.stats.Probes[probeID]

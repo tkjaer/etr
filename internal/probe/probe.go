@@ -21,14 +21,14 @@ type target struct {
 	etherType   layers.EthernetType
 }
 
-type TransmitEvent struct {
+type transmitEvent struct {
 	Buffer   gopacket.SerializeBuffer
 	ProbeID  uint16
 	ProbeNum uint
 	TTL      uint8
 }
 
-type ResponseEvent struct {
+type responseEvent struct {
 	ProbeNum uint
 	TTL      uint8
 	Flag     string
@@ -143,9 +143,9 @@ type Probe struct {
 	probeID       uint16
 	cfg           *Config
 	target        *target
-	transmitChan  chan TransmitEvent
-	responseChan  chan ResponseEvent
-	statsChan     chan ProbeEvent
+	transmitChan  chan transmitEvent
+	responseChan  chan responseEvent
+	statsChan     chan probeEvent
 	stop          chan struct{}
 	discoveryStop chan struct{} // closed to retire this probe during discovery
 	wg            *sync.WaitGroup
@@ -289,7 +289,7 @@ func (p *Probe) Run() {
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
-						p.transmitChan <- TransmitEvent{
+						p.transmitChan <- transmitEvent{
 							Buffer:   buf,
 							ProbeID:  p.probeID,
 							ProbeNum: uint(n % 20),
@@ -310,7 +310,7 @@ func (p *Probe) Run() {
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
-						p.transmitChan <- TransmitEvent{
+						p.transmitChan <- transmitEvent{
 							Buffer:   buf,
 							ProbeID:  p.probeID,
 							ProbeNum: uint(n % 20),
@@ -342,7 +342,7 @@ func (p *Probe) Run() {
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
-						p.transmitChan <- TransmitEvent{
+						p.transmitChan <- transmitEvent{
 							Buffer:   buf,
 							ProbeID:  p.probeID,
 							ProbeNum: uint(n % 20),
@@ -363,7 +363,7 @@ func (p *Probe) Run() {
 						if err != nil {
 							slog.Error("Failed to serialize layers", "error", err)
 						}
-						p.transmitChan <- TransmitEvent{
+						p.transmitChan <- transmitEvent{
 							Buffer:   buf,
 							ProbeID:  p.probeID,
 							ProbeNum: uint(n % 20),
@@ -395,10 +395,10 @@ func (p *Probe) Run() {
 		}
 
 		// Notify that this iteration is complete
-		p.statsChan <- ProbeEvent{
+		p.statsChan <- probeEvent{
 			ProbeID:   p.probeID,
 			EventType: "iteration_complete",
-			Data: &ProbeEventDataIterationComplete{
+			Data: &probeEventDataIterationComplete{
 				ProbeNum:  uint(n),
 				Timestamp: time.Now(),
 			},
@@ -409,7 +409,7 @@ func (p *Probe) Run() {
 	slog.Debug("Probe finished sending all probes", "probe_id", p.probeID)
 
 	// Notify stats processor that this probe is complete
-	p.statsChan <- ProbeEvent{
+	p.statsChan <- probeEvent{
 		ProbeID:   p.probeID,
 		EventType: "complete",
 		Data:      nil,

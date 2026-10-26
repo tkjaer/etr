@@ -25,10 +25,10 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 			// All valid received probes will have a TTL.
 			if ttl > 0 {
 				if p := pm.getProbe(probeID); p != nil {
-					stats := ProbeEvent{
+					stats := probeEvent{
 						ProbeID:   probeID,
 						EventType: "received",
-						Data: &ProbeEventDataReceived{
+						Data: &probeEventDataReceived{
 							ProbeNum:  probeNum,
 							TTL:       ttl,
 							Timestamp: timestamp,
@@ -36,7 +36,7 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 							Flag:      flag,
 						},
 					}
-					resp := ResponseEvent{
+					resp := responseEvent{
 						ProbeNum: probeNum,
 						TTL:      ttl,
 						Flag:     flag,
@@ -54,7 +54,7 @@ func (pm *ProbeManager) recvProbes(stop chan struct{}) {
 // deliverResponse passes a received response to the stats processor and to
 // the probe. It never blocks once stop is closed, and returns false if stop
 // was closed before the stats processor took the event.
-func deliverResponse(p *Probe, stop <-chan struct{}, stats ProbeEvent, resp ResponseEvent) bool {
+func deliverResponse(p *Probe, stop <-chan struct{}, stats probeEvent, resp responseEvent) bool {
 	// The stats processor stops reading once stop is closed.
 	select {
 	case p.statsChan <- stats:
