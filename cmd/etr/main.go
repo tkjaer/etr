@@ -65,31 +65,25 @@ func run() error {
 		"parallel_probes", args.ParallelProbes,
 	)
 
+	tracer, err := probe.New(probe.ConfigFromArgs(args))
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	pm, err := probe.NewProbeManager(ctx, probe.ConfigFromArgs(args))
-	if err != nil {
-		return fmt.Errorf("failed to create probe manager: %w", err)
-	}
 
 	sigChan := make(chan os.Signal, 2)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigChan)
 
-	outputs, tui := newOutputs(args)
-	if tui != nil {
-		go func() {
-			<-tui.QuitChan()
-			cancel()
-		}()
-	}
+	outputs := newOutputs(args, cancel)
 
 	var res *probe.Result
 	done := make(chan error, 1)
 	go func() {
 		var err error
-		res, err = pm.Run(ctx, outputs)
+		res, err = tracer.Run(ctx, outputs)
 		outputs.Close()
 		done <- err
 	}()
@@ -158,7 +152,7 @@ func waitForCompletion(stop context.CancelFunc, done <-chan error, sigChan <-cha
 }
 
 func finalize(err error) error {
-	if err == nil {
+	if err == nil || errors.Is(err, context.Canceled) {
 		slog.Debug("ECMP traceroute completed")
 		return nil
 	}

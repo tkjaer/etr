@@ -8,3 +8,8 @@ type Sink interface {
 	CompleteProbeRun(run *ProbeRun)
 	UpdateDiscoveryStats(stats DiscoveryStats)
 }
+
+// Starter is implemented by sinks that need to start once setup has succeeded
+type Starter interface {
+	Start()
+}

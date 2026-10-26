@@ -128,13 +128,8 @@ type ProbeManager struct {
 	discovery   discoveryState
 }
 
-// NewProbeManager creates and initializes a probe manager
-func NewProbeManager(ctx context.Context, cfg Config) (*ProbeManager, error) {
-	cfg = cfg.withDefaults()
-	if err := cfg.validate(); err != nil {
-		return nil, err
-	}
-
+// newProbeManager sets up a single run for a validated cfg
+func newProbeManager(ctx context.Context, cfg Config) (*ProbeManager, error) {
 	pm := &ProbeManager{
 		// Coordination
 		wg:   sync.WaitGroup{},
@@ -328,10 +323,8 @@ func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 	}()
 }
 
-// Run executes all probes in parallel and sends results to sink until the
-// probes finish or ctx is cancelled. A nil sink discards results. Run does not
-// close the sink.
-func (pm *ProbeManager) Run(ctx context.Context, sink Sink) (*Result, error) {
+// run executes all probes in parallel until they finish or ctx is cancelled
+func (pm *ProbeManager) run(ctx context.Context, sink Sink) (*Result, error) {
 	// Close pcap handle on run completion
 	defer pm.handle.Close()
 

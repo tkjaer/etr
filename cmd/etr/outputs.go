@@ -1,14 +1,28 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/tkjaer/etr/internal/config"
 	"github.com/tkjaer/etr/internal/output"
 )
 
-func newOutputs(args config.Args) (*output.OutputManager, *output.BubbleTUIOutput) {
-	om := &output.OutputManager{}
+// cliOutputs creates the command-line outputs when the run starts
+type cliOutputs struct {
+	*output.OutputManager
+	args   config.Args
+	cancel context.CancelFunc
+}
+
+func newOutputs(args config.Args, cancel context.CancelFunc) *cliOutputs {
+	return &cliOutputs{OutputManager: &output.OutputManager{}, args: args, cancel: cancel}
+}
+
+// Start creates the outputs; quitting the TUI cancels the run
+func (o *cliOutputs) Start() {
+	args := o.args
+	om := o.OutputManager
 
 	var tui *output.BubbleTUIOutput
 
@@ -44,5 +58,10 @@ func newOutputs(args config.Args) (*output.OutputManager, *output.BubbleTUIOutpu
 		}
 	}
 
-	return om, tui
+	if tui != nil {
+		go func() {
+			<-tui.QuitChan()
+			o.cancel()
+		}()
+	}
 }
