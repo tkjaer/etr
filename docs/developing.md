@@ -65,3 +65,17 @@ If you need to skip hooks (not recommended):
 ```bash
 git commit --no-verify
 ```
+
+## Using ETR as a Library
+
+The probing engine lives in `pkg/etr` and can be imported by other Go
+projects:
+
+```sh
+go get github.com/tkjaer/etr/pkg/etr
+```
+
+Create a `Tracer` from an `etr.Config` and pass a `Sink` to `Run` to receive
+results. Building needs libpcap, and running needs raw packet access (usually
+root). See the [package docs](https://pkg.go.dev/github.com/tkjaer/etr/pkg/etr)
+and `pkg/etr/example_test.go` for a complete example.

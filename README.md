@@ -159,5 +159,6 @@ MIT License - see LICENSE file for details.
 
 - [Installation details](docs/install.md)
 - [Contributing](CONTRIBUTING.md)
+- [Using ETR as a library](docs/developing.md#using-etr-as-a-library)
 - [Probe encoding design](docs/probe-encoding-design.md)
 - [Reusable APT Pages workflow](docs/apt-repo-workflow.md)
