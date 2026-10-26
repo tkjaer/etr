@@ -86,7 +86,7 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 			}
 
 			if pm.shouldStopDiscoveryNoLock() {
-				pm.stopOnce.Do(func() { close(pm.stop) })
+				pm.signalStop()
 				return
 			}
 

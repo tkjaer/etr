@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,6 +70,9 @@ func run() error {
 		return fmt.Errorf("failed to create probe manager: %w", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	sigChan := make(chan os.Signal, 2)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigChan)
@@ -77,18 +81,18 @@ func run() error {
 	if tui != nil {
 		go func() {
 			<-tui.QuitChan()
-			pm.Stop()
+			cancel()
 		}()
 	}
 
 	done := make(chan error, 1)
 	go func() {
-		err := pm.Run(outputs)
+		err := pm.Run(ctx, outputs)
 		outputs.Close()
 		done <- err
 	}()
 
-	runErr := waitForCompletion(pm, done, sigChan)
+	runErr := waitForCompletion(cancel, done, sigChan)
 
 	if args.Discover {
 		s := pm.GetDiscoverySummary()
@@ -131,13 +135,13 @@ func run() error {
 	return runErr
 }
 
-func waitForCompletion(pm *probe.ProbeManager, done <-chan error, sigChan <-chan os.Signal) error {
+func waitForCompletion(stop context.CancelFunc, done <-chan error, sigChan <-chan os.Signal) error {
 	select {
 	case err := <-done:
 		return finalize(err)
 	case <-sigChan:
 		slog.Debug("Received interrupt signal, stopping...")
-		pm.Stop()
+		stop()
 		select {
 		case err := <-done:
 			return finalize(err)

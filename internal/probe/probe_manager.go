@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/netip"
@@ -342,11 +343,14 @@ func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 }
 
 // Run executes all probes in parallel and sends results to sink until the
-// probes finish or Stop is called. A nil sink discards results. Run does not
+// probes finish or ctx is cancelled. A nil sink discards results. Run does not
 // close the sink.
-func (pm *ProbeManager) Run(sink Sink) error {
+func (pm *ProbeManager) Run(ctx context.Context, sink Sink) error {
 	// Close pcap handle on run completion
 	defer pm.handle.Close()
+
+	stopOnCancel := context.AfterFunc(ctx, pm.signalStop)
+	defer stopOnCancel()
 
 	// Start transmit routine
 	pm.wg.Add(1)
@@ -386,12 +390,10 @@ func (pm *ProbeManager) Run(sink Sink) error {
 		close(probesDone)
 	}()
 
-	// Wait for all probes to finish. Stop makes them exit early.
+	// Wait for all probes to finish. Cancelling ctx makes them exit early.
 	<-probesDone
 	slog.Debug("All probes finished, signaling stop for cleanup")
-	pm.stopOnce.Do(func() {
-		close(pm.stop)
-	})
+	pm.signalStop()
 	// Wait for other goroutines (transmit, recv, stats) to exit
 	pm.wg.Wait()
 
@@ -409,13 +411,12 @@ func (pm *ProbeManager) Run(sink Sink) error {
 	return nil
 }
 
-// Stop terminates all probes and cleans up resources
-func (pm *ProbeManager) Stop() {
+// signalStop tells all goroutines to stop
+func (pm *ProbeManager) signalStop() {
 	pm.stopOnce.Do(func() {
 		slog.Debug("Stopping ProbeManager")
 		close(pm.stop)
 	})
-	pm.wg.Wait()
 }
 
 // outputRoutine forwards output messages to the sink
