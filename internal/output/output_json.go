@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/tkjaer/etr/internal/probe"
+	"github.com/tkjaer/etr/pkg/etr"
 )
 
 // JSONOutput writes probe data to a file or stdout when complete
@@ -36,11 +36,11 @@ func NewJSONOutput(filename string) (*JSONOutput, error) {
 	}, nil
 }
 
-func (j *JSONOutput) UpdateHop(probeID uint16, ttl uint8, hopStats probe.HopStats) {
+func (j *JSONOutput) UpdateHop(probeID uint16, ttl uint8, hopStats etr.HopStats) {
 	// No-op for JSON, only output on complete run
 }
 
-func (j *JSONOutput) CompleteProbe(probeID uint16, stats probe.ProbeStats) {
+func (j *JSONOutput) CompleteProbe(probeID uint16, stats etr.ProbeStats) {
 	// No-op for JSON, we use CompleteProbeRun instead
 }
 
@@ -48,7 +48,7 @@ func (j *JSONOutput) DeleteHops(probeID uint16, ttls []uint8) {
 	// No-op for JSON, as it doesn't maintain state
 }
 
-func (j *JSONOutput) CompleteProbeRun(run *probe.ProbeRun) {
+func (j *JSONOutput) CompleteProbeRun(run *etr.ProbeRun) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 
@@ -56,7 +56,7 @@ func (j *JSONOutput) CompleteProbeRun(run *probe.ProbeRun) {
 	_ = j.enc.Encode(run)
 }
 
-func (j *JSONOutput) UpdateDiscoveryStats(_ probe.DiscoveryStats) {
+func (j *JSONOutput) UpdateDiscoveryStats(_ etr.DiscoveryStats) {
 	// No-op for JSON output
 }
 

@@ -13,7 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/tkjaer/etr/internal/probe"
+	"github.com/tkjaer/etr/pkg/etr"
 )
 
 // BubbleTUIOutput is an MTR-like TUI using Bubble Tea
@@ -39,7 +39,7 @@ type tickMsg time.Time
 // tuiModel holds the Bubble Tea model state
 type tuiModel struct {
 	// Data
-	probes          map[uint16]*probe.ProbeStats
+	probes          map[uint16]*etr.ProbeStats
 	mu              sync.RWMutex
 	destination     string
 	protocol        string
@@ -55,7 +55,7 @@ type tuiModel struct {
 	discoverHops   bool
 	discoMode      bool
 	discoFrame     int
-	discoveryStats probe.DiscoveryStats
+	discoveryStats etr.DiscoveryStats
 
 	// UI state
 	width         int
@@ -354,7 +354,7 @@ func NewBubbleTUIOutput(info Info) *BubbleTUIOutput {
 	quitCh := make(chan struct{})
 
 	model := &tuiModel{
-		probes:          make(map[uint16]*probe.ProbeStats),
+		probes:          make(map[uint16]*etr.ProbeStats),
 		destination:     info.Destination,
 		protocol:        info.Protocol,
 		srcPort:         info.SrcPort,
@@ -375,11 +375,11 @@ func NewBubbleTUIOutput(info Info) *BubbleTUIOutput {
 	}
 
 	// Initialize all probe stats
-	probes := make(map[uint16]*probe.ProbeStats)
+	probes := make(map[uint16]*etr.ProbeStats)
 	for i := uint16(0); i < info.ParallelProbes; i++ {
-		probes[i] = &probe.ProbeStats{
+		probes[i] = &etr.ProbeStats{
 			ProbeID: i,
-			Hops:    make(map[uint8]*probe.HopStats),
+			Hops:    make(map[uint8]*etr.HopStats),
 		}
 	}
 	model.probes = probes
@@ -428,7 +428,7 @@ func (b *BubbleTUIOutput) QuitChan() <-chan struct{} {
 }
 
 // UpdateHop implements the Output interface
-func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats probe.HopStats) {
+func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats etr.HopStats) {
 	// Snapshot pointers so we don't hold b.mu while updating model state.
 	b.mu.RLock()
 	model := b.model
@@ -441,14 +441,14 @@ func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats probe.Ho
 	model.mu.Lock()
 	if _, exists := model.probes[probeID]; !exists {
 		// Auto-create probe entry for dynamically spawned discovery probes
-		model.probes[probeID] = &probe.ProbeStats{
+		model.probes[probeID] = &etr.ProbeStats{
 			ProbeID: probeID,
-			Hops:    make(map[uint8]*probe.HopStats),
+			Hops:    make(map[uint8]*etr.HopStats),
 		}
 	}
 	if ps, exists := model.probes[probeID]; exists {
 		if ps.Hops == nil {
-			ps.Hops = make(map[uint8]*probe.HopStats)
+			ps.Hops = make(map[uint8]*etr.HopStats)
 		}
 		hopCopy := hopStats
 		ps.Hops[ttl] = &hopCopy
@@ -464,7 +464,7 @@ func (b *BubbleTUIOutput) UpdateHop(probeID uint16, ttl uint8, hopStats probe.Ho
 }
 
 // CompleteProbe implements the Output interface
-func (b *BubbleTUIOutput) CompleteProbe(probeID uint16, stats probe.ProbeStats) {
+func (b *BubbleTUIOutput) CompleteProbe(probeID uint16, stats etr.ProbeStats) {
 	// Updates are handled through UpdateHop
 }
 
@@ -512,12 +512,12 @@ func (b *BubbleTUIOutput) shouldSignal() bool {
 	return false
 }
 
-func (b *BubbleTUIOutput) CompleteProbeRun(run *probe.ProbeRun) {
+func (b *BubbleTUIOutput) CompleteProbeRun(run *etr.ProbeRun) {
 	// No special handling needed — stats are tracked via UpdateHop
 }
 
 // UpdateDiscoveryStats receives live discovery progress from the probe manager.
-func (b *BubbleTUIOutput) UpdateDiscoveryStats(stats probe.DiscoveryStats) {
+func (b *BubbleTUIOutput) UpdateDiscoveryStats(stats etr.DiscoveryStats) {
 	b.mu.RLock()
 	model := b.model
 	updateCh := b.updateCh
@@ -757,7 +757,7 @@ func (m *tuiModel) renderDiscoveryProgress() string {
 	// Count unique paths across all probes
 	uniquePaths := make(map[string]struct{})
 	for _, ps := range m.probes {
-		hash := probe.CalculatePathHashFromProbe(ps, m.hashAlgorithm)
+		hash := etr.CalculatePathHashFromProbe(ps, m.hashAlgorithm)
 		if hash != "" && hash != "00000000" {
 			uniquePaths[hash] = struct{}{}
 		}
@@ -800,7 +800,7 @@ func (m *tuiModel) renderNormalSummary(maxHeight int) string {
 	pathFirstProbe := make(map[string]uint16) // hash -> lowest probeID
 	pathCount := make(map[string]int)
 	for id, ps := range m.probes {
-		hash := probe.CalculatePathHashFromProbe(ps, m.hashAlgorithm)
+		hash := etr.CalculatePathHashFromProbe(ps, m.hashAlgorithm)
 		pathCount[hash]++
 		if first, exists := pathFirstProbe[hash]; !exists || id < first {
 			pathFirstProbe[hash] = id
@@ -1113,7 +1113,7 @@ type probeAggregateStats struct {
 }
 
 // calculateProbeAggregateStats calculates aggregate stats for a probe
-func calculateProbeAggregateStats(ps *probe.ProbeStats, algorithm string) probeAggregateStats {
+func calculateProbeAggregateStats(ps *etr.ProbeStats, algorithm string) probeAggregateStats {
 	stats := probeAggregateStats{
 		NumHops: len(ps.Hops),
 	}
@@ -1176,7 +1176,7 @@ func calculateProbeAggregateStats(ps *probe.ProbeStats, algorithm string) probeA
 	}
 
 	// Calculate path hash
-	stats.PathHash = probe.CalculatePathHashFromProbe(ps, algorithm)
+	stats.PathHash = etr.CalculatePathHashFromProbe(ps, algorithm)
 
 	return stats
 }
