@@ -15,7 +15,7 @@ type Result struct {
 	Discovery DiscoverySummary
 }
 
-// Holds stats for a single IP at a given hop
+// HopIPStats holds stats for a single IP at a given hop
 type HopIPStats struct {
 	Min        int64   `json:"min"`         // RTT in microseconds
 	Max        int64   `json:"max"`         // RTT in microseconds
@@ -31,7 +31,7 @@ type HopIPStats struct {
 	ASN        string  `json:"asn"`         // AS number for this IP
 }
 
-// Holds stats for a single hop (TTL)
+// HopStats holds stats for a single hop (TTL)
 type HopStats struct {
 	IPs       map[string]*HopIPStats `json:"ips"`        // IP string -> stats
 	CurrentIP string                 `json:"current_ip"` // Most recent IP seen at this hop
@@ -50,7 +50,7 @@ type DiscoveryStats struct {
 	NoNewPathsTarget uint
 }
 
-// Holds stats for a single probe instance
+// ProbeStats holds stats for a single probe instance
 type ProbeStats struct {
 	ProbeID uint16              `json:"probe_id"`
 	Hops    map[uint8]*HopStats `json:"hops"` // TTL -> hop stats
