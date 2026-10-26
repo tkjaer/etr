@@ -188,7 +188,7 @@ func NewProbeManager(ctx context.Context, cfg Config) (*ProbeManager, error) {
 	return pm, nil
 }
 
-// init initializes the probe manager by setting up routes, pcap handles, and probes
+// init sets up the route, pcap handle, and probes
 func (pm *ProbeManager) init(ctx context.Context) (err error) {
 	pm.probeTarget, err = resolveTarget(ctx, pm.probeConfig)
 	if err != nil {
@@ -265,20 +265,6 @@ func (pm *ProbeManager) init(ctx context.Context) (err error) {
 		}
 	}
 
-	// Start stats processor
-	pm.wg.Add(1)
-	go func() {
-		defer pm.wg.Done()
-		pm.statsProcessor()
-	}()
-
-	// Start receiving routine
-	pm.wg.Add(1)
-	go func() {
-		defer pm.wg.Done()
-		pm.recvProbes(pm.stop)
-	}()
-
 	return nil
 }
 
@@ -351,6 +337,20 @@ func (pm *ProbeManager) Run(ctx context.Context, sink Sink) (*Result, error) {
 
 	stopOnCancel := context.AfterFunc(ctx, pm.signalStop)
 	defer stopOnCancel()
+
+	// Start stats processor
+	pm.wg.Add(1)
+	go func() {
+		defer pm.wg.Done()
+		pm.statsProcessor()
+	}()
+
+	// Start receiving routine
+	pm.wg.Add(1)
+	go func() {
+		defer pm.wg.Done()
+		pm.recvProbes(pm.stop)
+	}()
 
 	// Start transmit routine
 	pm.wg.Add(1)
