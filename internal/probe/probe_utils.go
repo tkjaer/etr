@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -40,7 +41,7 @@ func decodeTTLAndProbe(seq uint32) (ttl uint8, probeNum uint) {
 
 // getDestinationIP resolves dest if necessary and returns the first address
 // matching family.
-func getDestinationIP(dest string, family Family) (netip.Addr, error) {
+func getDestinationIP(ctx context.Context, dest string, family Family) (netip.Addr, error) {
 	matches := func(ip netip.Addr) bool {
 		switch family {
 		case FamilyIPv4:
@@ -59,7 +60,7 @@ func getDestinationIP(dest string, family Family) (netip.Addr, error) {
 		return d, nil
 	}
 
-	lookup, err := net.LookupHost(dest)
+	lookup, err := net.DefaultResolver.LookupHost(ctx, dest)
 	if err != nil {
 		return netip.Addr{}, err
 	}

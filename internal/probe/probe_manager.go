@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/netip"
@@ -127,13 +128,8 @@ type ProbeManager struct {
 	discovery   discoveryState
 }
 
-// NewProbeManager creates and initializes a probe manager
-func NewProbeManager(cfg Config) (*ProbeManager, error) {
-	cfg = cfg.withDefaults()
-	if err := cfg.validate(); err != nil {
-		return nil, err
-	}
-
+// newProbeManager sets up a single run for a validated cfg
+func newProbeManager(ctx context.Context, cfg Config) (*ProbeManager, error) {
 	pm := &ProbeManager{
 		// Coordination
 		wg:   sync.WaitGroup{},
@@ -179,7 +175,7 @@ func NewProbeManager(cfg Config) (*ProbeManager, error) {
 		}
 	}
 
-	err := pm.init()
+	err := pm.init(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -187,9 +183,9 @@ func NewProbeManager(cfg Config) (*ProbeManager, error) {
 	return pm, nil
 }
 
-// init initializes the probe manager by setting up routes, pcap handles, and probes
-func (pm *ProbeManager) init() (err error) {
-	pm.probeTarget, err = resolveTarget(pm.probeConfig)
+// init sets up the route, pcap handle, and probes
+func (pm *ProbeManager) init(ctx context.Context) (err error) {
+	pm.probeTarget, err = resolveTarget(ctx, pm.probeConfig)
 	if err != nil {
 		return err
 	}
@@ -264,20 +260,6 @@ func (pm *ProbeManager) init() (err error) {
 		}
 	}
 
-	// Start stats processor
-	pm.wg.Add(1)
-	go func() {
-		defer pm.wg.Done()
-		pm.statsProcessor()
-	}()
-
-	// Start receiving routine
-	pm.wg.Add(1)
-	go func() {
-		defer pm.wg.Done()
-		pm.recvProbes(pm.stop)
-	}()
-
 	return nil
 }
 
@@ -341,12 +323,27 @@ func (pm *ProbeManager) spawnDiscoveryProbe(probeID uint16) {
 	}()
 }
 
-// Run executes all probes in parallel and sends results to sink until the
-// probes finish or Stop is called. A nil sink discards results. Run does not
-// close the sink.
-func (pm *ProbeManager) Run(sink Sink) error {
+// run executes all probes in parallel until they finish or ctx is cancelled
+func (pm *ProbeManager) run(ctx context.Context, sink Sink) (*Result, error) {
 	// Close pcap handle on run completion
 	defer pm.handle.Close()
+
+	stopOnCancel := context.AfterFunc(ctx, pm.signalStop)
+	defer stopOnCancel()
+
+	// Start stats processor
+	pm.wg.Add(1)
+	go func() {
+		defer pm.wg.Done()
+		pm.statsProcessor()
+	}()
+
+	// Start receiving routine
+	pm.wg.Add(1)
+	go func() {
+		defer pm.wg.Done()
+		pm.recvProbes(pm.stop)
+	}()
 
 	// Start transmit routine
 	pm.wg.Add(1)
@@ -386,12 +383,10 @@ func (pm *ProbeManager) Run(sink Sink) error {
 		close(probesDone)
 	}()
 
-	// Wait for all probes to finish. Stop makes them exit early.
+	// Wait for all probes to finish. Cancelling ctx makes them exit early.
 	<-probesDone
 	slog.Debug("All probes finished, signaling stop for cleanup")
-	pm.stopOnce.Do(func() {
-		close(pm.stop)
-	})
+	pm.signalStop()
 	// Wait for other goroutines (transmit, recv, stats) to exit
 	pm.wg.Wait()
 
@@ -406,16 +401,15 @@ func (pm *ProbeManager) Run(sink Sink) error {
 	slog.Debug("Waiting for output routine")
 	outputWg.Wait()
 
-	return nil
+	return &Result{Discovery: pm.discoverySummary()}, nil
 }
 
-// Stop terminates all probes and cleans up resources
-func (pm *ProbeManager) Stop() {
+// signalStop tells all goroutines to stop
+func (pm *ProbeManager) signalStop() {
 	pm.stopOnce.Do(func() {
 		slog.Debug("Stopping ProbeManager")
 		close(pm.stop)
 	})
-	pm.wg.Wait()
 }
 
 // outputRoutine forwards output messages to the sink

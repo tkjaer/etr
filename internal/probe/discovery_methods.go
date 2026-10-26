@@ -86,7 +86,7 @@ func (pm *ProbeManager) TrackDiscoveryPath(probeID uint16, probeNum uint, pathHa
 			}
 
 			if pm.shouldStopDiscoveryNoLock() {
-				pm.stopOnce.Do(func() { close(pm.stop) })
+				pm.signalStop()
 				return
 			}
 
@@ -187,8 +187,8 @@ type DiscoverySummary struct {
 	Paths              []DiscoveredPath `json:"paths"`
 }
 
-// GetDiscoverySummary returns end-of-run discovery statistics.
-func (pm *ProbeManager) GetDiscoverySummary() DiscoverySummary {
+// discoverySummary returns end-of-run discovery statistics.
+func (pm *ProbeManager) discoverySummary() DiscoverySummary {
 	pm.discoveryMu.RLock()
 	defer pm.discoveryMu.RUnlock()
 

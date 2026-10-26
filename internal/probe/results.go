@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+// Result holds what a run found, beyond what was sent to the sink
+type Result struct {
+	Discovery DiscoverySummary
+}
+
 // Holds stats for a single IP at a given hop
 type HopIPStats struct {
 	Min        int64   `json:"min"`         // RTT in microseconds

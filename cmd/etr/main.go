@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,34 +65,36 @@ func run() error {
 		"parallel_probes", args.ParallelProbes,
 	)
 
-	pm, err := probe.NewProbeManager(probe.ConfigFromArgs(args))
+	tracer, err := probe.New(probe.ConfigFromArgs(args))
 	if err != nil {
-		return fmt.Errorf("failed to create probe manager: %w", err)
+		return err
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	sigChan := make(chan os.Signal, 2)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigChan)
 
-	outputs, tui := newOutputs(args)
-	if tui != nil {
-		go func() {
-			<-tui.QuitChan()
-			pm.Stop()
-		}()
-	}
+	outputs := newOutputs(args, cancel)
 
+	var res *probe.Result
 	done := make(chan error, 1)
 	go func() {
-		err := pm.Run(outputs)
+		var err error
+		res, err = tracer.Run(ctx, outputs)
 		outputs.Close()
 		done <- err
 	}()
 
-	runErr := waitForCompletion(pm, done, sigChan)
+	runErr := waitForCompletion(cancel, done, sigChan)
+	if errors.Is(runErr, errForcedExit) {
+		return runErr
+	}
 
-	if args.Discover {
-		s := pm.GetDiscoverySummary()
+	if args.Discover && res != nil {
+		s := res.Discovery
 		if s.Enabled {
 			var flowStr string
 			if s.FlowBudget == 0 {
@@ -131,13 +134,13 @@ func run() error {
 	return runErr
 }
 
-func waitForCompletion(pm *probe.ProbeManager, done <-chan error, sigChan <-chan os.Signal) error {
+func waitForCompletion(stop context.CancelFunc, done <-chan error, sigChan <-chan os.Signal) error {
 	select {
 	case err := <-done:
 		return finalize(err)
 	case <-sigChan:
 		slog.Debug("Received interrupt signal, stopping...")
-		pm.Stop()
+		stop()
 		select {
 		case err := <-done:
 			return finalize(err)
@@ -149,7 +152,7 @@ func waitForCompletion(pm *probe.ProbeManager, done <-chan error, sigChan <-chan
 }
 
 func finalize(err error) error {
-	if err == nil {
+	if err == nil || errors.Is(err, context.Canceled) {
 		slog.Debug("ECMP traceroute completed")
 		return nil
 	}
