@@ -2,8 +2,6 @@
 
 An MTR-like tool for discovering and analyzing ECMP (Equal-Cost Multi-Path) network routes.
 
-> **Note**: ETR is a work in progress, built as a learning project while exploring Go in a familiar (network engineering) domain. It was created out of a desire for an MTR-like tool that is ECMP-"aware" and capable of probing specific ECMP paths using consistent 5-tuple hashing. While functional and useful for network exploration, it's not yet recommended for production environments.
-
 ## Features
 
 ETR discovers multiple network paths by running parallel traceroute probes with different source ports, causing routers to select different ECMP routes. Each probe maintains a consistent 5-tuple (src IP, src port, dst IP, dst port, protocol) to repeatedly test the same path.

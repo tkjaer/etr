@@ -79,3 +79,5 @@ Create a `Tracer` from an `etr.Config` and pass a `Sink` to `Run` to receive
 results. Building needs libpcap, and running needs raw packet access (usually
 root). See the [package docs](https://pkg.go.dev/github.com/tkjaer/etr/pkg/etr)
 and `pkg/etr/example_test.go` for a complete example.
+
+The library API is new in v1.3 and may still change in future releases.
