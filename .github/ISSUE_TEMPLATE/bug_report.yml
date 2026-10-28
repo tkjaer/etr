@@ -6,105 +6,55 @@ body:
     attributes:
       value: "Please read [CONTRIBUTING.md](../../CONTRIBUTING.md) before filing an issue."
   - type: textarea
-    id: summary
+    id: what-happened
     attributes:
-      label: Summary
-      description: A clear and concise description of the problem.
+      label: What happened?
+      description: What you saw, and what you expected to see instead.
     validations:
       required: true
   - type: textarea
-    id: steps
+    id: command-output
     attributes:
-      label: Steps to reproduce
-      description: Provide step-by-step instructions.
-      placeholder: |
-        1.
-        2.
-        3.
-    validations:
-      required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behavior
-      description: What you expected to happen.
-    validations:
-      required: true
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual behavior
-      description: What actually happened.
+      label: Command and output
+      description: The full `etr` command and its output (redact sensitive data). For problems with hops, paths or probe results, the `-J` output of a single run (`-c 1 -P 1`) helps most.
+      render: shell
     validations:
       required: true
   - type: input
-    id: os
+    id: environment
     attributes:
-      label: OS
-      description: Operating system and version.
-    validations:
-      required: true
-  - type: input
-    id: version
-    attributes:
-      label: ETR version
-      description: Output of `etr -v`.
-    validations:
-      required: true
-  - type: input
-    id: command
-    attributes:
-      label: Command used
-      description: Full command line used.
+      label: ETR version and OS
+      description: Output of `etr -v`, plus your operating system and version.
+      placeholder: "etr 1.3.0 (commit: 8e2e8f8), Ubuntu 24.04"
     validations:
       required: true
   - type: markdown
     attributes:
       value: |
-        ### JSON output and packet capture
+        <details>
+        <summary><b>How to capture</b> (for problems with hops, paths or probe results)</summary>
 
-        For problems with hops, paths or probe results, a JSON run plus a packet capture of the same run makes it much easier to tell what happened on the wire. `etr -B` prints the BPF filter ETR uses internally, so tcpdump captures exactly the probe traffic.
+        `etr -B` prints the BPF filter ETR uses, so tcpdump captures only the probe traffic. Use an IP address as the destination and the same options in steps 1 and 2. Start with `-c 1 -P 1`, and only raise `-c` (probe count) or `-P` (parallel probes) if the problem doesn't show up.
 
-        Start from the command that shows the problem, with an IP address as the destination so every command targets the same host. Keep the run as small as possible: start with `-c 1 -P 1` and only raise `-c` (probe count) or `-P` (parallel probes) if the problem doesn't show up. Use the same options in steps 1 and 2.
+        1. Start a capture:
+           ```sh
+           sudo tcpdump -w etr.pcap "$(etr <options> -c 1 -P 1 <destination> -B)"
+           ```
+        2. In another terminal, run ETR with JSON output and paste the result under "Command and output":
+           ```sh
+           sudo etr <options> -c 1 -P 1 -J <destination>
+           ```
+        3. Stop the capture (Ctrl-C), display it, and paste the result below:
+           ```sh
+           tcpdump -nSv -r etr.pcap
+           ```
 
-        **1. Start a packet capture**
-
-        ```sh
-        sudo tcpdump -w etr.pcap "$(etr <options> -c 1 -P 1 <destination> -B)"
-        ```
-
-        **2. In another terminal, run ETR with JSON output**
-
-        ```sh
-        sudo etr <options> -c 1 -P 1 -J <destination>
-        ```
-
-        **3. Stop the capture (Ctrl-C) and display it**
-
-        ```sh
-        tcpdump -nSv -r etr.pcap
-        ```
-  - type: textarea
-    id: json
-    attributes:
-      label: JSON output
-      description: Output from step 2 (redact sensitive data).
-      render: json
-    validations:
-      required: false
+        </details>
   - type: textarea
     id: pcap
     attributes:
-      label: Packet capture
-      description: Output from step 3 (redact sensitive data). If you're comfortable sharing it, you can also attach `etr.pcap` compressed as `.zip` or `.gz` (GitHub doesn't accept `.pcap` directly). Attachments are publicly accessible.
-      render: shell
-    validations:
-      required: false
-  - type: textarea
-    id: logs
-    attributes:
-      label: Logs / output
-      description: Paste relevant output (redact sensitive data).
+      label: Packet capture (optional)
+      description: Output of `tcpdump -nSv -r etr.pcap` from "How to capture" above (redact sensitive data). If you're comfortable sharing it, you can also attach `etr.pcap` compressed as `.zip` or `.gz` (GitHub doesn't accept `.pcap` directly). Attachments are publicly accessible.
       render: shell
     validations:
       required: false
