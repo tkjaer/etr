@@ -28,33 +28,11 @@ body:
       placeholder: "etr 1.3.0 (commit: 8e2e8f8), Ubuntu 24.04"
     validations:
       required: true
-  - type: markdown
-    attributes:
-      value: |
-        <details>
-        <summary><b>How to capture</b> (for problems with hops, paths or probe results)</summary>
-
-        `etr -B` prints the BPF filter ETR uses, so tcpdump captures only the probe traffic. Use an IP address as the destination and the same options in steps 1 and 2. Start with `-c 1 -P 1`, and only raise `-c` (probe count) or `-P` (parallel probes) if the problem doesn't show up.
-
-        1. Start a capture:
-           ```sh
-           sudo tcpdump -w etr.pcap "$(etr <options> -c 1 -P 1 <destination> -B)"
-           ```
-        2. In another terminal, run ETR with JSON output and paste the result under "Command and output":
-           ```sh
-           sudo etr <options> -c 1 -P 1 -J <destination>
-           ```
-        3. Stop the capture (Ctrl-C), display it, and paste the result below:
-           ```sh
-           tcpdump -nSv -r etr.pcap
-           ```
-
-        </details>
   - type: textarea
     id: pcap
     attributes:
       label: Packet capture (optional)
-      description: Output of `tcpdump -nSv -r etr.pcap` from "How to capture" above (redact sensitive data). If you're comfortable sharing it, you can also attach `etr.pcap` compressed as `.zip` or `.gz` (GitHub doesn't accept `.pcap` directly). Attachments are publicly accessible.
+      description: For problems with hops, paths or probe results. Follow [Collecting a packet capture](https://github.com/tkjaer/etr/blob/main/CONTRIBUTING.md#collecting-a-packet-capture) and paste the `tcpdump -nSv -r etr.pcap` output here (redact sensitive data). If you're comfortable sharing it, you can also attach the zipped `etr.pcap`; attachments are publicly accessible.
       render: shell
     validations:
       required: false
