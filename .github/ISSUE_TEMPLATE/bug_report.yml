@@ -6,63 +6,33 @@ body:
     attributes:
       value: "Please read [CONTRIBUTING.md](../../CONTRIBUTING.md) before filing an issue."
   - type: textarea
-    id: summary
+    id: what-happened
     attributes:
-      label: Summary
-      description: A clear and concise description of the problem.
+      label: What happened?
+      description: What you saw, and what you expected to see instead.
     validations:
       required: true
   - type: textarea
-    id: steps
+    id: command-output
     attributes:
-      label: Steps to reproduce
-      description: Provide step-by-step instructions.
-      placeholder: |
-        1.
-        2.
-        3.
-    validations:
-      required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behavior
-      description: What you expected to happen.
-    validations:
-      required: true
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual behavior
-      description: What actually happened.
+      label: Command and output
+      description: The full `etr` command and its output (redact sensitive data). For problems with hops, paths or probe results, the `-J` output of a single run (`-c 1 -P 1`) helps most.
+      render: shell
     validations:
       required: true
   - type: input
-    id: os
+    id: environment
     attributes:
-      label: OS
-      description: Operating system and version.
-    validations:
-      required: true
-  - type: input
-    id: version
-    attributes:
-      label: ETR version
-      description: Output of `etr -v`.
-    validations:
-      required: true
-  - type: input
-    id: command
-    attributes:
-      label: Command used
-      description: Full command line used.
+      label: ETR version and OS
+      description: Output of `etr -v`, plus your operating system and version.
+      placeholder: "etr 1.3.0 (commit: 8e2e8f8), Ubuntu 24.04"
     validations:
       required: true
   - type: textarea
-    id: logs
+    id: pcap
     attributes:
-      label: Logs / output
-      description: Paste relevant output (redact sensitive data).
+      label: Packet capture (optional)
+      description: For problems with hops, paths or probe results. Follow [Collecting a packet capture](https://github.com/tkjaer/etr/blob/main/CONTRIBUTING.md#collecting-a-packet-capture) and paste the `tcpdump -nSv -r etr.pcap` output here (redact sensitive data). If you're comfortable sharing it, you can also attach the zipped `etr.pcap`; attachments are publicly accessible.
       render: shell
     validations:
       required: false
