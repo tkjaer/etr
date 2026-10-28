@@ -58,6 +58,48 @@ body:
       description: Full command line used.
     validations:
       required: true
+  - type: markdown
+    attributes:
+      value: |
+        ### JSON output and packet capture
+
+        For problems with hops, paths or probe results, a JSON run plus a packet capture of the same run makes it much easier to tell what happened on the wire. `etr -B` prints the BPF filter ETR uses internally, so tcpdump captures exactly the probe traffic.
+
+        Start from the command that shows the problem, with an IP address as the destination so every command targets the same host. Keep the run as small as possible: start with `-c 1 -P 1` and only raise `-c` (probe count) or `-P` (parallel probes) if the problem doesn't show up. Use the same options in steps 1 and 2.
+
+        **1. Start a packet capture**
+
+        ```sh
+        sudo tcpdump -w etr.pcap "$(etr <options> -c 1 -P 1 <destination> -B)"
+        ```
+
+        **2. In another terminal, run ETR with JSON output**
+
+        ```sh
+        sudo etr <options> -c 1 -P 1 -J <destination>
+        ```
+
+        **3. Stop the capture (Ctrl-C) and display it**
+
+        ```sh
+        tcpdump -nSv -r etr.pcap
+        ```
+  - type: textarea
+    id: json
+    attributes:
+      label: JSON output
+      description: Output from step 2 (redact sensitive data).
+      render: json
+    validations:
+      required: false
+  - type: textarea
+    id: pcap
+    attributes:
+      label: Packet capture
+      description: Output from step 3 (redact sensitive data). If you're comfortable sharing it, you can also attach `etr.pcap` compressed as `.zip` or `.gz` (GitHub doesn't accept `.pcap` directly). Attachments are publicly accessible.
+      render: shell
+    validations:
+      required: false
   - type: textarea
     id: logs
     attributes:
