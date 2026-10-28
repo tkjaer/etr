@@ -1,6 +1,9 @@
 package etr
 
 import (
+	"bytes"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -64,5 +67,36 @@ func TestDeliverResponseGivesUpAfterStop(t *testing.T) {
 
 	if runDelivery(t, p, stop) {
 		t.Error("deliverResponse = true after stop, want false")
+	}
+}
+
+func TestLogReceived(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	logReceived(2, &probeEventDataReceived{
+		ProbeNum:  5,
+		TTL:       6,
+		IP:        "192.0.2.1",
+		Flag:      "TTL",
+		Timestamp: time.Date(2026, 10, 28, 8, 45, 49, 394049000, time.UTC),
+	})
+
+	got := buf.String()
+	for _, want := range []string{
+		`level=DEBUG`,
+		`msg="Received response"`,
+		`probe_id=2`,
+		`probe_num=5`,
+		`ttl=6`,
+		`ip=192.0.2.1`,
+		`reply=time_exceeded`,
+		`recv_time=2026-10-28T08:45:49.394049Z`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("log output missing %q:\n%s", want, got)
+		}
 	}
 }

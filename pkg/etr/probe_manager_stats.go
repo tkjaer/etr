@@ -287,6 +287,10 @@ func (pm *probeManager) updateReceivedStats(probeID uint16, data *probeEventData
 	// Update current IP for this hop
 	hopStats.CurrentIP = data.IP
 
+	reply := replyFromFlag(data.Flag)
+	ipStats.Reply = reply
+	ipStats.Forwarded = reply == ReplyTimeExceeded && data.IP == pm.probeTarget.route.Destination.String()
+
 	// Check and remove from TTL cache
 	cacheKey := ttlCacheKey{ProbeID: probeID, ProbeNum: data.ProbeNum, TTL: data.TTL}
 	cacheEntry, present := pm.stats.TTLCache.GetAndDelete(cacheKey)
@@ -327,6 +331,7 @@ func (pm *probeManager) updateReceivedStats(probeID uint16, data *probeEventData
 			Timeout:  false,
 			PTR:      ptrValue,
 			ASN:      asnValue,
+			Reply:    reply,
 			RecvTime: data.Timestamp,
 		}
 	}
@@ -517,6 +522,7 @@ func (pm *probeManager) outputProbeRun(probeID uint16, data *probeEventDataItera
 					Timeout:  false,
 					PTR:      ptrValue,
 					ASN:      asnValue,
+					Reply:    ipStats.Reply,
 					RecvTime: data.Timestamp, // Approximate
 				}
 			}

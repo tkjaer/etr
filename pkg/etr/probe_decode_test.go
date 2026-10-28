@@ -197,3 +197,20 @@ func TestDecodeUDPLayer(t *testing.T) {
 		})
 	}
 }
+
+func TestReplyFromFlag(t *testing.T) {
+	tests := map[string]Reply{
+		"TTL":     ReplyTimeExceeded,
+		"D":       ReplyPortUnreachable,
+		"SYN-ACK": ReplySYNACK,
+		"RST":     ReplyRST,
+		"UDP":     ReplyUDP,
+		"SYN":     "",
+		"":        "",
+	}
+	for flag, want := range tests {
+		if got := replyFromFlag(flag); got != want {
+			t.Errorf("replyFromFlag(%q) = %q, want %q", flag, got, want)
+		}
+	}
+}
