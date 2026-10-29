@@ -90,14 +90,15 @@ type ProbeRun struct {
 
 // HopRun represents the result for a single TTL in one probe run
 type HopRun struct {
-	TTL      uint8     `json:"ttl"`
-	IP       string    `json:"ip"`              // IP that responded (empty if timeout)
-	RTT      int64     `json:"rtt"`             // RTT in microseconds (0 if timeout)
-	Timeout  bool      `json:"timeout"`         // Whether this hop timed out
-	PTR      string    `json:"ptr"`             // PTR record for this IP
-	ASN      string    `json:"asn"`             // ASN for this IP
-	Reply    Reply     `json:"reply,omitempty"` // Kind of reply (empty if timeout)
-	RecvTime time.Time `json:"recv_time"`       // When response was received
+	TTL       uint8     `json:"ttl"`
+	IP        string    `json:"ip"`                  // IP that responded (empty if timeout)
+	RTT       int64     `json:"rtt"`                 // RTT in microseconds (0 if timeout)
+	Timeout   bool      `json:"timeout"`             // Whether this hop timed out
+	PTR       string    `json:"ptr"`                 // PTR record for this IP
+	ASN       string    `json:"asn"`                 // ASN for this IP
+	Reply     Reply     `json:"-"`                   // Kind of reply (empty if timeout)
+	Forwarded bool      `json:"forwarded,omitempty"` // Destination address sent time exceeded here, so it forwards the probes on
+	RecvTime  time.Time `json:"recv_time"`           // When response was received
 }
 
 // calculatePathHash computes a hash of the network path using the specified algorithm

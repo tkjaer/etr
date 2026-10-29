@@ -1,7 +1,9 @@
 package etr
 
 import (
+	"encoding/json"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,8 +139,23 @@ func TestReceivedStatsRecordReplyAndForwarding(t *testing.T) {
 		t.Fatalf("output message = %+v, want a probe run", msg)
 	}
 	for _, hop := range msg.run.Hops {
-		if hop.Reply != want[hop.TTL].reply {
-			t.Errorf("probe run TTL %d: reply = %q, want %q", hop.TTL, hop.Reply, want[hop.TTL].reply)
+		if hop.Reply != want[hop.TTL].reply || hop.Forwarded != want[hop.TTL].forwarded {
+			t.Errorf("probe run TTL %d: reply = %q, forwarded = %v, want %q, %v",
+				hop.TTL, hop.Reply, hop.Forwarded, want[hop.TTL].reply, want[hop.TTL].forwarded)
+		}
+	}
+
+	// The JSON output only marks forwarded hops and leaves the reply out
+	for _, hop := range msg.run.Hops {
+		b, err := json.Marshal(hop)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), `"reply"`) {
+			t.Errorf("TTL %d JSON has a reply field: %s", hop.TTL, b)
+		}
+		if got := strings.Contains(string(b), `"forwarded":true`); got != want[hop.TTL].forwarded {
+			t.Errorf("TTL %d JSON forwarded = %v, want %v: %s", hop.TTL, got, want[hop.TTL].forwarded, b)
 		}
 	}
 }

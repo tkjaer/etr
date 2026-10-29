@@ -325,14 +325,15 @@ func (pm *probeManager) updateReceivedStats(probeID uint16, data *probeEventData
 	// Update ProbeRun for this iteration
 	if run, ok := pm.stats.CurrentRuns[probeID]; ok && run.ProbeNum == data.ProbeNum {
 		run.Hops[data.TTL] = &HopRun{
-			TTL:      data.TTL,
-			IP:       data.IP,
-			RTT:      rtt,
-			Timeout:  false,
-			PTR:      ptrValue,
-			ASN:      asnValue,
-			Reply:    reply,
-			RecvTime: data.Timestamp,
+			TTL:       data.TTL,
+			IP:        data.IP,
+			RTT:       rtt,
+			Timeout:   false,
+			PTR:       ptrValue,
+			ASN:       asnValue,
+			Reply:     reply,
+			Forwarded: ipStats.Forwarded,
+			RecvTime:  data.Timestamp,
 		}
 	}
 
@@ -516,14 +517,15 @@ func (pm *probeManager) outputProbeRun(probeID uint16, data *probeEventDataItera
 					}
 				}
 				hopsMap[ttl] = &HopRun{
-					TTL:      ttl,
-					IP:       hopStats.CurrentIP,
-					RTT:      ipStats.Last,
-					Timeout:  false,
-					PTR:      ptrValue,
-					ASN:      asnValue,
-					Reply:    ipStats.Reply,
-					RecvTime: data.Timestamp, // Approximate
+					TTL:       ttl,
+					IP:        hopStats.CurrentIP,
+					RTT:       ipStats.Last,
+					Timeout:   false,
+					PTR:       ptrValue,
+					ASN:       asnValue,
+					Reply:     ipStats.Reply,
+					Forwarded: ipStats.Forwarded,
+					RecvTime:  data.Timestamp, // Approximate
 				}
 			}
 		} else if hopStats.Lost > 0 {

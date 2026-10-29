@@ -121,7 +121,6 @@ Each probe iteration outputs one line of JSON (newline-delimited):
       "rtt": 1234567,
       "timeout": false,
       "ptr": "gateway.local",
-      "reply": "time_exceeded",
       "recv_time": "2025-10-27T12:00:00Z"
     }
   ],
@@ -135,7 +134,7 @@ Each probe iteration outputs one line of JSON (newline-delimited):
 - `probe_num`: Iteration number (0, 1, 2, ...)
 - `reached_dest`: Whether the final destination was reached
 - `rtt`: Round-trip time in microseconds
-- `reply`: What the hop answered with: `time_exceeded`, `port_unreachable`, `syn_ack`, `rst` or `udp` (omitted on timeout)
+- `forwarded`: Only present (`true`) on hops where the destination address itself answered with ICMP time exceeded, because it forwards the probes on, e.g. to a container or VM
 
 ## Using `-B` with tcpdump
 
