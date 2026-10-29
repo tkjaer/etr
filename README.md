@@ -77,7 +77,7 @@ etr --discover example.com
 - `-a`, `--asn`: Enable ASN (Autonomous System Number) lookups for each hop
 - `--help`: Full option list
 
-**TUI controls**: `↑/↓` scroll, `←/→` or `Tab` switch views, `q` quit
+**TUI controls**: `↑/↓` scroll, `←/→` or `Tab` switch views, `r` toggles reply types, `q` quit
 
 **Styling**: set the `NO_COLOR` environment variable to disable ANSI styling in the TUI.
 
@@ -134,6 +134,7 @@ Each probe iteration outputs one line of JSON (newline-delimited):
 - `probe_num`: Iteration number (0, 1, 2, ...)
 - `reached_dest`: Whether the final destination was reached
 - `rtt`: Round-trip time in microseconds
+- `forwarded`: Only present (`true`) on hops where the destination address itself answered with ICMP time exceeded, because it forwards the probes on, e.g. to a container or VM
 
 ## Using `-B` with tcpdump
 

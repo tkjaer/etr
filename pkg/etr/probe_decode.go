@@ -35,6 +35,7 @@ func (pm *probeManager) decodeRecvProbe(packet gopacket.Packet) (ttl uint8, prob
 		case layers.IPProtocolUDP:
 			if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
 				ttl, probeNum, port = decodeUDPLayer(udpLayer.(*layers.UDP))
+				flag = "UDP"
 			}
 		}
 	}
@@ -47,4 +48,21 @@ func (pm *probeManager) decodeRecvProbe(packet gopacket.Packet) (ttl uint8, prob
 		timestamp = packet.Metadata().Timestamp
 	}
 	return
+}
+
+// replyFromFlag maps a decoded response flag to its public Reply type.
+func replyFromFlag(flag string) Reply {
+	switch flag {
+	case "TTL":
+		return ReplyTimeExceeded
+	case "D":
+		return ReplyPortUnreachable
+	case "SYN-ACK":
+		return ReplySYNACK
+	case "RST":
+		return ReplyRST
+	case "UDP":
+		return ReplyUDP
+	}
+	return ""
 }

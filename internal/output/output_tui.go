@@ -64,6 +64,7 @@ type tuiModel struct {
 	focus         paneFocus
 	summaryScroll int
 	detailScroll  int
+	showReply     bool // show the reply type instead of StDev
 	help          help.Model
 	keys          keyMap
 
@@ -79,20 +80,21 @@ type keyMap struct {
 	Left  key.Binding
 	Right key.Binding
 	Tab   key.Binding
+	Reply key.Binding
 	Quit  key.Binding
 	Help  key.Binding
 }
 
 // ShortHelp returns keybindings to be shown in the mini help view
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Tab, k.Quit, k.Help}
+	return []key.Binding{k.Tab, k.Reply, k.Quit, k.Help}
 }
 
 // FullHelp returns keybindings for the expanded help view
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Left, k.Right},
-		{k.Tab, k.Quit, k.Help},
+		{k.Tab, k.Reply, k.Quit, k.Help},
 	}
 }
 
@@ -116,6 +118,10 @@ var keys = keyMap{
 	Tab: key.NewBinding(
 		key.WithKeys("tab"),
 		key.WithHelp("tab", "switch focus"),
+	),
+	Reply: key.NewBinding(
+		key.WithKeys("r"),
+		key.WithHelp("r", "reply types"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q", "ctrl+c"),
@@ -172,8 +178,32 @@ var (
 			Padding(0, 1)
 
 	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#626262"))
+			Foreground(lipgloss.Color("#9CA3AF"))
+
+	// The help widget's own defaults are too dark on a dark background
+	helpKeyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#D1D5DB"))
+	helpDescStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF"))
+	helpSepStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
+
+	forwardedStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#F472B6"))
+
+	noteStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#D1D5DB"))
 )
+
+func newHelp() help.Model {
+	h := help.New()
+	h.Styles.ShortKey = helpKeyStyle
+	h.Styles.FullKey = helpKeyStyle
+	h.Styles.ShortDesc = helpDescStyle
+	h.Styles.FullDesc = helpDescStyle
+	h.Styles.ShortSeparator = helpSepStyle
+	h.Styles.FullSeparator = helpSepStyle
+	h.Styles.Ellipsis = helpSepStyle
+	return h
+}
 
 type cellAlignment int
 
@@ -252,6 +282,75 @@ func formatHopDisplay(ip, ptr, asn string) string {
 	default:
 		return ip
 	}
+}
+
+// forwardedCaption explains the * marker on hops where the destination
+// address sent time exceeded, e.g. because it forwards the port to a container.
+func (m *tuiModel) forwardedCaption() string {
+	return fmt.Sprintf("destination forwards port %d", m.dstPort)
+}
+
+// withForwardedCaption draws "* <caption>" into the last line of a rendered
+// pane: into its bottom border, or onto the spare last line when unstyled.
+func (m *tuiModel) withForwardedCaption(pane string, style lipgloss.Style) string {
+	lines := strings.Split(pane, "\n")
+	last := len(lines) - 1
+	width := lipgloss.Width(lines[last])
+	caption := m.forwardedCaption()
+
+	if m.noStyle {
+		lines[last] = padToWidth(truncateToWidth("* "+caption, width), width)
+		return strings.Join(lines, "\n")
+	}
+
+	// ╰─ * caption ──────╯
+	bs := style.GetBorderStyle()
+	prefix := bs.BottomLeft + bs.Bottom + " "
+	fixed := lipgloss.Width(prefix) + len("* ") + len(" ") + lipgloss.Width(bs.BottomRight)
+	if width-fixed < 10 {
+		return pane
+	}
+	caption = truncateToWidth(caption, width-fixed)
+	fill := strings.Repeat(bs.Bottom, width-fixed-lipgloss.Width(caption))
+	border := lipgloss.NewStyle().Foreground(style.GetBorderBottomForeground())
+	lines[last] = border.Render(prefix) + forwardedStyle.Render("*") + noteStyle.Render(" "+caption) +
+		border.Render(" "+fill+bs.BottomRight)
+	return strings.Join(lines, "\n")
+}
+
+// replyLabel returns a short label for the Reply column.
+func replyLabel(r etr.Reply) string {
+	switch r {
+	case etr.ReplyTimeExceeded:
+		return "TTL exc"
+	case etr.ReplyPortUnreachable:
+		return "Unreach"
+	case etr.ReplySYNACK:
+		return "SYN-ACK"
+	case etr.ReplyRST:
+		return "RST"
+	case etr.ReplyUDP:
+		return "UDP"
+	}
+	return "-"
+}
+
+func hopForwarded(hop *etr.HopStats) bool {
+	for _, ipStats := range hop.IPs {
+		if ipStats != nil && ipStats.Forwarded {
+			return true
+		}
+	}
+	return false
+}
+
+func probeForwarded(probe *etr.ProbeStats) bool {
+	for _, hop := range probe.Hops {
+		if hopForwarded(hop) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *tuiModel) render(style lipgloss.Style, value string) string {
@@ -368,7 +467,7 @@ func NewBubbleTUIOutput(info Info) *BubbleTUIOutput {
 		discoMode:       info.DiscoMode,
 		selectedProbe:   0,
 		focus:           focusSummary,
-		help:            help.New(),
+		help:            newHelp(),
 		keys:            keys,
 		updateCh:        updateCh,
 		quitCh:          quitCh,
@@ -599,6 +698,8 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
+		case key.Matches(msg, m.keys.Reply):
+			m.showReply = !m.showReply
 		case key.Matches(msg, m.keys.Tab):
 			if m.focus == focusSummary {
 				m.focus = focusDetails
@@ -703,9 +804,10 @@ func (m *tuiModel) View() string {
 		discoveryStripHeight = 1
 	}
 
-	// Overhead outside the two panes:
-	//   title(1) + \n(1) + \n after summary(1) + \n after detail(1) + help(1) = 5
-	overheadHeight := 5 + discoveryStripHeight
+	// Everything outside the two panes: the title, the help bar (several lines
+	// when expanded) and the discovery strip. The panes fill the rest.
+	helpView := m.render(helpStyle, m.help.View(m.keys))
+	overheadHeight := 1 + lipgloss.Height(helpView) + discoveryStripHeight
 	contentHeight := m.height - overheadHeight
 
 	// Split view: summary on top, detailed probe view below.
@@ -715,7 +817,10 @@ func (m *tuiModel) View() string {
 	probeCount := len(m.probes)
 	selectedHops := 0
 	if probe, ok := m.probes[m.selectedProbe]; ok {
-		selectedHops = len(probe.Hops)
+		// One row per IP: hops that saw several IPs get extra ↳ rows
+		for _, hop := range probe.Hops {
+			selectedHops += len(hop.IPs)
+		}
 	}
 	m.mu.RUnlock()
 
@@ -730,7 +835,7 @@ func (m *tuiModel) View() string {
 	detailHeight = max(detailHeight, minPane)
 	summaryHeight := contentHeight - detailHeight
 	summaryHeight = min(summaryHeight, summaryMax)
-	summaryHeight = max(summaryHeight, minPane)
+	summaryHeight = max(summaryHeight, min(minPane, summaryMax))
 	detailHeight = contentHeight - summaryHeight
 	probeHeight := detailHeight
 
@@ -745,7 +850,7 @@ func (m *tuiModel) View() string {
 
 	// Help
 	b.WriteString("\n")
-	b.WriteString(m.render(helpStyle, m.help.View(m.keys)))
+	b.WriteString(helpView)
 
 	return b.String()
 }
@@ -917,7 +1022,8 @@ func (m *tuiModel) renderNormalSummary(maxHeight int) string {
 	if m.noStyle {
 		containerWidth = m.width
 	}
-	return m.renderContainer(summaryContainer, containerWidth, maxHeight, b.String())
+	// Drop the last row's newline, or it adds an empty row to the pane
+	return m.renderContainer(summaryContainer, containerWidth, maxHeight, strings.TrimSuffix(b.String(), "\n"))
 }
 
 // renderLiveProbeDetails renders the hop-by-hop live view for a specific probe.
@@ -960,9 +1066,13 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 	hostWidth := contentWidth - fixedColumns
 	hostWidth = max(hostWidth, 10)
 
+	lastColumn := "StDev"
+	if m.showReply {
+		lastColumn = "Reply"
+	}
 	headerFmt := fmt.Sprintf("%%-%ds %%-%ds %%%ds %%%ds %%%ds %%%ds %%%ds %%%ds %%%ds", ttlWidth, hostWidth, lossWidth, sentWidth, statWidth, statWidth, statWidth, statWidth, statWidth)
 	header := fmt.Sprintf(headerFmt,
-		"TTL", "Host", "Loss%", "Sent", "Last", "Avg", "Best", "Worst", "StDev")
+		"TTL", "Host", "Loss%", "Sent", "Last", "Avg", "Best", "Worst", lastColumn)
 	b.WriteString(m.render(headerStyle, truncateToWidth(header, contentWidth)))
 	b.WriteString("\n")
 
@@ -1004,8 +1114,18 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 
 		ipDisplay := truncateToWidth(formatHopDisplay(ip, ipStats.PTR, ipStats.ASN), hostWidth)
 
+		ttlLabel := fmt.Sprintf("%d", ttl)
+		forwarded := hopForwarded(hop) && len(ttlLabel) < ttlWidth
+		if forwarded {
+			ttlLabel += "*"
+		}
+		lastCell := fmt.Sprintf("%.2f", ipStats.StdDev/1000.0)
+		if m.showReply {
+			lastCell = replyLabel(ipStats.Reply)
+		}
+
 		cells := []string{
-			formatCell(fmt.Sprintf("%d", ttl), ttlWidth, alignLeft),
+			formatCell(ttlLabel, ttlWidth, alignLeft),
 			formatCell(ipDisplay, hostWidth, alignLeft),
 			formatCell(fmt.Sprintf("%.1f%%", lossPct), lossWidth, alignRight),
 			formatCell(fmt.Sprintf("%d", sent), sentWidth, alignRight),
@@ -1013,7 +1133,7 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Avg)/1000.0), statWidth, alignRight),
 			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Min)/1000.0), statWidth, alignRight),
 			formatCell(fmt.Sprintf("%.2f", float64(ipStats.Max)/1000.0), statWidth, alignRight),
-			formatCell(fmt.Sprintf("%.2f", ipStats.StdDev/1000.0), statWidth, alignRight),
+			formatCell(lastCell, statWidth, alignRight),
 		}
 
 		if ip != "" && ip != "???" {
@@ -1022,6 +1142,9 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 			cells[1] = m.render(ipStyle.Foreground(lipgloss.Color("#6B7280")), cells[1])
 		}
 		cells[2] = m.render(lossStyle, cells[2])
+		if forwarded {
+			cells[0] = strings.Replace(cells[0], "*", m.render(forwardedStyle, "*"), 1)
+		}
 
 		line := strings.Join(cells, " ")
 		line = truncateToWidth(line, contentWidth)
@@ -1038,6 +1161,11 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 				}
 
 				altValue := truncateToWidth("↳ "+formatHopDisplay(altIP, altStats.PTR, altStats.ASN), hostWidth)
+
+				altLastCell := fmt.Sprintf("%.2f", altStats.StdDev/1000.0)
+				if m.showReply {
+					altLastCell = replyLabel(altStats.Reply)
+				}
 
 				altLossStyle := statsGoodStyle
 				if altStats.LossPct > 10 {
@@ -1056,7 +1184,7 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 					formatCell(fmt.Sprintf("%.2f", float64(altStats.Avg)/1000.0), statWidth, alignRight),
 					formatCell(fmt.Sprintf("%.2f", float64(altStats.Min)/1000.0), statWidth, alignRight),
 					formatCell(fmt.Sprintf("%.2f", float64(altStats.Max)/1000.0), statWidth, alignRight),
-					formatCell(fmt.Sprintf("%.2f", altStats.StdDev/1000.0), statWidth, alignRight),
+					formatCell(altLastCell, statWidth, alignRight),
 				}
 
 				cells[1] = m.render(ipStyle.Foreground(lipgloss.Color("#9CA3AF")), cells[1])
@@ -1098,7 +1226,11 @@ func (m *tuiModel) renderLiveProbeDetails(probeID uint16, maxHeight int) string 
 	if m.noStyle {
 		containerWidth = m.width
 	}
-	return m.renderContainer(detailContainer, containerWidth, maxHeight, b.String())
+	pane := m.renderContainer(detailContainer, containerWidth, maxHeight, strings.TrimSuffix(b.String(), "\n"))
+	if probeForwarded(probe) {
+		pane = m.withForwardedCaption(pane, detailContainer)
+	}
+	return pane
 }
 
 // Helper types for aggregate stats

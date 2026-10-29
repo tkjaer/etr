@@ -2,6 +2,7 @@ package etr
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/google/gopacket"
 )
@@ -25,16 +26,18 @@ func (pm *probeManager) recvProbes(stop chan struct{}) {
 			// All valid received probes will have a TTL.
 			if ttl > 0 {
 				if p := pm.getProbe(probeID); p != nil {
+					data := &probeEventDataReceived{
+						ProbeNum:  probeNum,
+						TTL:       ttl,
+						Timestamp: timestamp,
+						IP:        ip.String(),
+						Flag:      flag,
+					}
+					logReceived(probeID, data)
 					stats := probeEvent{
 						ProbeID:   probeID,
 						EventType: "received",
-						Data: &probeEventDataReceived{
-							ProbeNum:  probeNum,
-							TTL:       ttl,
-							Timestamp: timestamp,
-							IP:        ip.String(),
-							Flag:      flag,
-						},
+						Data:      data,
 					}
 					resp := responseEvent{
 						ProbeNum: probeNum,
@@ -49,6 +52,19 @@ func (pm *probeManager) recvProbes(stop chan struct{}) {
 			}
 		}
 	}
+}
+
+// logReceived logs a matched response at debug level, including what kind of
+// reply the hop sent.
+func logReceived(probeID uint16, data *probeEventDataReceived) {
+	slog.Debug("Received response",
+		"probe_id", probeID,
+		"probe_num", data.ProbeNum,
+		"ttl", data.TTL,
+		"ip", data.IP,
+		"reply", replyFromFlag(data.Flag),
+		"recv_time", data.Timestamp.Format(time.RFC3339Nano),
+	)
 }
 
 // deliverResponse passes a received response to the stats processor and to
